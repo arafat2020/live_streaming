@@ -21,6 +21,7 @@ import { CloudflareModule } from './module/cloudflare/cloudflare.module';
 import { StreamsModule } from './module/streams/streams.module';
 import { VideoModule } from './module/video/video.module';
 
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -61,7 +62,7 @@ import { VideoModule } from './module/video/video.module';
       CloudflareModule,
       StreamsModule,
       VideoModule,
-   
+
   ],
   controllers: [AppController],
   providers: [AppService,SeederService],

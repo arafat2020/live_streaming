@@ -6,6 +6,7 @@ import {
   Res,
   Logger,
   HttpStatus,
+  Get,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -17,10 +18,7 @@ import { VideoService } from './video.service';
 const storage = diskStorage({
   destination: 'uploads',
   filename: (_, file, cb) => {
-    cb(
-      null,
-      `video-${uuidv4()}${path.extname(file.originalname)}`,
-    );
+    cb(null, `video-${uuidv4()}${path.extname(file.originalname)}`);
   },
 });
 
@@ -32,7 +30,7 @@ export class VideoController {
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { storage }))
-  async uploadVideo(
+   uploadVideo(
     @UploadedFile() file: Express.Multer.File,
     @Res() res: Response,
   ) {
@@ -42,25 +40,18 @@ export class VideoController {
         .json({ message: 'No file uploaded' });
     }
 
-    const lessonId = uuidv4();
+    const videoId = uuidv4();
 
-    try {
-      await this.videoService.transcodeVideoToHLS(
-        file.path,
-        lessonId,
-      );
+    // Start transcoding in background (non-blocking)
+    this.videoService.transcodeVideoToHLS(file.path, videoId);
 
-      return res.status(HttpStatus.OK).json({
-        message: 'Video converted to HLS',
-        lessonId,
-        playlistUrl: `http://localhost:5000/uploads/courses/${lessonId}/index.m3u8`,
-      });
-    } catch (err) {
-      this.logger.error(err);
-      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-        message: 'Transcoding failed',
-        error: err.message,
-      });
-    }
+    // Return playlist URL immediately
+    return res.status(HttpStatus.OK).json({
+      message: 'Video is being transcoded to HLS',
+      videoId,
+      playlistUrl: `http://localhost:${process.env.PORT}/uploads/videos/${videoId}/index.m3u8`,
+    });
   }
+
+
 }

@@ -4,14 +4,14 @@ import { ValidationPipe } from '@nestjs/common';
 import * as express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
+import { setupSwagger } from './swagger/swagger.setup';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Ensure directories exist
   const dirs = [
     path.join(process.cwd(), 'uploads'),
-    path.join(process.cwd(), 'uploads', 'courses'),
+    path.join(process.cwd(), 'uploads', 'videos'),
   ];
 
   dirs.forEach((dir) => {
@@ -23,7 +23,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-    origin: true,
+    origin: ['http://localhost:5173', '*'],
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
 
@@ -39,8 +40,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
-
-  const port = 5000;
+  // Swagger setup
+  setupSwagger(app);
+  const port = process.env.PORT || 8000;
   await app.listen(port);
   console.log(`🚀 Server running on http://localhost:${port}`);
 }
