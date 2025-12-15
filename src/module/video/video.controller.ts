@@ -1,22 +1,22 @@
 import {
   Controller,
   Post,
+  Get,
+  Param,
   UploadedFile,
   UseInterceptors,
-  Res,
-  Logger,
-  HttpStatus,
-  Get,
+  Body,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { Response } from 'express';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { VideoService } from './video.service';
 
+// Temporary storage for uploaded files (will be deleted after processing)
 const storage = diskStorage({
-  destination: 'uploads',
+  destination: 'uploads/temp',
   filename: (_, file, cb) => {
     cb(null, `video-${uuidv4()}${path.extname(file.originalname)}`);
   },
@@ -24,34 +24,28 @@ const storage = diskStorage({
 
 @Controller('video')
 export class VideoController {
-  private readonly logger = new Logger(VideoController.name);
-
   constructor(private readonly videoService: VideoService) {}
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { storage }))
-   uploadVideo(
-    @UploadedFile() file: Express.Multer.File,
-    @Res() res: Response,
-  ) {
+  async uploadVideo(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
-      return res
-        .status(HttpStatus.BAD_REQUEST)
-        .json({ message: 'No file uploaded' });
+      throw new BadRequestException('No file uploaded');
     }
 
     const videoId = uuidv4();
 
-    // Start transcoding in background (non-blocking)
-    this.videoService.transcodeVideoToHLS(file.path, videoId);
-
-    // Return playlist URL immediately
-    return res.status(HttpStatus.OK).json({
-      message: 'Video is being transcoded to HLS',
+    // Start transcoding and uploading to R2
+    // This returns the R2 playlist URL
+    const playlistUrl = await this.videoService.transcodeVideoToHLS(
+      file.path,
       videoId,
-      playlistUrl: `http://localhost:${process.env.PORT}/uploads/videos/${videoId}/index.m3u8`,
-    });
+    );
+
+    return {
+      message: 'Video uploaded and processing',
+      videoId,
+      playlistUrl, // This will be the R2 URL
+    };
   }
-
-
 }

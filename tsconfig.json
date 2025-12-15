@@ -19,6 +19,13 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
   },
-  "exclude": ["node_modules", "uploads"],
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "**/*spec.ts",
+    "uploads/**/*"    // ← Add this line
+  ]
 
 }
