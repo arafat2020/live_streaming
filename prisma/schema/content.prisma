@@ -1,23 +1,50 @@
+// model Content {
+//   id              String        @id @default(uuid())
+//   channelId       String
+//   channel         Channel       @relation(fields: [channelId], references: [id])
+//   title           String
+//   description     String?
+//   contentType     ContentType
+//   status          ContentStatus @default(PROCESSING)
+//   durationSeconds Int? // Null for live streams until archived
+//   playbackUrl     String? // The HLS/DASH manifest URL from the CDN or third-party API
+//   thumbnailUrl    String?
+//   views           Int           @default(0)
+//   isPremium       Boolean       @default(false) // Gated content
+//   r2ObjectKey     String?
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+
+//   // Relations
+//   watchHistory WatchHistory[]
+
+//   @@map("content")
+// }
 model Content {
   id              String        @id @default(uuid())
-  channelId       String
-  channel         Channel       @relation(fields: [channelId], references: [id])
-  title           String
-  description     String?
-  contentType     ContentType
-  status          ContentStatus @default(PROCESSING)
-  durationSeconds Int? // Null for live streams until archived
-  playbackUrl     String? // The HLS/DASH manifest URL from the CDN or third-party API
+  channelId       String?
+  channel         Channel?       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  title           String?
+  description     String?       @db.Text // বড় ডেসক্রিপশনের জন্য Text টাইপ ভালো
+  contentType     ContentType?   // VOD || LIVE_STREAM
+  status          ContentStatus @default(PROCESSING)  // PROCESSING AVAILABLE FAILED PRIVATE ARCHIVED
+  durationSeconds Int?
+  
+  // Playback & Storage Refactor
+  playbackUrl     String?       // https://pub-xxx.r2.dev/videos/lessonId/index.m3u8
+  r2Prefix        String?       // videos/lessonId (সম্পূর্ণ ফোল্ডার পাথ মনে রাখা সহজ)
+  originalFileName String?      // আপলোড করা অরিজিনাল ফাইলের নাম (উদা: my_video.mp4)
   thumbnailUrl    String?
+  
   views           Int           @default(0)
-  isPremium       Boolean       @default(false) // Gated content
-  r2ObjectKey     String?
+  isPremium       Boolean       @default(false)
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  watchHistory    WatchHistory[]
 
-  // Relations
-  watchHistory WatchHistory[]
-
+  @@index([channelId]) // কুয়েরি স্পিড বাড়ানোর জন্য ইনডেক্স
   @@map("content")
 }

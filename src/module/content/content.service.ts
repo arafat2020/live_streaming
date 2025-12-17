@@ -14,25 +14,26 @@ export class ContentService {
 
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
-      data: {
-        title: dto.title,
-        description: dto.description,
-        contentType: dto.contentType,
-        status: dto.status ?? 'PROCESSING',
-        durationSeconds: dto.durationSeconds,
-        playbackUrl: dto.playbackUrl,
-        thumbnailUrl: dto.thumbnailUrl,
-        isPremium: dto.isPremium ?? false,
-        r2ObjectKey: dto.r2ObjectKey,
-        channel: { connect: { id: dto.channelId } },
-      },
+data: {
+          title: dto.title,
+          description: dto.description,
+          contentType: dto.contentType,
+          status: dto.status ?? 'PROCESSING',
+          durationSeconds: dto.durationSeconds,
+          playbackUrl: dto.playbackUrl,
+          thumbnailUrl: dto.thumbnailUrl,
+          isPremium: dto.isPremium ?? false,
+          // r2ObjectKey এর বদলে r2Prefix ব্যবহার করুন (Align with Schema)
+          r2Prefix: dto.r2Prefix, 
+          channel: { connect: { id: dto.channelId } },
+        },
     });
 
     return content;
   }
 
-  async findAll(query: QueryContentDto) {
-    const page = query.page ?? 1;
+async findAll(query: QueryContentDto) {
+    const page = Math.max(query.page ?? 1, 1);
     const pageSize = Math.min(query.pageSize ?? 20, 100);
 
     const where: any = {};
@@ -42,8 +43,15 @@ export class ContentService {
         { description: { contains: query.q, mode: 'insensitive' } },
       ];
     }
+    
+    // ভিডিও লিস্টে শুধুমাত্র 'READY' ভিডিও দেখানোই ভালো
+    if (query.status) {
+        where.status = query.status;
+    } else {
+        where.status = 'READY'; // ডিফল্টভাবে শুধু রেডি ভিডিও
+    }
+
     if (query.contentType) where.contentType = query.contentType;
-    if (query.status) where.status = query.status;
     if (query.channelId) where.channelId = query.channelId;
 
     const [items, total] = await Promise.all([
@@ -52,20 +60,7 @@ export class ContentService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          contentType: true,
-          status: true,
-          durationSeconds: true,
-          playbackUrl: true,
-          thumbnailUrl: true,
-          views: true,
-          isPremium: true,
-          r2ObjectKey: true,
-          createdAt: true,
-          updatedAt: true,
+        include: {
           channel: { select: { id: true, name: true, handle: true } },
         },
       }),

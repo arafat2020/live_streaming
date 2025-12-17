@@ -17,5 +17,8 @@ export const r2Client = new S3Client({
   },
 });
 
-export const R2_BUCKET = validateEnvVar('R2_BUCKET_NAME', process.env.R2_BUCKET_NAME);
-export const R2_PUBLIC_URL = validateEnvVar('R2_PUBLIC_URL', process.env.R2_PUBLIC_URL);
+// export const R2_BUCKET = validateEnvVar('R2_BUCKET_NAME', process.env.R2_BUCKET_NAME);
+// export const R2_PUBLIC_URL = validateEnvVar('R2_PUBLIC_URL', process.env.R2_PUBLIC_URL);
+
+export const R2_PUBLIC_URL = 'https://pub-e4c5ac538f734060aafd26b4abc05fc5.r2.dev';
+export const R2_BUCKET = 'videos';

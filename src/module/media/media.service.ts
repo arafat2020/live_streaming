@@ -65,7 +65,7 @@ export class MediaServerService implements OnModuleInit {
       this.logger.log(`🔴 LIVE STARTED: ${streamKey}`);
 
       await this.prisma.stream.update({
-        where: { streamKey },
+        where: { id:streamKey },
         data: {
           status: 'LIVE',
           createdAt: new Date(),
@@ -82,7 +82,7 @@ export class MediaServerService implements OnModuleInit {
       this.logger.log(`⛔ LIVE ENDED: ${streamKey}`);
 
       await this.prisma.stream.update({
-        where: { streamKey:streamKey },
+        where: { id:streamKey },
         data: {
           status: 'OFFLINE',
           updatedAt: new Date(),
@@ -99,7 +99,7 @@ export class MediaServerService implements OnModuleInit {
    */
   private async isStreamKeyValid(streamKey: string): Promise<boolean> {
     const stream = await this.prisma.stream.findUnique({
-      where: { streamKey },
+      where: { id:streamKey },
     });
 
     return !!stream;
