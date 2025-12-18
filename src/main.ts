@@ -12,6 +12,8 @@ async function bootstrap() {
   const dirs = [
     path.join(process.cwd(), 'uploads'),
     path.join(process.cwd(), 'uploads', 'videos'),
+    path.join(process.cwd(), 'media'),
+    path.join(process.cwd(), 'media', 'live'),
   ];
 
   dirs.forEach((dir) => {
@@ -28,10 +30,25 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Serve HLS files
+  // Serve HLS files from uploads
   app.use(
     '/uploads',
     express.static(path.join(process.cwd(), 'uploads')),
+  );
+
+  // Serve live stream HLS files
+  app.use(
+    '/media',
+    express.static(path.join(process.cwd(), 'media'), {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.m3u8')) {
+          res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+          res.setHeader('Cache-Control', 'no-cache');
+        } else if (filePath.endsWith('.ts')) {
+          res.setHeader('Content-Type', 'video/mp2t');
+        }
+      },
+    }),
   );
 
   app.useGlobalPipes(
@@ -40,7 +57,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  // Swagger setup
+  
   setupSwagger(app);
   const port = process.env.PORT || 8000;
   await app.listen(port);
