@@ -12,6 +12,14 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 uploads
+media
+# Media files (live streaming)
+media/
+media/*
+
+# Upload files
+uploads/
+uploads/*
 # OS
 .DS_Store
 
