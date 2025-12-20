@@ -5,9 +5,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class FollowService {
   constructor(private prisma: PrismaService) {}
 
-  async followChannel(userId: string, channelHandle: string) {
+  async followChannel(userId: string, channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
-      where: { handle: channelHandle },
+      where: { id: channnelId },
     });
 
     if (!channel) throw new NotFoundException('Channel not found');
@@ -39,9 +39,9 @@ export class FollowService {
 
     return { message: 'Followed successfully' };
   }
-  async unfollowChannel(userId: string, channelHandle: string) {
+  async unfollowChannel(userId: string, channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
-      where: { handle: channelHandle },
+      where: { id: channnelId },
     });
 
     if (!channel) throw new NotFoundException('Channel not found');
@@ -56,9 +56,9 @@ export class FollowService {
     });
   }
 
-  async isFollowing(userId: string, channelHandle: string) {
+  async isFollowing(userId: string, channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
-      where: { handle: channelHandle },
+      where: { id: channnelId },
     });
 
     if (!channel) throw new NotFoundException('Channel not found');
@@ -82,9 +82,9 @@ export class FollowService {
     });
   }
 
-  async getFollowers(channelHandle: string) {
+  async getFollowers(channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
-      where: { handle: channelHandle },
+      where: { id: channnelId },
     });
 
     if (!channel) throw new NotFoundException('Channel not found');

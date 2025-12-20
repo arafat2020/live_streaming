@@ -25,7 +25,7 @@ async function bootstrap() {
   //app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-    origin: ['http://localhost:5173', '*'],
+    origin: ['http://localhost:5173','https://rappio-tv.netlify.app', '*'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });

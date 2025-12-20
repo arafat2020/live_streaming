@@ -23,17 +23,17 @@ import { ApiOperation } from '@nestjs/swagger';
 @Controller('content')
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
-  @ApiOperation({ summary: 'Create new content for a channel' })
-  @Post()
-  async create(@Body() dto: CreateContentDto, @Res() res: Response) {
-    const data = await this.contentService.create(dto);
-    return sendResponse(res, {
-      statusCode: HttpStatus.CREATED,
-      success: true,
-      message: 'Content created successfully.',
-      data,
-    });
-  }
+  // @ApiOperation({ summary: 'Create new content for a channel' })
+  // @Post()
+  // async create(@Body() dto: CreateContentDto, @Res() res: Response) {
+  //   const data = await this.contentService.create(dto);
+  //   return sendResponse(res, {
+  //     statusCode: HttpStatus.CREATED,
+  //     success: true,
+  //     message: 'Content created successfully.',
+  //     data,
+  //   });
+  // }
   @ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
  //@ApiTags('Content')
 @Get()

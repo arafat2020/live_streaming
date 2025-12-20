@@ -20,15 +20,15 @@ import sendResponse from '../../utils/sendResponse';
 export class FollowController {
   constructor(private readonly followService: FollowService) {}
 
-  @ApiOperation({ summary: 'Follow a channel by its handle' })
+  @ApiOperation({ summary: 'Follow a channel by its channnelId' })
   @UseGuards(JwtAuthGuard)
-  @Post(':handle')
+  @Post(':channnelId')
   async follow(
-    @Param('handle') handle: string,
+    @Param('channnelId') channnelId: string,
     @Req() req: RequestWithUser,
     @Res() res: Response,
   ) {
-    const data = await this.followService.followChannel(req.user.id, handle);
+    const data = await this.followService.followChannel(req.user.id, channnelId);
     return sendResponse(res, {
       statusCode: HttpStatus.CREATED,
       success: true,
@@ -39,13 +39,13 @@ export class FollowController {
 
   @ApiOperation({ summary: 'Check if the authenticated user follows this channel' })
   @UseGuards(JwtAuthGuard)
-  @Get(':handle/status')
+  @Get(':channnelId/status')
   async status(
-    @Param('handle') handle: string,
+    @Param('channnelId') channnelId: string,
     @Req() req: RequestWithUser,
     @Res() res: Response,
   ) {
-    const data = await this.followService.isFollowing(req.user.id, handle);
+    const data = await this.followService.isFollowing(req.user.id, channnelId);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -68,12 +68,12 @@ export class FollowController {
   }
 
   @ApiOperation({ summary: 'Get all followers of the specified channel' })
-  @Get(':handle/followers')
+  @Get(':channnelId/followers')
   async getFollowers(
-    @Param('handle') handle: string,
+    @Param('channnelId') channnelId: string,
     @Res() res: Response,
   ) {
-    const data = await this.followService.getFollowers(handle);
+    const data = await this.followService.getFollowers(channnelId);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -82,15 +82,15 @@ export class FollowController {
     });
   }
 
-  @ApiOperation({ summary: 'Unfollow a channel by its handle' })
+  @ApiOperation({ summary: 'Unfollow a channel by its channnelId' })
   @UseGuards(JwtAuthGuard)
-  @Delete(':handle')
+  @Delete(':channnelId')
   async unfollow(
-    @Param('handle') handle: string,
+    @Param('channnelId') channnelId: string,
     @Req() req: RequestWithUser,
     @Res() res: Response,
   ) {
-    await this.followService.unfollowChannel(req.user.id, handle);
+    await this.followService.unfollowChannel(req.user.id, channnelId);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,

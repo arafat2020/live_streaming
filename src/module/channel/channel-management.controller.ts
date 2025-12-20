@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -22,15 +24,27 @@ import { UpdateChannelDto } from './dto/update-channel.dto';
 import { GetMe } from '../user/dto/request-with-user.interface';
 import { ApiTags } from '@nestjs/swagger';
 
-@ApiTags('Only for CREATOR user Channel Management')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles(UserRole.CREATOR)
-@Controller('creator/channel')
+@ApiTags('Channel Management')
+@Controller('channel')
 export class ChannelManagementController {
   constructor(private readonly channelService: ChannelService) {}
-
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Get('')
+@HttpCode(200)
+async getChannels( @Res() res: Response) {
+ 
+    const data = await this.channelService.getChannels();
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Channels retrieved successfully.',
+      data,
+    });
+  }
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
-  @Get()
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles(UserRole.CREATOR)
+  @Get('my-chennel')
   async getPrivateChannel(@Req() req: GetMe,@Res() res: Response) {
     const userId = req.user.id;
     const data = await this.channelService.getPrivateChannel(userId);
@@ -44,6 +58,8 @@ export class ChannelManagementController {
 
 
   /**PATCH /creator/channel - Updates channel metadata (name, description, handle).*/
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles(UserRole.CREATOR)
   @Patch()
   async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto,@Res() res: Response) {
     const userId = req.user.id;
@@ -57,6 +73,8 @@ export class ChannelManagementController {
   }
 
   /**POST /creator/channel/key/rotate - Generates a new stream key.*/
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles(UserRole.CREATOR)
   @Post('key/rotate')
   @HttpCode(200)
   async rotateStreamKey(@Req() req: GetMe,@Res() res: Response) {
@@ -70,4 +88,16 @@ export class ChannelManagementController {
     });
   }
 
+@Get(':id')
+@HttpCode(200)
+async getChannelById(@Param('id') id: string, @Res() res: Response) {
+ 
+    const data = await this.channelService.getChannelById(id);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Channel retrieved successfully.',
+      data,
+    });
+  }
 }

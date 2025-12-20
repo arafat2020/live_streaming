@@ -1,4 +1,4 @@
-import { Injectable,BadRequestException ,NotFoundException} from '@nestjs/common';
+import { Injectable,BadRequestException ,NotFoundException, ForbiddenException} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -181,4 +181,48 @@ export class ChannelService {
     // Key must exist AND the owner must be ACTIVE (not suspended)
     return !!channel && channel.owner.status === 'ACTIVE';
   }
+  
+async getChannels() {
+  const channels = await this.prisma.channel.findMany({
+    select: {
+      id: true,
+      name: true,
+      handle: true,
+      streamKey: true,
+      description: true,
+      owner: { select: { id: true, firstName: true, lastName: true, status: true } },
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return channels;
+}
+async getChannelById(channelId: string) {
+  const channel = await this.prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      id: true,
+      name: true,
+      handle: true,
+      streamKey: true,
+      description: true,
+      owner: { select: { id: true, firstName: true, lastName: true, status: true } },
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!channel) {
+    throw new NotFoundException('Channel not found.');
+  }
+
+  // Optional: ensure owner is ACTIVE
+  if (channel.owner.status !== 'ACTIVE') {
+    throw new ForbiddenException('Channel owner is not active.');
+  }
+
+  return channel;
+}
+
 }

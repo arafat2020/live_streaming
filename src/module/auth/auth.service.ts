@@ -21,7 +21,7 @@ import { UserRole, UserStatus } from '@prisma/client';
 import {generateOtpCode,hashOtpCode} from '../../utils/generateOtpCode';
 import { MailService } from '../mail/mail.service';
 //import { MailerService } from '@nestjs-modules/mailer';
-
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -30,7 +30,9 @@ export class AuthService {
     private jwtService: JwtService,
     private mailerService: MailService,
   ) {}
-
+  private generateStreamKey(): string {
+    return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
+  }
   async register(dto: RegisterDto){
     const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existingUser) {
@@ -47,7 +49,7 @@ export class AuthService {
       lastName: dto.lastName ?? null,
       phone: dto.phone ?? null,
       profileImage: dto.profileImage ?? null,
-      role: UserRole.USER,
+      role: UserRole.CREATOR,
       is2FAEnabled: dto.is2FAEnabled ?? false,
       twoFactorSecret: null,
       passwordResetToken: null,
@@ -55,13 +57,20 @@ export class AuthService {
     };
     try {
       const user = await this.prisma.user.create({ data: payload });
+    const channelPayload = {
+      ownerId: user.id,
+      name: user.firstName,
+      handle: user.email.split('@')[0],
+      description: null,
+      streamKey: this.generateStreamKey(),
+    };
 
+    await this.prisma.channel.create({ data: channelPayload });
       // sanitize sensitive fields before returning
       const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, ...safeUser } = user;
       return safeUser;
     } catch (err) {
       console.error("err------>",err);
-      // Optional: log err with logger
       throw new InternalServerErrorException('Failed to create user.',err);
     }
   }

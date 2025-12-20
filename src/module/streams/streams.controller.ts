@@ -28,49 +28,49 @@ export class StreamsController {
 
   constructor(private readonly cfService: CloudflareService) {}
 
-  @UseGuards(JwtAuthGuard)
-  @Post('create')
-  @ApiOperation({ summary: 'Create a new live stream (generate Stream Key)' })
-  @ApiBody({ type: CreateStreamDto })
-  @ApiResponse({ status: 201, description: 'Stream created successfully' })
-  async createStream(@Req() req:RequestWithUser, @Body() body: CreateStreamDto) {
+  // @UseGuards(JwtAuthGuard)
+  // @Post('create')
+  // @ApiOperation({ summary: 'Create a new live stream (generate Stream Key)' })
+  // @ApiBody({ type: CreateStreamDto })
+  // @ApiResponse({ status: 201, description: 'Stream created successfully' })
+  // async createStream(@Req() req:RequestWithUser, @Body() body: CreateStreamDto) {
 
 
 
-    const userId = req.user.id;
-    console.log("userId--------->", userId);
-    // const liveInput = await this.cfService.createLiveInput(userId);
-    const streamName = body.name || `user_${userId}_live`;
+  //   const userId = req.user.id;
+  //   console.log("userId--------->", userId);
+  //   // const liveInput = await this.cfService.createLiveInput(userId);
+  //   const streamName = body.name || `user_${userId}_live`;
 
-    const liveInput = await this.cfService.createLiveInput(userId, streamName);
-    return {
-      liveInputId: liveInput.uid,
-      rtmpsUrl: liveInput.rtmp.url,
-      streamKeyMasked: `****${liveInput.rtmp.streamKey.slice(-4)}`,
-      playbackUrl: liveInput.playback.hls,
-    };
-  }
+  //   const liveInput = await this.cfService.createLiveInput(userId, streamName);
+  //   return {
+  //     liveInputId: liveInput.uid,
+  //     rtmpsUrl: liveInput.rtmp.url,
+  //     streamKeyMasked: `****${liveInput.rtmp.streamKey.slice(-4)}`,
+  //     playbackUrl: liveInput.playback.hls,
+  //   };
+  // }
 
-  @Get(':inputId/status')
-  @ApiOperation({ summary: 'Get status of a live stream' })
-  @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
-  @ApiResponse({ status: 200 })
-  async status(@Param('inputId') inputId: string) {
-    const result = await this.cfService.getLiveInput(inputId);
-    return {
-      inputId: result.uid,
-      status: result.status,
-      viewers: result.viewers_count || 0,
-    };
-  }
+  // @Get(':inputId/status')
+  // @ApiOperation({ summary: 'Get status of a live stream' })
+  // @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
+  // @ApiResponse({ status: 200 })
+  // async status(@Param('inputId') inputId: string) {
+  //   const result = await this.cfService.getLiveInput(inputId);
+  //   return {
+  //     inputId: result.uid,
+  //     status: result.status,
+  //     viewers: result.viewers_count || 0,
+  //   };
+  // }
 
-  @Post(':inputId/delete')
-  @ApiOperation({ summary: 'Delete a live stream and revoke its stream key' })
-  @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
-  @ApiResponse({ status: 200 })
-  async deleteStream(@Req() req, @Param('inputId') inputId: string) {
-    const userId = req.user.id;
-    await this.cfService.deleteLiveInput(inputId);
-    return { message: 'Stream deleted successfully' };
-  }
+  // @Post(':inputId/delete')
+  // @ApiOperation({ summary: 'Delete a live stream and revoke its stream key' })
+  // @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
+  // @ApiResponse({ status: 200 })
+  // async deleteStream(@Req() req, @Param('inputId') inputId: string) {
+  //   const userId = req.user.id;
+  //   await this.cfService.deleteLiveInput(inputId);
+  //   return { message: 'Stream deleted successfully' };
+  // }
 }
