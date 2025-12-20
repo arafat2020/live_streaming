@@ -33,50 +33,33 @@ data: {
   }
 
 async findAll(query: QueryContentDto) {
-    const page = Math.max(query.page ?? 1, 1);
-    const pageSize = Math.min(query.pageSize ?? 20, 100);
+  const page = Math.max(query.page ?? 1, 1);
+  const pageSize = Math.min(query.pageSize ?? 20, 100);
 
-    const where: any = {};
-    if (query.q) {
-      where.OR = [
-        { title: { contains: query.q, mode: 'insensitive' } },
-        { description: { contains: query.q, mode: 'insensitive' } },
-      ];
-    }
-    
-    // ভিডিও লিস্টে শুধুমাত্র 'READY' ভিডিও দেখানোই ভালো
-    if (query.status) {
-        where.status = query.status;
-    } else {
-        where.status = 'PROCESSING'; // ডিফল্টভাবে শুধু রেডি ভিডিও
-    }
+  const skip = (page - 1) * pageSize;
 
-    if (query.contentType) where.contentType = query.contentType;
-    if (query.channelId) where.channelId = query.channelId;
-
-    const [items, total] = await Promise.all([
-      this.prisma.content.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          channel: { select: { id: true, name: true, handle: true } },
-        },
-      }),
-      this.prisma.content.count({ where }),
-    ]);
-
-    return {
-      data: items,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
+  const [data, total] = await this.prisma.$transaction([
+    this.prisma.content.findMany({
+      skip,
+      take: pageSize,
+      orderBy: {
+        createdAt: 'desc',
       },
-    };
-  }
+    }),
+    this.prisma.content.count(),
+  ]);
+
+  return {
+    data,
+    meta: {
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+}
+
 
   async findOne(id: string) {
     const content = await this.prisma.content.findUnique({

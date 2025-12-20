@@ -35,16 +35,24 @@ export class ContentController {
     });
   }
   @ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
-  @Get()
-  async findAll(@Query() query: QueryContentDto, @Res() res: Response) {
-    const data = await this.contentService.findAll(query);
-    return sendResponse(res, {
-      statusCode: HttpStatus.OK,
-      success: true,
-      message: 'Content retrieve successfully.',
-      data,
-    });
-  }
+ //@ApiTags('Content')
+@Get()
+async findAll(
+  @Query() query: QueryContentDto,
+  @Res() res: Response,
+) {
+  const result = await this.contentService.findAll(query);
+
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Content retrieved successfully.',
+    data: {
+      data:result.data,
+      meta: result.meta,
+    }
+  });
+}
   @ApiOperation({ summary: 'Get a single content item by its ID' })
   @Get(':id')
   async findOne(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
