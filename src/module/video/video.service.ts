@@ -7,6 +7,7 @@ import { R2UploadService } from './r2-upload.service';
 import { R2_PUBLIC_URL } from '../../config/r2.config';
 import { ContentService } from '../content/content.service';
 import { ContentType } from '@prisma/client';
+import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 
 @Injectable()
 export class VideoService {
@@ -15,6 +16,7 @@ export class VideoService {
   constructor(
     private readonly r2UploadService: R2UploadService,
     private readonly contentService: ContentService,
+    private readonly liveGateway: LiveCommentGateway,
   ) {}
 
   async processLargeVideo(fileBuffer: Buffer, lessonId: string, dto: any): Promise<string> {
@@ -25,7 +27,7 @@ export class VideoService {
     const playlistPath = path.join(outputDir, 'index.m3u8');
     const hlsBaseUrl = `${R2_PUBLIC_URL}/${r2Prefix}/`;
 
-    // ✅ এরর ফিক্স: contentType এবং অন্যান্য ফিল্ডগুলো সঠিকভাবে পাস করা হয়েছে
+    //  এরর ফিক্স: contentType এবং অন্যান্য ফিল্ডগুলো সঠিকভাবে পাস করা হয়েছে
     const content = await this.contentService.create({
       title: dto.title || 'Untitled Video',
       channelId: "afddce5a-43df-475a-b896-ec92ac6ace5d",
@@ -33,7 +35,7 @@ export class VideoService {
       status: 'PROCESSING' as any,
       r2Prefix: r2Prefix,
     });
-console.log("content--------->",content)
+    console.log("content--------->",content)
     const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
 
     return new Promise((resolve, reject) => {
@@ -84,7 +86,7 @@ console.log("content--------->",content)
   }
 
 async handleLiveStream(streamKey: string, liveDir: string) {
-  // ✅ বাকেট পাথের সাথে মিল রেখে Prefix পরিবর্তন করুন 
+  //  বাকেট পাথের সাথে মিল রেখে Prefix পরিবর্তন করুন
   const r2Prefix = `videos/${streamKey}`;
   const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
 
@@ -97,15 +99,29 @@ async handleLiveStream(streamKey: string, liveDir: string) {
       r2Prefix: r2Prefix,
       playbackUrl: playbackUrl,
     });
-
-    this.logger.log(`✅ Database Record Created for videos bucket. ID: ${content.id}`);
+    console.log("handleLiveStream playbackUrl------------------------->",playbackUrl)
+    console.log("handleLiveStream content.id------------------------->",content.id)
+        // SEND LIVE SIGNAL TO FRONTEND
+        //  SOCKET SIGNAL
+     this.liveGateway.streamLive(playbackUrl);
+    //this.logger.log(` Database Record Created for videos bucket. ID: ${content.id}`);
 
     // ২. Cloudflare R2 ওয়াচার শুরু করুন
     this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
 
   } catch (error) {
-    this.logger.error(`❌ DB Error: ${error.message}`);
+    this.logger.error(` DB Error: ${error.message}`);
   }
 }
+ // 🛑 CALLED WHEN OBS STOPS STREAM
+  async handleLiveStop(streamKey: string) {
+    const content = await this.contentService.findOne(streamKey);
+    if (!content) return;
 
+    await this.contentService.update(content.id, {
+      status: 'ENDED' as any,
+    });
+
+   this.liveGateway.streamEnded();
+  }
 }

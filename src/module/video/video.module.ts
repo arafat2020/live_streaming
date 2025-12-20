@@ -4,9 +4,10 @@ import { VideoController } from './video.controller';
 import { R2UploadService } from './r2-upload.service';
 import {ContentModule} from '../content/content.module'
 import { MediaServerService } from './media-server.service';
+import { LiveCommentModule } from '../live-comment/live-comment.module';
  
 @Module({
-  imports:[ContentModule],
+  imports:[ContentModule,LiveCommentModule],
   controllers: [VideoController],
   providers: [VideoService,R2UploadService,MediaServerService],
   exports: [VideoService],

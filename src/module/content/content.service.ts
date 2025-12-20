@@ -48,7 +48,7 @@ async findAll(query: QueryContentDto) {
     if (query.status) {
         where.status = query.status;
     } else {
-        where.status = 'READY'; // ডিফল্টভাবে শুধু রেডি ভিডিও
+        where.status = 'PROCESSING'; // ডিফল্টভাবে শুধু রেডি ভিডিও
     }
 
     if (query.contentType) where.contentType = query.contentType;
