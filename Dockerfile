@@ -1,18 +1,20 @@
+FROM node:20-alpine
 
-FROM node:20-alpine AS builder
+# Install FFmpeg for video processing
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
+
+# Copy package.json & install
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+RUN npm install
+
+# Copy source code
 COPY . .
-RUN npx prisma generate
+
+# Build NestJS
 RUN npm run build
 
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/prisma ./prisma
-
 EXPOSE 5000
+
 CMD ["node", "dist/main.js"]
