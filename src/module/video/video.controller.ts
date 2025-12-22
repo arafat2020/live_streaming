@@ -7,6 +7,8 @@ import { VideoService } from './video.service';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MediaServerService } from './media-server.service';
+import { CreateVideoDto } from './dto/create-video.dto';
+import { ApiBody, ApiConsumes, ApiOperation } from '@nestjs/swagger';
 
 @Controller('video')
 export class VideoController {
@@ -15,19 +17,71 @@ export class VideoController {
     private readonly mediaServerService: MediaServerService,
   ) {}
 
+  // @Post('upload')
+  // @UseInterceptors(FileInterceptor('file', {
+  //   storage: memoryStorage(),
+  //   limits: { fileSize: 5 * 1024 * 1024 * 1024 }
+  // }))
+  // async uploadVideo(
+  //   @UploadedFile() file: Express.Multer.File,
+  //   @Body() dto: CreateVideoDto
+  // ) {
+  //   if (!file) throw new BadRequestException('File not found');
+  //
+  //   const lessonId = uuidv4();
+  //   const playlistUrl = await this.videoService.processLargeVideo(file.buffer, lessonId, dto);
+  //
+  //   return {
+  //     success: true,
+  //     playlistUrl,
+  //   };
+  // }
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 * 1024 }
-  }))
+  @ApiOperation({ summary: 'Upload video and convert to HLS' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+        title: {
+          type: 'string',
+          example: 'My First Video',
+        },
+        description: {
+          type: 'string',
+          example: 'Video description',
+        },
+        streamKey: {
+          type: 'string',
+          example: '902349843894',
+        },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 * 1024 }, // 5GB
+    }),
+  )
   async uploadVideo(
     @UploadedFile() file: Express.Multer.File,
-    @Body() dto: any
+    @Body() dto: CreateVideoDto,
   ) {
-    if (!file) throw new BadRequestException('File not found');
-    
+    if (!file) {
+      throw new BadRequestException('File not found');
+    }
+
     const lessonId = uuidv4();
-    const playlistUrl = await this.videoService.processLargeVideo(file.buffer, lessonId, dto);
+    const playlistUrl = await this.videoService.processLargeVideo(
+      file.buffer,
+      lessonId,
+      dto,
+    );
 
     return {
       success: true,

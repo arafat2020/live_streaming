@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import * as fs from 'fs';
@@ -8,6 +8,8 @@ import { R2_PUBLIC_URL } from '../../config/r2.config';
 import { ContentService } from '../content/content.service';
 import { ContentType } from '@prisma/client';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateVideoDto } from './dto/create-video.dto';
 
 @Injectable()
 export class VideoService {
@@ -17,20 +19,24 @@ export class VideoService {
     private readonly r2UploadService: R2UploadService,
     private readonly contentService: ContentService,
     private readonly liveGateway: LiveCommentGateway,
+    private prisma: PrismaService
   ) {}
 
-  async processLargeVideo(fileBuffer: Buffer, lessonId: string, dto: any): Promise<string> {
+  async processLargeVideo(fileBuffer: Buffer, lessonId: string, dto: CreateVideoDto): Promise<string> {
     const r2Prefix = `videos/${lessonId}`;
     const outputDir = path.join(process.cwd(), 'uploads', 'videos', lessonId);
     fs.mkdirSync(outputDir, { recursive: true });
 
     const playlistPath = path.join(outputDir, 'index.m3u8');
     const hlsBaseUrl = `${R2_PUBLIC_URL}/${r2Prefix}/`;
-
+    const channel= await this.prisma.channel.findFirst({where: { streamKey: dto.streamKey}})
+    if (!channel) {
+      throw new NotFoundException('Channel with this ID Not exists.');
+    }
     //  এরর ফিক্স: contentType এবং অন্যান্য ফিল্ডগুলো সঠিকভাবে পাস করা হয়েছে
     const content = await this.contentService.create({
       title: dto.title || 'Untitled Video',
-      channelId: "afddce5a-43df-475a-b896-ec92ac6ace5d",
+      channelId: channel.id,
       contentType: ContentType.VOD, // এই ফিল্ডটি মিসিং ছিল
       status: 'PROCESSING' as any,
       r2Prefix: r2Prefix,
@@ -89,18 +95,21 @@ async handleLiveStream(streamKey: string, liveDir: string) {
   //  বাকেট পাথের সাথে মিল রেখে Prefix পরিবর্তন করুন
   const r2Prefix = `videos/${streamKey}`;
   const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
-
+  const channel= await this.prisma.channel.findFirst({where: { streamKey: streamKey}})
+  if (!channel) {
+    throw new NotFoundException('Channel with this ID Not exists.');
+  }
   try {
     const content = await this.contentService.create({
       title: `Live Stream: ${streamKey}`,
-      channelId: "afddce5a-43df-475a-b896-ec92ac6ace5d",
+      channelId: channel.id,
       contentType: "LIVE_STREAM" as any, 
       status: 'AVAILABLE' as any, 
       r2Prefix: r2Prefix,
       playbackUrl: playbackUrl,
     });
-    console.log("handleLiveStream playbackUrl------------------------->",playbackUrl)
-    console.log("handleLiveStream content.id------------------------->",content.id)
+     console.log("handleLiveStream playbackUrl------------------------->",playbackUrl)
+     console.log("handleLiveStream content.id------------------------->",content.id)
         // SEND LIVE SIGNAL TO FRONTEND
         //  SOCKET SIGNAL
      this.liveGateway.streamLive(playbackUrl);
