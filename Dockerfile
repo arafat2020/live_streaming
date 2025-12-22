@@ -1,26 +1,20 @@
-# Base image
 FROM node:20-alpine
 
-# Install ffmpeg
+# Install FFmpeg for video processing
 RUN apk add --no-cache ffmpeg
 
-# Set workdir
 WORKDIR /app
 
-# Copy package files
+# Copy package.json & install
 COPY package*.json ./
-
-# Install deps
 RUN npm install
 
 # Copy source code
 COPY . .
 
-# Prisma generate
-RUN npx prisma generate
+# Build NestJS
+RUN npm run build
 
-# Expose port
-EXPOSE 3000
+EXPOSE 5000
 
-# Run app
-CMD ["npm", "run", "start:dev"]
+CMD ["node", "dist/main.js"]

@@ -13,7 +13,7 @@ import { ContentModule } from './module/content/content.module';
 import { WatchHistoryModule } from './module/watch-history/watch-history.module';
 import { UserNotificationPreferenceModule } from './module/user-notification-preference/user-notification-preference.module';
 import { NotificationModule } from './module/notification/notification.module';
-import { SeederService } from './seeder/seeder.service';
+//import { SeederService } from './seeder/seeder.service';
 import { ChatModule } from './module/chat/chat.module';
 import { LiveCommentModule } from './module/live-comment/live-comment.module';
 import { R2WorkerModule } from './module/r2-worker/r2-worker.module';
@@ -65,6 +65,6 @@ import { VideoModule } from './module/video/video.module';
 
   ],
   controllers: [AppController],
-  providers: [AppService,SeederService],
+  providers: [AppService],
 })
 export class AppModule {}
