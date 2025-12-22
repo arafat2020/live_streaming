@@ -1,54 +1,43 @@
-version: "3.9"
-
 services:
-  rappio_db:
+  db:
     image: postgres:15-alpine
     container_name: rappio_db
     restart: always
-    environment:
-      POSTGRES_DB: rappio_db
-      POSTGRES_USER: murmur_user
-      POSTGRES_PASSWORD: murmur_pass
     ports:
       - "5432:5432"
+    environment:
+      POSTGRES_USER: murmur_user
+      POSTGRES_PASSWORD: murmur_pass
+      POSTGRES_DB: rappio_db
+    volumes:
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U murmur_user"]
       interval: 5s
       timeout: 5s
       retries: 5
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init:/docker-entrypoint-initdb.d
 
-  romain_redis:
-    image: redis:7-alpine
-    container_name: romain_redis
-    restart: always
-    ports:
-      - "6379:6379"
-    command: redis-server --requirepass password123
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  rappio-app:
+  app:
     build: .
-    container_name: rappio-app
-    restart: always
+    container_name: rappio_app
     ports:
       - "5000:5000"
+      - "8001:8001"
+      - "1935:1935"
     env_file:
       - .env
     depends_on:
-      rappio_db:
+      db:
         condition: service_healthy
-      romain_redis:
-        condition: service_healthy
+    command: >
+      sh -c "
+      echo '⏳ Waiting for DB...' &&
+      npx prisma migrate deploy || echo '⚠️ Migration skipped' &&
+      node dist/main.js
+      "
     volumes:
       - ./uploads:/app/uploads
       - ./media:/app/media
 
 volumes:
-  postgres_data:
+  pg_data:
