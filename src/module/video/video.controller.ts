@@ -15,71 +15,71 @@ export class VideoController {
     private readonly mediaServerService: MediaServerService,
   ) {}
 
-  // @Post('upload')
-  // @UseInterceptors(FileInterceptor('file', {
-  //   storage: memoryStorage(),
-  //   limits: { fileSize: 5 * 1024 * 1024 * 1024 }
-  // }))
-  // async uploadVideo(
-  //   @UploadedFile() file: Express.Multer.File,
-  //   @Body() dto: any
-  // ) {
-  //   if (!file) throw new BadRequestException('File not found');
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 * 1024 }
+  }))
+  async uploadVideo(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: any
+  ) {
+    if (!file) throw new BadRequestException('File not found');
     
-  //   const lessonId = uuidv4();
-  //   const playlistUrl = await this.videoService.processLargeVideo(file.buffer, lessonId, dto);
+    const lessonId = uuidv4();
+    const playlistUrl = await this.videoService.processLargeVideo(file.buffer, lessonId, dto);
 
-  //   return {
-  //     success: true,
-  //     playlistUrl,
-  //   };
-  // }
+    return {
+      success: true,
+      playlistUrl,
+    };
+  }
 
-  // // Get specific live stream URL
-  // @Get('live/:streamKey')
-  // async getLiveStreamUrl(@Param('streamKey') streamKey: string) {
-  //   const liveDir = path.resolve(process.cwd(), 'media', 'live', streamKey);
-  //   const playlistPath = path.join(liveDir, 'index.m3u8');
+  // Get specific live stream URL
+  @Get('live/:streamKey')
+  async getLiveStreamUrl(@Param('streamKey') streamKey: string) {
+    const liveDir = path.resolve(process.cwd(), 'media', 'live', streamKey);
+    const playlistPath = path.join(liveDir, 'index.m3u8');
 
-  //   if (!fs.existsSync(playlistPath)) {
-  //     throw new NotFoundException('Stream not found or not yet started. Please wait 10-15 seconds after starting OBS.');
-  //   }
+    if (!fs.existsSync(playlistPath)) {
+      throw new NotFoundException('Stream not found or not yet started. Please wait 10-15 seconds after starting OBS.');
+    }
 
-  //   const streamUrl = this.mediaServerService.getStreamUrl(streamKey);
+    const streamUrl = this.mediaServerService.getStreamUrl(streamKey);
 
-  //   return {
-  //     success: true,
-  //     streamKey,
-  //     hlsUrl: streamUrl,
-  //     isLive: true,
-  //     message: 'Stream is live and ready to play',
-  //   };
-  // }
+    return {
+      success: true,
+      streamKey,
+      hlsUrl: streamUrl,
+      isLive: true,
+      message: 'Stream is live and ready to play',
+    };
+  }
 
-  // // Get all active streams
-  // @Get('live')
-  // async getActiveStreams() {
-  //   const liveDir = path.resolve(process.cwd(), 'media', 'live');
+  // Get all active streams
+  @Get('live')
+  async getActiveStreams() {
+    const liveDir = path.resolve(process.cwd(), 'media', 'live');
     
-  //   if (!fs.existsSync(liveDir)) {
-  //     return { success: true, streams: [], message: 'No active streams' };
-  //   }
+    if (!fs.existsSync(liveDir)) {
+      return { success: true, streams: [], message: 'No active streams' };
+    }
 
-  //   const streams = fs.readdirSync(liveDir)
-  //     .filter(dir => {
-  //       const playlistPath = path.join(liveDir, dir, 'index.m3u8');
-  //       return fs.existsSync(playlistPath);
-  //     })
-  //     .map(streamKey => ({
-  //       streamKey,
-  //       hlsUrl: this.mediaServerService.getStreamUrl(streamKey),
-  //       isLive: true,
-  //     }));
+    const streams = fs.readdirSync(liveDir)
+      .filter(dir => {
+        const playlistPath = path.join(liveDir, dir, 'index.m3u8');
+        return fs.existsSync(playlistPath);
+      })
+      .map(streamKey => ({
+        streamKey,
+        hlsUrl: this.mediaServerService.getStreamUrl(streamKey),
+        isLive: true,
+      }));
 
-  //   return {
-  //     success: true,
-  //     count: streams.length,
-  //     streams,
-  //   };
-  // }
+    return {
+      success: true,
+      count: streams.length,
+      streams,
+    };
+  }
 }

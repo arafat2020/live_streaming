@@ -11,19 +11,19 @@ export class MediaServerService implements OnModuleInit {
   private nms: any;
   private ffmpegProcesses = new Map<string, any>(); // ✅ Track FFmpeg processes
 
-  constructor(private readonly videoService: VideoService) {}
+  constructor(private readonly videoService: VideoService) { }
 
   onModuleInit() {
     const config = {
-      rtmp: { 
-        port: 1935, 
-        chunk_size: 60000, 
-        gop_cache: true, 
-        ping: 30, 
-        ping_timeout: 60 
+      rtmp: {
+        port: 1935,
+        chunk_size: 60000,
+        gop_cache: true,
+        ping: 30,
+        ping_timeout: 60
       },
-      http: { 
-        port: 8001, 
+      http: {
+        port: 8001,
         allow_origin: '*',
         mediaroot: path.resolve(process.cwd(), 'media')
       },
@@ -35,21 +35,21 @@ export class MediaServerService implements OnModuleInit {
 
     this.nms.on('postPublish', async (id: any, StreamPath: any, args: any) => {
       this.logger.log(`Event arguments received - ID type: ${typeof id}`);
-      
+
       let streamKey: string | undefined;
-      
+
       if (typeof id === 'object' && id !== null) {
         streamKey = id.streamName;
         this.logger.log(`Stream Name from object: ${streamKey}`);
       }
-      
+
       if (!streamKey) {
         this.logger.error('❌ Could not extract stream key from event');
         return;
       }
 
       this.logger.log(`🔴 Stream Starting: ${streamKey}`);
-      
+
       const liveDir = path.resolve(process.cwd(), 'media', 'live', streamKey);
       const outputPath = path.join(liveDir, 'index.m3u8');
       const rtmpUrl = `rtmp://localhost:1935/live/${streamKey}`;
@@ -103,7 +103,7 @@ export class MediaServerService implements OnModuleInit {
             if (fs.existsSync(liveDir)) {
               const files = fs.readdirSync(liveDir);
               this.logger.log(`📄 Files created: ${files.length > 0 ? files.join(', ') : 'NO FILES YET'}`);
-              
+
               if (fs.existsSync(outputPath)) {
                 this.logger.log(`✅ Playlist exists: ${outputPath}`);
                 this.logger.log(`🔗 Stream URL: http://localhost:8000/media/live/${streamKey}/index.m3u8`);
@@ -112,7 +112,7 @@ export class MediaServerService implements OnModuleInit {
               }
             }
           }, 10000);
-          
+
           await this.videoService.handleLiveStream(streamKey, liveDir);
         } catch (err) {
           this.logger.error(`❌ Error: ${err.message}`);
@@ -122,14 +122,14 @@ export class MediaServerService implements OnModuleInit {
 
     this.nms.on('donePublish', (id: any, StreamPath: any, args: any) => {
       let streamKey: string | undefined;
-      
+
       if (typeof id === 'object' && id !== null) {
         streamKey = id.streamName;
       }
-      
+
       if (streamKey) {
         this.logger.log(`🛑 Stream Stopped: ${streamKey}`);
-        
+
         // Kill FFmpeg process
         const ffmpeg = this.ffmpegProcesses.get(streamKey);
         if (ffmpeg) {
@@ -137,16 +137,27 @@ export class MediaServerService implements OnModuleInit {
           this.ffmpegProcesses.delete(streamKey);
           this.logger.log(`⚰️ Killed FFmpeg process for: ${streamKey}`);
         }
+
+        // ✅ Delete live folder
+        const liveDir = path.resolve(process.cwd(), 'media', 'live', streamKey);
+        if (fs.existsSync(liveDir)) {
+          fs.rm(liveDir, { recursive: true, force: true }, (err) => {
+            if (err) this.logger.error(`❌ Failed to delete live folder: ${err.message}`);
+            else this.logger.log(`🗑️ Live folder deleted: ${liveDir}`);
+          });
+        }
       }
+
     });
 
     this.logger.log('🎥 Node Media Server Started');
-    this.logger.log('📍 RTMP: rtmp://localhost:1935/live');
-    this.logger.log('📍 HLS:  http://localhost:8000/media/live/{stream_key}/index.m3u8');
-    this.logger.log('🔧 FFmpeg: Manual spawning (system PATH)');
+    // this.logger.log('📍 RTMP: rtmp://localhost:1935/live');
+    // this.logger.log('📍 HLS:  http://localhost:8000/media/live/{stream_key}/index.m3u8');
+    // this.logger.log('🔧 FFmpeg: Manual spawning (system PATH)');
   }
 
   getStreamUrl(streamKey: string): string {
+    console.log("HLS url ----------------------------->",`http://localhost:8000/media/live/${streamKey}/index.m3u8`)
     return `http://localhost:8000/media/live/${streamKey}/index.m3u8`;
   }
 
