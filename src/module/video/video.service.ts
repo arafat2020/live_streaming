@@ -29,24 +29,23 @@ export class VideoService {
 
     const playlistPath = path.join(outputDir, 'index.m3u8');
     const hlsBaseUrl = `${R2_PUBLIC_URL}/${r2Prefix}/`;
-    const channel= await this.prisma.channel.findFirst({where: { streamKey: dto.streamKey}})
-    if (!channel) {
-      throw new NotFoundException('Channel with this ID Not exists.');
-    }
-    //  এরর ফিক্স: contentType এবং অন্যান্য ফিল্ডগুলো সঠিকভাবে পাস করা হয়েছে
+
+    const channel = await this.prisma.channel.findFirst({ where: { streamKey: dto.streamKey } });
+    if (!channel) throw new NotFoundException('Channel not found');
+
     const content = await this.contentService.create({
       title: dto.title || 'Untitled Video',
       channelId: channel.id,
-      contentType: ContentType.VOD, // এই ফিল্ডটি মিসিং ছিল
+      contentType: ContentType.VOD,
       status: 'PROCESSING' as any,
-      r2Prefix: r2Prefix,
+      r2Prefix,
     });
-    console.log("content--------->",content)
+
     const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
 
     return new Promise((resolve, reject) => {
-      // pipe:0 ব্যবহার করে মেমোরি থেকে ডাটা নেওয়া হচ্ছে
-      const ffmpeg = spawn('ffmpeg', [
+      const ffmpegPath = '/usr/bin/ffmpeg';
+      const ffmpeg = spawn(ffmpegPath, [
         '-y', '-i', 'pipe:0',
         '-c:v', 'libx264', '-preset', 'ultrafast',
         '-c:a', 'aac', '-b:a', '128k',
@@ -61,76 +60,61 @@ export class VideoService {
       stream.pipe(ffmpeg.stdin);
 
       let isResolved = false;
-      const checkInitialFiles = setInterval(async () => {
+      const checkFiles = setInterval(async () => {
         if (fs.existsSync(playlistPath) && !isResolved) {
           try {
             const initialUrl = await this.r2UploadService.uploadPlaylist(playlistPath, `${r2Prefix}/index.m3u8`, r2Prefix);
             await this.contentService.update(content.id, { playbackUrl: initialUrl });
             isResolved = true;
-            clearInterval(checkInitialFiles);
-            resolve(initialUrl); 
+            clearInterval(checkFiles);
+            resolve(initialUrl);
           } catch (e) {
-            this.logger.warn("Waiting for segments...");
+            this.logger.warn('Waiting for segments...');
           }
         }
-      }, 5000);
+      }, 2000);
 
       ffmpeg.on('close', async (code) => {
-        watcher.close();
-        clearInterval(checkInitialFiles);
+        watcher.stop();
+        clearInterval(checkFiles);
         if (code === 0) {
           await this.contentService.update(content.id, { status: 'AVAILABLE' as any });
-          // আপলোড শেষ হলে লোকাল চাঙ্কগুলো ডিলিট করুন (সার্ভার লোড কমাতে) 
           fs.rmSync(outputDir, { recursive: true, force: true });
         } else {
           await this.contentService.update(content.id, { status: 'FAILED' as any });
-          if (!isResolved) reject(new Error('FFmpeg processing failed'));
+          if (!isResolved) reject(new Error('FFmpeg failed'));
         }
       });
- 
     });
   }
 
-async handleLiveStream(streamKey: string, liveDir: string) {
-  //  বাকেট পাথের সাথে মিল রেখে Prefix পরিবর্তন করুন
-  const r2Prefix = `videos/${streamKey}`;
-  const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
-  const channel= await this.prisma.channel.findFirst({where: { streamKey: streamKey}})
-  if (!channel) {
-    throw new NotFoundException('Channel with this ID Not exists.');
-  }
-  try {
+  async handleLiveStream(streamKey: string, liveDir: string) {
+    const r2Prefix = `videos/${streamKey}`;
+    const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
+
+    const channel = await this.prisma.channel.findFirst({ where: { streamKey } });
+    if (!channel) throw new NotFoundException('Channel not found');
+
     const content = await this.contentService.create({
       title: `Live Stream: ${streamKey}`,
       channelId: channel.id,
-      contentType: "LIVE_STREAM" as any, 
-      status: 'AVAILABLE' as any, 
-      r2Prefix: r2Prefix,
-      playbackUrl: playbackUrl,
+      contentType: "LIVE_STREAM" as any,
+      status: 'AVAILABLE' as any,
+      r2Prefix,
+      playbackUrl,
     });
-     console.log("handleLiveStream playbackUrl------------------------->",playbackUrl)
-     console.log("handleLiveStream content.id------------------------->",content.id)
-        // SEND LIVE SIGNAL TO FRONTEND
-        //  SOCKET SIGNAL
-     this.liveGateway.streamLive(playbackUrl);
-    //this.logger.log(` Database Record Created for videos bucket. ID: ${content.id}`);
 
-    // ২. Cloudflare R2 ওয়াচার শুরু করুন
+    this.liveGateway.streamLive(playbackUrl);
+
+    // Start R2 watcher
     this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
-
-  } catch (error) {
-    this.logger.error(` DB Error: ${error.message}`);
   }
-}
- // 🛑 CALLED WHEN OBS STOPS STREAM
+
   async handleLiveStop(streamKey: string) {
     const content = await this.contentService.findOne(streamKey);
     if (!content) return;
 
-    await this.contentService.update(content.id, {
-      status: 'ENDED' as any,
-    });
-
-   this.liveGateway.streamEnded();
+    await this.contentService.update(content.id, { status: 'ENDED' as any });
+    this.liveGateway.streamEnded();
   }
 }
