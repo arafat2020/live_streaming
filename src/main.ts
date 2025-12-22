@@ -30,7 +30,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Serve HLS files from uploads
+  // Serve HLS files from uploads     
   app.use(
     '/uploads',
     express.static(path.join(process.cwd(), 'uploads')),
