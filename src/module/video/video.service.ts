@@ -44,7 +44,7 @@ export class VideoService {
     const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
 
     return new Promise((resolve, reject) => {
-      const ffmpegPath = '/usr/bin/ffmpeg';
+      const ffmpegPath = 'ffmpeg';
       const ffmpeg = spawn(ffmpegPath, [
         '-y', '-i', 'pipe:0',
         '-c:v', 'libx264', '-preset', 'ultrafast',
@@ -90,6 +90,7 @@ export class VideoService {
 
   async handleLiveStream(streamKey: string, liveDir: string) {
     const r2Prefix = `videos/${streamKey}`;
+    console.log('r2Prefix')
     const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
 
     const channel = await this.prisma.channel.findFirst({ where: { streamKey } });

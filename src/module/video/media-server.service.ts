@@ -35,7 +35,7 @@ export class MediaServerService implements OnModuleInit {
       if (!fs.existsSync(liveDir)) fs.mkdirSync(liveDir, { recursive: true });
 
       // Use absolute ffmpeg path inside Docker
-      const ffmpegPath = '/usr/bin/ffmpeg';
+      const ffmpegPath = 'ffmpeg';
 
       const ffmpeg = spawn(ffmpegPath, [
         '-i', rtmpUrl,
