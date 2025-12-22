@@ -1,18 +1,26 @@
-
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm install --legacy-peer-deps
-COPY . .
-RUN npx prisma generate
-RUN npm run build
-
+# Base image
 FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/prisma ./prisma
 
-EXPOSE 5000
-CMD ["node", "dist/main.js"]
+# Install ffmpeg
+RUN apk add --no-cache ffmpeg
+
+# Set workdir
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install deps
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Prisma generate
+RUN npx prisma generate
+
+# Expose port
+EXPOSE 3000
+
+# Run app
+CMD ["npm", "run", "start:dev"]
