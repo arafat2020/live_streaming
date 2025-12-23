@@ -10,6 +10,6 @@ import { LiveCommentModule } from '../live-comment/live-comment.module';
   imports:[ContentModule,LiveCommentModule],
   controllers: [VideoController],
   providers: [VideoService,R2UploadService,MediaServerService],
-  exports: [VideoService],
+  exports: [VideoService,R2UploadService],
 })
 export class VideoModule {}
