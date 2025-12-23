@@ -9,58 +9,158 @@ import * as path from 'path';
 export class R2UploadService {
   private readonly logger = new Logger(R2UploadService.name);
 
-  async uploadFile(localPath: string, r2Key: string, contentType: string): Promise<string> {
-    const fileStream = fs.createReadStream(localPath);
-    const upload = new Upload({
-      client: r2Client,
-      params: { Bucket: R2_BUCKET, Key: r2Key, Body: fileStream, ContentType: contentType },
-    });
-    await upload.done();
-    return `${R2_PUBLIC_URL}/${r2Key}`;
+  /**
+   * Upload a single file to R2
+   */
+  async uploadFile(
+    localPath: string,
+    r2Key: string,
+    contentType: string,
+  ): Promise<string> {
+    try {
+      if (!fs.existsSync(localPath)) {
+        throw new Error(`File not found: ${localPath}`);
+      }
+
+      const upload = new Upload({
+        client: r2Client,
+        params: {
+          Bucket: R2_BUCKET,
+          Key: r2Key,
+          Body: fs.createReadStream(localPath),
+          ContentType: contentType,
+        },
+      });
+
+      await upload.done();
+      
+      const url = `${R2_PUBLIC_URL}/${r2Key}`;
+      this.logger.debug(`✅ Uploaded: ${r2Key}`);
+      
+      return url;
+    } catch (error) {
+      this.logger.error(`Failed to upload ${r2Key}: ${error.message}`);
+      throw error;
+    }
   }
 
-  async uploadPlaylist(localPath: string, r2Key: string, r2Prefix: string): Promise<string> {
-    let content = fs.readFileSync(localPath, 'utf-8');
-    content = content.replace(/https:\/\/rappio\.tv(\.com)?/g, R2_PUBLIC_URL);
+  /**
+   * Upload playlist file to R2
+   */
+  async uploadPlaylist(localPath: string, r2Key: string): Promise<string | null> {
+    try {
+      if (!fs.existsSync(localPath)) {
+        this.logger.warn(`Playlist not found: ${localPath}`);
+        return null;
+      }
 
-    await r2Client.send(new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: r2Key,
-      Body: content,
-      ContentType: 'application/vnd.apple.mpegurl',
-      CacheControl: 'no-cache',
-    }));
+      const content = fs.readFileSync(localPath, 'utf-8');
 
-    return `${R2_PUBLIC_URL}/${r2Key}`;
+      await r2Client.send(
+        new PutObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: r2Key,
+          Body: content,
+          ContentType: 'application/vnd.apple.mpegurl',
+          CacheControl: 'no-cache',
+        }),
+      );
+
+      this.logger.debug(`✅ Uploaded playlist: ${r2Key}`);
+      
+      return `${R2_PUBLIC_URL}/${r2Key}`;
+    } catch (error) {
+      this.logger.error(`Failed to upload playlist: ${error.message}`);
+      throw error;
+    }
   }
 
-  watchAndUpload(localDir: string, r2Prefix: string) {
-    const playlistPath = path.join(localDir, 'index.m3u8');
-    const r2PlaylistKey = `${r2Prefix}/index.m3u8`;
-
-    // Reliable polling
+  /**
+   * Watch directory and automatically upload new segments
+   * Returns a controller object with stop() method
+   */
+  watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
     const uploaded = new Set<string>();
-    const interval = setInterval(async () => {
-      const files = fs.readdirSync(localDir).filter(f => f.endsWith('.ts'));
-      for (const file of files) {
-        if (uploaded.has(file)) continue;
-        const localPath = path.join(localDir, file);
-        if (!fs.existsSync(localPath)) continue;
+    const playlistPath = path.join(localDir, 'index.m3u8');
 
-        try {
-          await this.uploadFile(localPath, `${r2Prefix}/${file}`, 'video/mp2t');
+    this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
+
+    const interval = setInterval(async () => {
+      try {
+        if (!fs.existsSync(localDir)) {
+          this.logger.warn(`Directory disappeared: ${localDir}`);
+          return;
+        }
+
+        const files = fs
+          .readdirSync(localDir)
+          .filter((f) => f.endsWith('.ts'));
+
+        for (const file of files) {
+          if (uploaded.has(file)) continue;
+
+          const localPath = path.join(localDir, file);
+          
+          // Wait for file to be fully written
+          await this.waitForFileReady(localPath);
+
+          if (!fs.existsSync(localPath)) continue;
+
+          // Upload segment
+          await this.uploadFile(
+            localPath,
+            `${r2Prefix}/${file}`,
+            'video/mp2t',
+          );
+
           uploaded.add(file);
 
+          // Upload updated playlist
           if (fs.existsSync(playlistPath)) {
-            await this.uploadPlaylist(playlistPath, r2PlaylistKey, r2Prefix);
-            this.logger.log(`🔄 Segment and Playlist updated: ${file}`);
+            await this.uploadPlaylist(
+              playlistPath,
+              `${r2Prefix}/index.m3u8`,
+            );
           }
-        } catch (e) {
-          this.logger.error(`Upload failed: ${e.message}`);
+
+          this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
         }
+      } catch (err) {
+        this.logger.warn(`Watcher error: ${err.message}`);
       }
     }, 1000);
 
-    return { stop: () => clearInterval(interval) };
+    return {
+      stop: () => {
+        clearInterval(interval);
+        this.logger.log(`⏹️ Stopped watching: ${localDir}`);
+      },
+    };
+  }
+
+  /**
+   * Wait for file to be fully written to disk
+   */
+  private async waitForFileReady(filePath: string, timeout = 3000): Promise<void> {
+    const start = Date.now();
+    let lastSize = -1;
+
+    while (Date.now() - start < timeout) {
+      try {
+        const stats = fs.statSync(filePath);
+        const currentSize = stats.size;
+
+        if (currentSize > 0 && currentSize === lastSize) {
+          // File size stable, it's ready
+          return;
+        }
+
+        lastSize = currentSize;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch {
+        // File doesn't exist yet
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
   }
 }

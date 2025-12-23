@@ -1,4 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import * as fs from 'fs';
@@ -6,10 +10,10 @@ import * as path from 'path';
 import { R2UploadService } from './r2-upload.service';
 import { R2_PUBLIC_URL } from '../../config/r2.config';
 import { ContentService } from '../content/content.service';
-import { ContentType } from '@prisma/client';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateVideoDto } from './dto/create-video.dto';
+import { ContentType } from '@prisma/client';
 
 @Injectable()
 export class VideoService {
@@ -19,103 +23,254 @@ export class VideoService {
     private readonly r2UploadService: R2UploadService,
     private readonly contentService: ContentService,
     private readonly liveGateway: LiveCommentGateway,
-    private prisma: PrismaService
+    private readonly prisma: PrismaService,
   ) {}
 
-  async processLargeVideo(fileBuffer: Buffer, lessonId: string, dto: CreateVideoDto): Promise<string> {
-    const r2Prefix = `videos/${lessonId}`;
-    const outputDir = path.join(process.cwd(), 'uploads', 'videos', lessonId);
-    fs.mkdirSync(outputDir, { recursive: true });
-
-    const playlistPath = path.join(outputDir, 'index.m3u8');
-    const hlsBaseUrl = `${R2_PUBLIC_URL}/${r2Prefix}/`;
-
-    const channel = await this.prisma.channel.findFirst({ where: { streamKey: dto.streamKey } });
-    if (!channel) throw new NotFoundException('Channel not found');
-
-    const content = await this.contentService.create({
-      title: dto.title || 'Untitled Video',
-      channelId: channel.id,
-      contentType: ContentType.VOD,
-      status: 'PROCESSING' as any,
-      r2Prefix,
-    });
-
-    const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
-
-    return new Promise((resolve, reject) => {
-      const ffmpegPath = 'ffmpeg';
-      const ffmpeg = spawn(ffmpegPath, [
-        '-y', '-i', 'pipe:0',
-        '-c:v', 'libx264', '-preset', 'ultrafast',
-        '-c:a', 'aac', '-b:a', '128k',
-        '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0',
-        '-hls_base_url', hlsBaseUrl,
-        playlistPath,
-      ]);
-
-      const stream = new Readable();
-      stream.push(fileBuffer);
-      stream.push(null);
-      stream.pipe(ffmpeg.stdin);
-
-      let isResolved = false;
-      const checkFiles = setInterval(async () => {
-        if (fs.existsSync(playlistPath) && !isResolved) {
-          try {
-            const initialUrl = await this.r2UploadService.uploadPlaylist(playlistPath, `${r2Prefix}/index.m3u8`, r2Prefix);
-            await this.contentService.update(content.id, { playbackUrl: initialUrl });
-            isResolved = true;
-            clearInterval(checkFiles);
-            resolve(initialUrl);
-          } catch (e) {
-            this.logger.warn('Waiting for segments...');
-          }
-        }
-      }, 2000);
-
-      ffmpeg.on('close', async (code) => {
-        watcher.stop();
-        clearInterval(checkFiles);
-        if (code === 0) {
-          await this.contentService.update(content.id, { status: 'AVAILABLE' as any });
-          fs.rmSync(outputDir, { recursive: true, force: true });
-        } else {
-          await this.contentService.update(content.id, { status: 'FAILED' as any });
-          if (!isResolved) reject(new Error('FFmpeg failed'));
-        }
+  /**
+   * Validate if a stream key exists and belongs to an active channel
+   */
+  async validateStreamKey(streamKey: string): Promise<boolean> {
+    try {
+      const channel = await this.prisma.channel.findUnique({
+        where: { streamKey },
+        select: { id: true, isLive: true },
       });
-    });
+
+      if (!channel) {
+        this.logger.warn(`Stream key not found: ${streamKey}`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error(`Error validating stream key: ${error.message}`);
+      return false;
+    }
   }
 
-  async handleLiveStream(streamKey: string, liveDir: string) {
-    const r2Prefix = `videos/${streamKey}`;
-    console.log('r2Prefix')
-    const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
+  /**
+   * Process VOD (Video on Demand) upload
+   */
+async processLargeVideo(
+  fileBuffer: Buffer,
+  lessonId: string,
+  dto: CreateVideoDto,
+): Promise<string> {
+  const r2Prefix = `videos/${lessonId}`;
+  const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
 
-    const channel = await this.prisma.channel.findFirst({ where: { streamKey } });
-    if (!channel) throw new NotFoundException('Channel not found');
+  fs.mkdirSync(outputDir, { recursive: true });
 
-    const content = await this.contentService.create({
-      title: `Live Stream: ${streamKey}`,
-      channelId: channel.id,
-      contentType: "LIVE_STREAM" as any,
-      status: 'AVAILABLE' as any,
-      r2Prefix,
-      playbackUrl,
-    });
+  const playlistPath = path.join(outputDir, 'index.m3u8');
 
-    this.liveGateway.streamLive(playbackUrl);
-
-    // Start R2 watcher
-    this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
+  // Validate channel
+  const channel = await this.prisma.channel.findFirst({
+    where: { streamKey: dto.streamKey },
+  });
+  
+  if (!channel) {
+    throw new NotFoundException('Channel not found');
   }
 
-  async handleLiveStop(streamKey: string) {
-    const content = await this.contentService.findOne(streamKey);
-    if (!content) return;
+  // Create content record
+  const content = await this.contentService.create({
+    title: dto.title || 'Untitled Video',
+    channelId: channel.id,
+    contentType: ContentType.VOD,
+    status: 'PROCESSING' as any,
+    r2Prefix,
+  });
 
-    await this.contentService.update(content.id, { status: 'ENDED' as any });
-    this.liveGateway.streamEnded();
+  const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
+
+  return new Promise((resolve, reject) => {
+    const ffmpeg = spawn('ffmpeg', [
+      '-y', '-i', 'pipe:0',
+      '-c:v', 'libx264', '-preset', 'veryfast',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0',
+      playlistPath,
+    ]);
+
+    const readable = new Readable();
+    readable.push(fileBuffer);
+    readable.push(null);
+    readable.pipe(ffmpeg.stdin);
+
+    let resolved = false;
+
+    const checker = setInterval(async () => {
+      if (fs.existsSync(playlistPath) && !resolved) {
+        try {
+          const url = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
+          await this.contentService.update(content.id, { playbackUrl: url });
+          resolved = true;
+          resolve(url);
+          clearInterval(checker);
+        } catch {
+          this.logger.warn('Waiting for playlist...');
+        }
+      }
+    }, 2000);
+
+    ffmpeg.on('close', async (code) => {
+      // ✅ Stop watcher FIRST
+      watcher.stop();
+      clearInterval(checker);
+
+      if (code === 0) {
+        await this.contentService.update(content.id, {
+          status: 'AVAILABLE' as any,
+        });
+
+        // ✅ Wait for R2 upload to complete before deleting
+        this.logger.log('Waiting for R2 upload to complete...');
+        await this.waitForUploadComplete(outputDir, 30000);
+
+      } else {
+        await this.contentService.update(content.id, {
+          status: 'FAILED' as any,
+        });
+        if (!resolved) reject(new Error('FFmpeg failed'));
+      }
+
+      // ✅ Delete files AFTER R2 upload completes
+      if (fs.existsSync(outputDir)) {
+        setTimeout(() => {
+          try {
+            fs.rmSync(outputDir, { recursive: true, force: true });
+            this.logger.log(`🗑️ Cleaned up local files: ${outputDir}`);
+          } catch (err) {
+            this.logger.warn(`Failed to delete ${outputDir}: ${err.message}`);
+          }
+        }, 5000); // 5 second delay to ensure upload finished
+      }
+    });
+  });
+}
+
+/**
+ * Wait for all files to be uploaded to R2
+ */
+private async waitForUploadComplete(
+  outputDir: string,
+  timeout: number = 30000,
+): Promise<void> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      // Check if any .ts files still exist (not yet uploaded)
+      const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.ts'));
+      
+      if (files.length === 0) {
+        // All segments uploaded
+        this.logger.log('✅ All segments uploaded to R2');
+        return;
+      }
+
+      // Wait a bit before checking again
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (err) {
+      this.logger.warn(`Error checking upload status: ${err.message}`);
+      return;
+    }
+  }
+
+  this.logger.warn('⚠️ Upload timeout reached, proceeding anyway');
+}
+
+  /**
+   * Handle live stream start
+   * Returns watcher object so MediaServer can stop it later
+   */
+  async handleLiveStream(
+    streamKey: string,
+    liveDir: string,
+  ): Promise<{ stop: () => void }> {
+    try {
+      const r2Prefix = `videos/${streamKey}`;
+      const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
+
+      // Find channel by stream key
+      const channel = await this.prisma.channel.findFirst({
+        where: { streamKey },
+      });
+
+      if (!channel) {
+        throw new NotFoundException(`Channel not found for stream key: ${streamKey}`);
+      }
+
+      // Update channel to live status
+      await this.prisma.channel.update({
+        where: { id: channel.id },
+        data: { isLive: true },
+      });
+
+      // Create content record for this live stream
+      await this.contentService.create({
+        title: `${channel.name} - Live Stream`,
+        channelId: channel.id,
+        contentType: 'LIVE_STREAM' as any,
+        status: 'AVAILABLE' as any,
+        r2Prefix,
+        playbackUrl,
+      });
+
+      this.logger.log(`✅ Live stream started for channel: ${channel.name}`);
+      this.logger.log(`📺 Playback URL: ${playbackUrl}`);
+
+      // Notify via WebSocket
+      this.liveGateway.streamLive(playbackUrl);
+
+      // Start R2 upload watcher
+      return this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
+
+    } catch (error) {
+      this.logger.error(`Failed to handle live stream: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle live stream stop
+   */
+  async handleLiveStop(streamKey: string): Promise<void> {
+    try {
+      // Find channel and update status
+      const channel = await this.prisma.channel.findFirst({
+        where: { streamKey },
+      });
+
+      if (channel) {
+        await this.prisma.channel.update({
+          where: { id: channel.id },
+          data: { isLive: false },
+        });
+      }
+
+      // Update content status
+      const content = await this.prisma.content.findFirst({
+        where: { r2Prefix: `videos/${streamKey}` },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (content) {
+         await this.contentService.update(content.id, {
+            status: 'FAILED' as any,
+          });
+        await this.contentService.update(content.id, {
+          status: 'ENDED' as any,
+        });
+      }
+
+      // Notify via WebSocket
+      this.liveGateway.streamEnded();
+
+      this.logger.log(`✅ Stream ${streamKey} ended successfully`);
+
+    } catch (error) {
+      this.logger.error(`Error handling stream stop: ${error.message}`);
+    }
   }
 }
