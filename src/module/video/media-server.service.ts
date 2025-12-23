@@ -152,20 +152,23 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    * Step 5: Start FFmpeg transcoding process
    */
   private startFFmpegTranscoding(streamKey: string, liveDir: string): ChildProcess {
-    const rtmpUrl = `rtmp://${process.env.RTMP_HOST || 'localhost'}:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
-    
-    const ffmpeg = spawn('ffmpeg', [
-      '-i', rtmpUrl,
-      '-c:v', 'copy',              // Copy video (no re-encoding)
-      '-c:a', 'aac',               // Transcode audio to AAC
-      '-b:a', '128k',              // Audio bitrate
-      '-f', 'hls',                 // Output format: HLS
-      '-hls_time', '4',            // Segment duration: 4 seconds
-      '-hls_list_size', '5',       // Keep last 5 segments in playlist
-      '-hls_flags', 'delete_segments', // Auto-delete old segments
-      '-hls_segment_filename', path.join(liveDir, '%03d.ts'),
-      path.join(liveDir, 'index.m3u8'),
-    ]);
+  const rtmpHost = process.env.RTMP_HOST || 'localhost';
+  const rtmpUrl = `rtmp://${rtmpHost}:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
+  
+  this.logger.log(`🎬 FFmpeg connecting to: ${rtmpUrl}`);
+  
+  const ffmpeg = spawn('ffmpeg', [
+    '-i', rtmpUrl,
+    '-c:v', 'copy',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-f', 'hls',
+    '-hls_time', '4',
+    '-hls_list_size', '5',
+    '-hls_flags', 'delete_segments',
+    '-hls_segment_filename', path.join(liveDir, '%03d.ts'),
+    path.join(liveDir, 'index.m3u8'),
+  ]);
 
     // Log FFmpeg output for debugging
     ffmpeg.stderr.on('data', (data) => {
@@ -283,11 +286,15 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Public API: Get stream playback URL
    */
-  getStreamUrl(streamKey: string): string {
-    const baseUrl = process.env.HTTP_BASE_URL || 'http://localhost:8000';
-    return `${baseUrl}/media/live/${streamKey}/index.m3u8`;
-  }
-
+  // getStreamUrl(streamKey: string): string {
+  //   const baseUrl = process.env.HTTP_BASE_URL || 'http://localhost:8000';
+  //   return `${baseUrl}/media/live/${streamKey}/index.m3u8`;
+  // }
+getStreamUrl(streamKey: string): string {
+  // For external clients (OBS, browsers), use public domain
+  const publicUrl = process.env.PUBLIC_URL || process.env.HTTP_BASE_URL || 'http://localhost:8000';
+  return `${publicUrl}/media/live/${streamKey}/index.m3u8`;
+}
   /**
    * Public API: Check if stream is active
    */

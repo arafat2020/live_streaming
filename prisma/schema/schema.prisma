@@ -49,6 +49,7 @@ enum ContentStatus {
   FAILED // Transcoding or ingest failed
   PRIVATE // Available but not publicly listed
   ARCHIVED // Old live stream recording
+  ENDED
 }
 
 enum NotificationType {

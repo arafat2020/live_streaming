@@ -51,89 +51,134 @@ export class VideoService {
   /**
    * Process VOD (Video on Demand) upload
    */
-  async processLargeVideo(
-    fileBuffer: Buffer,
-    lessonId: string,
-    dto: CreateVideoDto,
-  ): Promise<string> {
-    const r2Prefix = `videos/${lessonId}`;
-    const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
+async processLargeVideo(
+  fileBuffer: Buffer,
+  lessonId: string,
+  dto: CreateVideoDto,
+): Promise<string> {
+  const r2Prefix = `videos/${lessonId}`;
+  const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
 
-    fs.mkdirSync(outputDir, { recursive: true });
+  fs.mkdirSync(outputDir, { recursive: true });
 
-    const playlistPath = path.join(outputDir, 'index.m3u8');
+  const playlistPath = path.join(outputDir, 'index.m3u8');
 
-    // Validate channel
-    const channel = await this.prisma.channel.findFirst({
-      where: { streamKey: dto.streamKey },
-    });
-    
-    if (!channel) {
-      throw new NotFoundException('Channel not found');
-    }
-
-    // Create content record
-    const content = await this.contentService.create({
-      title: dto.title || 'Untitled Video',
-      channelId: channel.id,
-      contentType: ContentType.VOD,
-      status: 'PROCESSING' as any,
-      r2Prefix,
-    });
-
-    const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
-
-    return new Promise((resolve, reject) => {
-      const ffmpeg = spawn('ffmpeg', [
-        '-y', '-i', 'pipe:0',
-        '-c:v', 'libx264', '-preset', 'veryfast',
-        '-c:a', 'aac', '-b:a', '128k',
-        '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0',
-        playlistPath,
-      ]);
-
-      const readable = new Readable();
-      readable.push(fileBuffer);
-      readable.push(null);
-      readable.pipe(ffmpeg.stdin);
-
-      let resolved = false;
-
-      const checker = setInterval(async () => {
-        if (fs.existsSync(playlistPath) && !resolved) {
-          try {
-            const url = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
-            await this.contentService.update(content.id, { playbackUrl: url });
-            resolved = true;
-            resolve(url);
-            clearInterval(checker);
-          } catch {
-            this.logger.warn('Waiting for playlist...');
-          }
-        }
-      }, 2000);
-
-      ffmpeg.on('close', async (code) => {
-        watcher.stop();
-        clearInterval(checker);
-
-        if (code === 0) {
-          await this.contentService.update(content.id, {
-            status: 'AVAILABLE' as any,
-          });
-        } else {
-          await this.contentService.update(content.id, {
-            status: 'FAILED' as any,
-          });
-          if (!resolved) reject(new Error('FFmpeg failed'));
-        }
-
-        if (fs.existsSync(outputDir)) {
-          fs.rmSync(outputDir, { recursive: true, force: true });
-        }
-      });
-    });
+  // Validate channel
+  const channel = await this.prisma.channel.findFirst({
+    where: { streamKey: dto.streamKey },
+  });
+  
+  if (!channel) {
+    throw new NotFoundException('Channel not found');
   }
+
+  // Create content record
+  const content = await this.contentService.create({
+    title: dto.title || 'Untitled Video',
+    channelId: channel.id,
+    contentType: ContentType.VOD,
+    status: 'PROCESSING' as any,
+    r2Prefix,
+  });
+
+  const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
+
+  return new Promise((resolve, reject) => {
+    const ffmpeg = spawn('ffmpeg', [
+      '-y', '-i', 'pipe:0',
+      '-c:v', 'libx264', '-preset', 'veryfast',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-f', 'hls', '-hls_time', '6', '-hls_list_size', '0',
+      playlistPath,
+    ]);
+
+    const readable = new Readable();
+    readable.push(fileBuffer);
+    readable.push(null);
+    readable.pipe(ffmpeg.stdin);
+
+    let resolved = false;
+
+    const checker = setInterval(async () => {
+      if (fs.existsSync(playlistPath) && !resolved) {
+        try {
+          const url = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
+          await this.contentService.update(content.id, { playbackUrl: url });
+          resolved = true;
+          resolve(url);
+          clearInterval(checker);
+        } catch {
+          this.logger.warn('Waiting for playlist...');
+        }
+      }
+    }, 2000);
+
+    ffmpeg.on('close', async (code) => {
+      // ✅ Stop watcher FIRST
+      watcher.stop();
+      clearInterval(checker);
+
+      if (code === 0) {
+        await this.contentService.update(content.id, {
+          status: 'AVAILABLE' as any,
+        });
+
+        // ✅ Wait for R2 upload to complete before deleting
+        this.logger.log('Waiting for R2 upload to complete...');
+        await this.waitForUploadComplete(outputDir, 30000);
+
+      } else {
+        await this.contentService.update(content.id, {
+          status: 'FAILED' as any,
+        });
+        if (!resolved) reject(new Error('FFmpeg failed'));
+      }
+
+      // ✅ Delete files AFTER R2 upload completes
+      if (fs.existsSync(outputDir)) {
+        setTimeout(() => {
+          try {
+            fs.rmSync(outputDir, { recursive: true, force: true });
+            this.logger.log(`🗑️ Cleaned up local files: ${outputDir}`);
+          } catch (err) {
+            this.logger.warn(`Failed to delete ${outputDir}: ${err.message}`);
+          }
+        }, 5000); // 5 second delay to ensure upload finished
+      }
+    });
+  });
+}
+
+/**
+ * Wait for all files to be uploaded to R2
+ */
+private async waitForUploadComplete(
+  outputDir: string,
+  timeout: number = 30000,
+): Promise<void> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      // Check if any .ts files still exist (not yet uploaded)
+      const files = fs.readdirSync(outputDir).filter(f => f.endsWith('.ts'));
+      
+      if (files.length === 0) {
+        // All segments uploaded
+        this.logger.log('✅ All segments uploaded to R2');
+        return;
+      }
+
+      // Wait a bit before checking again
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (err) {
+      this.logger.warn(`Error checking upload status: ${err.message}`);
+      return;
+    }
+  }
+
+  this.logger.warn('⚠️ Upload timeout reached, proceeding anyway');
+}
 
   /**
    * Handle live stream start
@@ -211,6 +256,9 @@ export class VideoService {
       });
 
       if (content) {
+         await this.contentService.update(content.id, {
+            status: 'FAILED' as any,
+          });
         await this.contentService.update(content.id, {
           status: 'ENDED' as any,
         });
