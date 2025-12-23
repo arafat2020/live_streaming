@@ -36,10 +36,16 @@ export class LiveCommentGateway {
   sendDelete(videoId: string, id: string) {
     this.server.to(`video:${videoId}`).emit('comment.deleted', { id });
   }
-  streamLive(playbackUrl: string) {
+  streamLive(playbackUrl: string,content:any) {
+    console.log("streamLive send--------->",{
+      playbackUrl,
+      status: "LIVE",
+      content:content
+    })
     this.server.emit("stream.live", {
       playbackUrl,
       status: "LIVE",
+      content:content
     });
   }
 

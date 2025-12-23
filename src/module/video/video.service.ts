@@ -147,43 +147,45 @@ export class VideoService {
         if (!resolved) reject(error);
       });
 
-      ffmpeg.on('close', async (code) => {
-        clearInterval(checker);
-        
-        // ✅ Stop watcher FIRST
-        watcher.stop();
+   ffmpeg.on('close', async (code) => {
+  clearInterval(checker);
+  
+  if (code === 0) {
+    this.logger.log('✅ FFmpeg completed successfully. Waiting for R2 upload...');
+    
+    // ✅ CRITICAL FIX: Wait for uploads BEFORE stopping watcher
+    await this.waitForUploadComplete(outputDir, 120000);
+    
+    // ✅ CRITICAL FIX: Stop watcher AFTER uploads complete
+    watcher.stop();
 
-        if (code === 0) {
-          this.logger.log('✅ FFmpeg completed successfully. Waiting for R2 upload...');
-          
-          // ✅ Wait for R2 upload to complete before cleanup
-          await this.waitForUploadComplete(outputDir, 60000);
+    await this.contentService.update(content.id, {
+      status: 'AVAILABLE',
+    });
 
-          await this.contentService.update(content.id, {
-            status: 'AVAILABLE' as any,
-          });
+    this.logger.log(`✅ Video processing complete for ${lessonId}`);
+  } else {
+    // ✅ On error, stop watcher immediately
+    watcher.stop();
+    this.logger.error(`FFmpeg exited with code ${code}`);
+    await this.contentService.update(content.id, {
+      status: 'FAILED',
+    });
+    if (!resolved) reject(new Error(`FFmpeg failed with code ${code}`));
+  }
 
-          this.logger.log(`✅ Video processing complete for ${lessonId}`);
-        } else {
-          this.logger.error(`FFmpeg exited with code ${code}`);
-          await this.contentService.update(content.id, {
-            status: 'FAILED' as any,
-          });
-          if (!resolved) reject(new Error(`FFmpeg failed with code ${code}`));
-        }
-
-        // ✅ Delete local files AFTER R2 upload completes
-        setTimeout(() => {
-          if (fs.existsSync(outputDir)) {
-            try {
-              fs.rmSync(outputDir, { recursive: true, force: true });
-              this.logger.log(`🗑️ Cleaned up local files: ${outputDir}`);
-            } catch (err) {
-              this.logger.warn(`Failed to delete ${outputDir}: ${err.message}`);
-            }
-          }
-        }, 10000); // 10 second delay to ensure upload finished
-      });
+  // ✅ Delete local files AFTER everything is done
+  setTimeout(() => {
+    if (fs.existsSync(outputDir)) {
+      try {
+        fs.rmSync(outputDir, { recursive: true, force: true });
+        this.logger.log(`🗑️ Cleaned up local files: ${outputDir}`);
+      } catch (err) {
+        this.logger.warn(`Failed to delete ${outputDir}: ${err.message}`);
+      }
+    }
+  }, 10000);
+});
     });
   }
 
@@ -193,7 +195,8 @@ export class VideoService {
    */
   private async waitForUploadComplete(
     outputDir: string,
-    timeout: number = 60000,
+    //timeout: number = 60000,
+    timeout: number = 120000,
   ): Promise<void> {
     const startTime = Date.now();
     let lastFileCount = -1;
@@ -278,7 +281,7 @@ export class VideoService {
       this.logger.log(`📝 Content ID: ${content.id}`);
 
       // Notify via WebSocket
-      this.liveGateway.streamLive(playbackUrl);
+      this.liveGateway.streamLive(playbackUrl ,content);
 
       // Start R2 upload watcher
       return this.r2UploadService.watchAndUpload(liveDir, r2Prefix);

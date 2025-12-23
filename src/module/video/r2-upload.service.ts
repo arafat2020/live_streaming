@@ -153,7 +153,7 @@ export class R2UploadService {
       } catch (err) {
         this.logger.warn(`Watcher error: ${err.message}`);
       }
-    }, 500); // ✅ OPTIMIZED: Check every 500ms instead of 1000ms
+    }, 1000); // ✅ OPTIMIZED: Check every 500ms instead of 1000ms
 
     return {
       stop: () => {
@@ -255,6 +255,37 @@ export class R2UploadService {
       if (error.name === 'NotFound') {
         return false;
       }
+      throw error;
+    }
+
+
+  }
+
+  async uploadBuffer(
+    buffer: Buffer,
+    r2Key: string,
+    contentType: string,
+  ): Promise<string> {
+    try {
+      const upload = new Upload({
+        client: r2Client,
+        params: {
+          Bucket: R2_BUCKET,
+          Key: r2Key,
+          Body: buffer,
+          ContentType: contentType,
+          CacheControl: 'public, max-age=31536000, immutable',
+        },
+      });
+
+      await upload.done();
+      
+      const url = `${R2_PUBLIC_URL}/${r2Key}`;
+      this.logger.log(`✅ Uploaded to R2: ${r2Key}`);
+      
+      return url;
+    } catch (error) {
+      this.logger.error(`❌ Failed to upload to R2 ${r2Key}: ${error.message}`);
       throw error;
     }
   }
