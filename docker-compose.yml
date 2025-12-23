@@ -32,8 +32,8 @@ services:
         condition: service_healthy
     command: >
       sh -c "
-      echo '⏳ Waiting for DB...' &&
-      npx prisma migrate deploy || echo '⚠️ Migration skipped' &&
+      echo 'Waiting for DB...' &&
+      npx prisma migrate deploy || echo 'Migration skipped' &&
       node dist/main.js
       "
     volumes:
