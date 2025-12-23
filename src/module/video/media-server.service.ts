@@ -286,10 +286,6 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Public API: Get stream playback URL
    */
-  // getStreamUrl(streamKey: string): string {
-  //   const baseUrl = process.env.HTTP_BASE_URL || 'http://localhost:8000';
-  //   return `${baseUrl}/media/live/${streamKey}/index.m3u8`;
-  // }
 getStreamUrl(streamKey: string): string {
   // For external clients (OBS, browsers), use public domain
   const publicUrl = process.env.PUBLIC_URL || process.env.HTTP_BASE_URL || 'http://localhost:8000';
