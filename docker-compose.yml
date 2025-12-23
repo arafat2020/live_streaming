@@ -22,7 +22,7 @@ services:
     container_name: rappio_app
     #network_mode: "host"
     ports:
-      - "8000:5000"   # NestJS API
+      - "8000:8000"   # NestJS API
       - "8001:8001"   # Media HTTP (HLS)
       - "1935:1935"   # RTMP
     env_file:
