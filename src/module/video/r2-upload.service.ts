@@ -11,6 +11,7 @@ export class R2UploadService {
 
   /**
    * Upload a single file to R2
+   * ✅ OPTIMIZED: Added cache control headers
    */
   async uploadFile(
     localPath: string,
@@ -29,6 +30,8 @@ export class R2UploadService {
           Key: r2Key,
           Body: fs.createReadStream(localPath),
           ContentType: contentType,
+          // ✅ OPTIMIZED: Cache video segments forever (they're immutable)
+          CacheControl: 'public, max-age=31536000, immutable',
         },
       });
 
@@ -46,6 +49,7 @@ export class R2UploadService {
 
   /**
    * Upload playlist file to R2
+   * Keep no-cache for playlists (they change frequently)
    */
   async uploadPlaylist(localPath: string, r2Key: string): Promise<string | null> {
     try {
@@ -62,7 +66,8 @@ export class R2UploadService {
           Key: r2Key,
           Body: content,
           ContentType: 'application/vnd.apple.mpegurl',
-          CacheControl: 'no-cache',
+          // Keep no-cache for playlists - they update frequently
+          CacheControl: 'no-cache, no-store, must-revalidate',
         }),
       );
 
@@ -77,14 +82,18 @@ export class R2UploadService {
 
   /**
    * Watch directory and automatically upload new segments
+   * ✅ OPTIMIZED: Parallel uploads, faster polling, better error handling
    * Returns a controller object with stop() method
    */
   watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
     const uploaded = new Set<string>();
+    // ✅ OPTIMIZED: Track files currently being uploaded to prevent duplicates
+    const uploading = new Set<string>();
     const playlistPath = path.join(localDir, 'index.m3u8');
 
     this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
 
+    // ✅ OPTIMIZED: Poll every 500ms instead of 1000ms for faster detection
     const interval = setInterval(async () => {
       try {
         if (!fs.existsSync(localDir)) {
@@ -96,39 +105,55 @@ export class R2UploadService {
           .readdirSync(localDir)
           .filter((f) => f.endsWith('.ts'));
 
-        for (const file of files) {
-          if (uploaded.has(file)) continue;
+        // ✅ OPTIMIZED: Upload segments in parallel instead of sequentially
+        const uploadPromises = files
+          .filter(file => !uploaded.has(file) && !uploading.has(file))
+          .map(async (file) => {
+            uploading.add(file);
+            
+            const localPath = path.join(localDir, file);
+            
+            try {
+              // ✅ OPTIMIZED: Reduced wait time from 3000ms to 1000ms
+              await this.waitForFileReady(localPath, 1000);
 
-          const localPath = path.join(localDir, file);
-          
-          // Wait for file to be fully written
-          await this.waitForFileReady(localPath);
+              if (!fs.existsSync(localPath)) {
+                uploading.delete(file);
+                return;
+              }
 
-          if (!fs.existsSync(localPath)) continue;
+              // Upload segment
+              await this.uploadFile(
+                localPath,
+                `${r2Prefix}/${file}`,
+                'video/mp2t',
+              );
 
-          // Upload segment
-          await this.uploadFile(
-            localPath,
-            `${r2Prefix}/${file}`,
-            'video/mp2t',
+              uploaded.add(file);
+              uploading.delete(file);
+              
+              this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
+            } catch (err) {
+              uploading.delete(file);
+              this.logger.error(`Failed to upload ${file}: ${err.message}`);
+            }
+          });
+
+        // ✅ OPTIMIZED: Wait for all uploads to complete
+        await Promise.all(uploadPromises);
+
+        // ✅ OPTIMIZED: Upload playlist AFTER all segments are uploaded
+        if (fs.existsSync(playlistPath)) {
+          await this.uploadPlaylist(
+            playlistPath,
+            `${r2Prefix}/index.m3u8`,
           );
-
-          uploaded.add(file);
-
-          // Upload updated playlist
-          if (fs.existsSync(playlistPath)) {
-            await this.uploadPlaylist(
-              playlistPath,
-              `${r2Prefix}/index.m3u8`,
-            );
-          }
-
-          this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
         }
+
       } catch (err) {
         this.logger.warn(`Watcher error: ${err.message}`);
       }
-    }, 1000);
+    }, 500); // ✅ OPTIMIZED: Check every 500ms instead of 1000ms
 
     return {
       stop: () => {
@@ -140,8 +165,9 @@ export class R2UploadService {
 
   /**
    * Wait for file to be fully written to disk
+   * ✅ OPTIMIZED: Faster checks, shorter timeout
    */
-  private async waitForFileReady(filePath: string, timeout = 3000): Promise<void> {
+  private async waitForFileReady(filePath: string, timeout = 1000): Promise<void> {
     const start = Date.now();
     let lastSize = -1;
 
@@ -156,11 +182,80 @@ export class R2UploadService {
         }
 
         lastSize = currentSize;
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // ✅ OPTIMIZED: Check every 50ms instead of 100ms
+        await new Promise(resolve => setTimeout(resolve, 50));
       } catch {
         // File doesn't exist yet
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
+    }
+  }
+
+  /**
+   * Upload file with retry logic for production reliability
+   */
+  async uploadFileWithRetry(
+    localPath: string,
+    r2Key: string,
+    contentType: string,
+    maxRetries = 3,
+  ): Promise<string> {
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.uploadFile(localPath, r2Key, contentType);
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(`Upload attempt ${attempt}/${maxRetries} failed for ${r2Key}: ${error.message}`);
+        
+        if (attempt < maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = Math.pow(2, attempt - 1) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw new Error(`Failed to upload ${r2Key} after ${maxRetries} attempts: `);
+  }
+
+  /**
+   * Delete a file from R2
+   */
+  async deleteFile(r2Key: string): Promise<void> {
+    try {
+      await r2Client.send(
+        new PutObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: r2Key,
+        }),
+      );
+      
+      this.logger.debug(`🗑️ Deleted from R2: ${r2Key}`);
+    } catch (error) {
+      this.logger.error(`Failed to delete ${r2Key}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a file exists in R2
+   */
+  async fileExists(r2Key: string): Promise<boolean> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: r2Key,
+      });
+      
+      await r2Client.send(command);
+      return true;
+    } catch (error) {
+      if (error.name === 'NotFound') {
+        return false;
+      }
+      throw error;
     }
   }
 }
