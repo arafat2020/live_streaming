@@ -1,40 +1,11 @@
-// import { IsOptional, IsInt, Min, IsEnum, IsString } from 'class-validator';
-// import { Type } from 'class-transformer';
-// import { ContentType, ContentStatus } from '@prisma/client';
-
-// export class QueryContentDto {
-//   @IsOptional()
-//   @IsInt()
-//   @Type(() => Number)
-//   @Min(1)
-//   page?: number = 1;
-
-//   @IsOptional()
-//   @IsInt()
-//   @Type(() => Number)
-//   @Min(1)
-//   pageSize?: number = 20;
-
-//   @IsOptional()
-//   @IsString()
-//   q?: string;
-
-//   @IsOptional()
-//   @IsEnum(ContentType)
-//   contentType?: ContentType;
-
-//   @IsOptional()
-//   @IsEnum(ContentStatus)
-//   status?: ContentStatus;
-
-//   // optional channel filter
-//   @IsOptional()
-//   @IsString()
-//   channelId?: string;
-// }
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, Min, Max } from 'class-validator';
+import { IsInt, IsOptional, Min, Max, IsEnum, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export enum ContentSortBy {
+  MOST_RECENT = 'MOST_RECENT',
+  MOST_VIEWED = 'MOST_VIEWED',
+}
 
 export class QueryContentDto {
   @ApiPropertyOptional({
@@ -46,7 +17,7 @@ export class QueryContentDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  page?: number = 1;
+  page?: number;
 
   @ApiPropertyOptional({
     description: 'Items per page',
@@ -59,5 +30,22 @@ export class QueryContentDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  pageSize?: number = 20;
+  pageSize?: number;
+
+  @ApiPropertyOptional({
+    description: 'Sort content by',
+    enum: ContentSortBy,
+    example: ContentSortBy.MOST_RECENT,
+  })
+  @IsOptional()
+  @IsEnum(ContentSortBy)
+  sortBy?: ContentSortBy;
+
+  @ApiPropertyOptional({
+    description: 'Search by title (partial match, case-insensitive)',
+    example: 'tutorial',
+  })
+  @IsOptional()
+  @IsString()
+  title?: string;
 }
