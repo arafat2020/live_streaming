@@ -23,10 +23,13 @@ export class UpdateUserDto {
   @IsNotEmpty()
   lastName: string;
 
-  // @ApiProperty({ example: '0190000', description: 'phone member (Optional)', required: false })
-  // @IsOptional()
-  // @IsString()
-  // profileImage?: string;
+  @ApiProperty({ 
+    example: 'https://your-r2-url.com/profiles/user-123/avatar.jpg', 
+    required: false 
+  })
+  @IsString()
+  @IsOptional()
+  profileImage?: string;
 
   @ApiProperty({ example: '0190000', description: 'phone member (Optional)', required: false })
   @IsString()

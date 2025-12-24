@@ -9,6 +9,9 @@ import {
   UseGuards,
   HttpStatus,
   Delete,
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -18,10 +21,11 @@ import { GetMe, RequestWithUser } from './dto/request-with-user.interface';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request, Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
-import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { Roles } from '../auth/guards/roles.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('user')
 export class UserController {
@@ -83,17 +87,64 @@ export class UserController {
     });
   }
 
-  @ApiOperation({ summary: 'update my profile' })
-  @Patch(':id')
-  async myProfile(@Param('id') id: string,@Body() dto: UpdateMyProfileDto,@Req() req: RequestWithUser, @Res() res: Response) {
-    const data = await this.userService.myProfile(id, dto);
-    return sendResponse(res, {
-      statusCode: HttpStatus.CREATED,
-      success: true,
-      message: 'Profile updated successfully.',
-      data,
-    });
-  }
+  // @ApiOperation({ summary: 'update my profile' })
+  // @Patch(':id')
+  // async myProfile(@Param('id') id: string,@Body() dto: UpdateMyProfileDto,@Req() req: RequestWithUser, @Res() res: Response) {
+  //   const data = await this.userService.myProfile(id, dto);
+  //   return sendResponse(res, {
+  //     statusCode: HttpStatus.CREATED,
+  //     success: true,
+  //     message: 'Profile updated successfully.',
+  //     data,
+  //   });
+  // }
+@ApiOperation({ summary: 'Update profile with image' })
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Profile image (JPG, PNG, WEBP - Max 5MB)',
+      },
+      email: {
+        type: 'string',
+        example: 'user@gmail.com',
+      },
+      firstName: {
+        type: 'string',
+        example: 'Sarah',
+      },
+      lastName: {
+        type: 'string',
+        example: 'Connor',
+      },
+      phone: {
+        type: 'string',
+        example: '0190000000',
+      },
+    },
+  },
+})
+@Patch(':id')
+@UseInterceptors(FileInterceptor('file'))
+async uploadProfileImage(
+  @Param('id') id: string,
+  @UploadedFile() file: Express.Multer.File,
+  @Body() dto: UpdateMyProfileDto,
+  @Res() res: Response,
+) {
+  const data = await this.userService.myProfile(id, dto, file);
+
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Profile updated successfully.',
+    data,
+  });
+}
 
 
   @Delete(':id')

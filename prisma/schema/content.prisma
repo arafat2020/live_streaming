@@ -1,26 +1,3 @@
-// model Content {
-//   id              String        @id @default(uuid())
-//   channelId       String
-//   channel         Channel       @relation(fields: [channelId], references: [id])
-//   title           String
-//   description     String?
-//   contentType     ContentType
-//   status          ContentStatus @default(PROCESSING)
-//   durationSeconds Int? // Null for live streams until archived
-//   playbackUrl     String? // The HLS/DASH manifest URL from the CDN or third-party API
-//   thumbnailUrl    String?
-//   views           Int           @default(0)
-//   isPremium       Boolean       @default(false) // Gated content
-//   r2ObjectKey     String?
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-
-//   // Relations
-//   watchHistory WatchHistory[]
-
-//   @@map("content")
-// }
 model Content {
   id              String        @id @default(uuid())
   channelId       String?
