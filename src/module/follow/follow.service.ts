@@ -102,19 +102,30 @@ async getFollowedChannels(userId: string) {
               profileImage: true,
             },
           },
+          
+          _count: {
+            select: {
+              follow: true,
+            },
+          },
         },
       },
     },
   });
 
-  // 🔹 Optional: flatten response for frontend
-  return follows.map((item) => ({
-    followedAt: item.createdAt,
-    channel: {
-      ...item.following,
-    },
-    owner: item.following.owner,
-  }));
+  // Flatten and restructure response
+  return follows.map((item) => {
+    const { _count, ...channelData } = item.following;
+    
+    return {
+      followedAt: item.createdAt,
+      channel: {
+        ...channelData,
+        followerCount: _count.follow,
+      },
+      owner: item.following.owner,
+    };
+  });
 }
 
 
