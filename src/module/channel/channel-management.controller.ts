@@ -22,7 +22,7 @@ import { Roles } from '../auth/guards/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { GetMe } from '../user/dto/request-with-user.interface';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Channel Management')
 @Controller('channel')
@@ -87,7 +87,6 @@ async getChannels( @Res() res: Response) {
       data,
     });
   }
-
 @Get(':id')
 @HttpCode(200)
 async getChannelById(@Param('id') id: string, @Res() res: Response) {
@@ -100,4 +99,23 @@ async getChannelById(@Param('id') id: string, @Res() res: Response) {
       data,
     });
   }
+@Get('/by-content/:contentId')
+@ApiOperation({
+  summary: 'Get contents by channel ID',
+  description:
+    'This endpoint returns the cntents associated with a specific channel ID.',
+})
+async getChannelByContent(
+  @Param('contentId') contentId: string,
+  @Res() res: Response,
+) {
+  const data = await this.channelService.getContentByChannelId(contentId);
+
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Cntent retrieved successfully.',
+    data,
+  });
+}
 }
