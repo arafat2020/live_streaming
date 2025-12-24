@@ -12,21 +12,28 @@ export class UserNotificationPreferenceService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async create(userId: string, dto: CreateUserNotificationPreferenceDto) {
-    if (!userId) throw new BadRequestException('userId required');
-    const data = await this.prisma.userNotificationPreference.create({
-      data: { userId, ...dto },
-    });
-    // Create a notification for the user
-    await this.prisma.notification.create({
-      data: {
-        user: { connect: { id: userId } }, // connect to the existing user
-        type: "ANNOUNCEMENT",
-        message: "test msg",
-      },
-    });
-    return data
-  }
+async create(userId: string, dto: CreateUserNotificationPreferenceDto) {
+  if (!userId) throw new NotFoundException('userId required');
+  //console.log("UserNotificationPreferenceService dto------------>", dto);
+  
+  // Use upsert instead of create
+  const data = await this.prisma.userNotificationPreference.upsert({
+    where: { userId }, // Find by userId
+    update: { ...dto }, // If exists, update with new data
+    create: { userId, ...dto }, // If doesn't exist, create new
+  });
+  
+  // Create a notification for the user
+  await this.prisma.notification.create({
+    data: {
+      user: { connect: { id: userId } },
+      type: "ANNOUNCEMENT",
+      message: "test msg",
+    },
+  });
+  
+  return data;
+}
 
   findAll() {
     return this.prisma.userNotificationPreference.findMany();
