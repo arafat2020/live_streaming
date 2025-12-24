@@ -188,16 +188,47 @@ async getChannels() {
       id: true,
       name: true,
       handle: true,
-      streamKey: true,
       description: true,
-      owner: { select: { id: true, firstName: true, lastName: true, status: true } },
+      streamKey: true,
+
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+
+      _count: {
+        select: {
+          content: true,
+        },
+      },
+
       createdAt: true,
       updatedAt: true,
     },
   });
 
-  return channels;
+  const views = await this.prisma.content.groupBy({
+    by: ['channelId'],
+    _sum: {
+      views: true,
+    },
+  });
+
+  const viewsMap = new Map(
+    views.map(v => [v.channelId, v._sum.views ?? 0])
+  );
+
+  return channels.map(channel => ({
+    ...channel,
+    totalViews: viewsMap.get(channel.id) ?? 0,
+  }));
 }
+
 async getChannelById(channelId: string) {
   const channel = await this.prisma.channel.findUnique({
     where: { id: channelId },
@@ -224,5 +255,11 @@ async getChannelById(channelId: string) {
 
   return channel;
 }
-
+async getContentByChannelId (channelId: string){
+  const data = await this.prisma.content.findMany({where:{channelId:channelId}})
+    if (!data) {
+    throw new NotFoundException('Content not found.');
+  }
+  return data
+}
 }
