@@ -71,16 +71,52 @@ export class FollowService {
         },
       },
     });
-
+   
     return { isFollowing: !!follow };
   }
 
-  async getFollowedChannels(userId: string) {
-    return this.prisma.follow.findMany({
-      where: { followerId: userId },
-      include: { following: true }, // Channel info
-    });
-  }
+async getFollowedChannels(userId: string) {
+  const follows = await this.prisma.follow.findMany({
+    where: {
+      followerId: userId,
+    },
+    select: {
+      createdAt: true,
+      following: {
+        select: {
+          id: true,
+          name: true,
+          handle: true,
+          logo: true,
+          description: true,
+          isLive: true,
+          createdAt: true,
+          updatedAt: true,
+
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              status: true,
+              profileImage: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // 🔹 Optional: flatten response for frontend
+  return follows.map((item) => ({
+    followedAt: item.createdAt,
+    channel: {
+      ...item.following,
+    },
+    owner: item.following.owner,
+  }));
+}
+
 
   async getFollowers(channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
