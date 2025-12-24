@@ -6,7 +6,7 @@ import {
 import { CreateContentDto } from './dto/create-content.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { QueryContentDto } from './dto/query-content.dto';
+import { QueryContentDto ,ContentSortBy} from './dto/query-content.dto';
 
 @Injectable()
 export class ContentService {
@@ -32,33 +32,59 @@ data: {
     return content;
   }
 
-async findAll(query: QueryContentDto) {
-  const page = Math.max(query.page ?? 1, 1);
-  const pageSize = Math.min(query.pageSize ?? 20, 100);
+  async findAll(query: QueryContentDto) {
+    const page = Math.max(query.page ?? 1, 1);
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const sortBy = query.sortBy;
+    const title = query.title;
 
-  const skip = (page - 1) * pageSize;
+    const skip = (page - 1) * pageSize;
 
-  const [data, total] = await this.prisma.$transaction([
-    this.prisma.content.findMany({
-      skip,
-      take: pageSize,
-      orderBy: {
-        createdAt: 'desc',
+    // Determine sorting - default to most recent if not provided
+    const orderBy = sortBy === ContentSortBy.MOST_VIEWED
+      ? { views: 'desc' as const }
+      : { createdAt: 'desc' as const };
+
+    // Build where clause for filtering
+    const where = title
+      ? {
+          title: {
+            contains: title,
+            mode: 'insensitive' as const,
+          },
+        }
+      : {};
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.content.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy,
+        include: {
+          channel: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }),
+      this.prisma.content.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+        ...(sortBy && { sortBy }),
+        ...(title && { title }),
       },
-    }),
-    this.prisma.content.count(),
-  ]);
-
-  return {
-    data,
-    meta: {
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    },
-  };
-}
+    };
+  }
 
 
   async findOne(id: string) {
