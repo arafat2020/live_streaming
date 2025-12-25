@@ -3,7 +3,6 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { UserRole } from '@prisma/client';
 
-
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
   constructor(private prisma: PrismaService) {}
@@ -15,15 +14,22 @@ export class SeederService implements OnApplicationBootstrap {
   }
 
   private async seedAdmin() {
-    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL as string;
-    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD as string;
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
 
-    const supperAdmin = await this.prisma.user.findFirst({
-      where: { role: UserRole.ADMIN},
+    if (!superAdminEmail || !superAdminPassword) {
+      this.logger.warn(
+        'SUPER_ADMIN_EMAIL or SUPER_ADMIN_PASSWORD not set. Skipping admin seeding.',
+      );
+      return;
+    }
+
+    const superAdmin = await this.prisma.user.findFirst({
+      where: { role: UserRole.ADMIN },
     });
 
-    if ( supperAdmin) {
-      this.logger.log('Admin is already exists, skipping seeding.');
+    if (superAdmin) {
+      this.logger.log('Admin already exists, skipping seeding.');
       return;
     }
 
@@ -33,12 +39,20 @@ export class SeederService implements OnApplicationBootstrap {
       data: {
         email: superAdminEmail,
         password: hashedPassword,
-        firstName: 'Admin',
-        lastName: 'User',
-        role: UserRole.ADMIN
+        firstName: 'Super',
+        lastName: 'Admin',
+        role: UserRole.ADMIN,
+
+        // ✅ Important flags for admin
+        verified: true,
+        ageConfirmed: true,
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        privacyAccepted: true,
+        privacyAcceptedAt: new Date(),
       },
     });
 
-    this.logger.log(`Default super admin created: ${superAdminEmail}`);
+    this.logger.log(`✅ Default super admin created: ${superAdminEmail}`);
   }
 }
