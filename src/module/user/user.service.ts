@@ -14,6 +14,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { R2UploadService } from '../video/r2-upload.service';
 import { AcceptTermsDto } from './dto/user-confirmation.dto';
+import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class UserService {
@@ -102,12 +103,15 @@ async myProfile(
     if (!id) {
       throw new BadRequestException('ID is required');
     }
-    const isExists = await this.prisma.user.findUnique({
+    const user  = await this.prisma.user.findUnique({
       where: { id }
     });
-    if (!isExists) {
+    if (!user ) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
+  if (user.role === UserRole.ADMIN) {
+    throw new ForbiddenException('Cannot delete an admin user');
+  }
     return this.prisma.user.delete({where: { id:id }});
   }
 

@@ -186,7 +186,7 @@ async uploadProfileImage(
   });
 }
 
-
+@UseGuards(JwtAuthGuard)
 @Delete(':id')
 async remove(@Param('id') id: string, @Res() res: Response) {
     const data = await this.userService.remove(id);

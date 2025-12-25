@@ -2,6 +2,7 @@ import { Injectable, OnApplicationBootstrap, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { UserRole } from '@prisma/client';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
@@ -11,6 +12,11 @@ export class SeederService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     await this.seedAdmin();
+  }
+
+  // generate a stream key using uuidv4
+  private generateStreamKey(): string {
+    return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }
 
   private async seedAdmin() {
@@ -35,7 +41,7 @@ export class SeederService implements OnApplicationBootstrap {
 
     const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
 
-    await this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         email: superAdminEmail,
         password: hashedPassword,
@@ -43,7 +49,7 @@ export class SeederService implements OnApplicationBootstrap {
         lastName: 'Admin',
         role: UserRole.ADMIN,
 
-        // ✅ Important flags for admin
+        // Important flags for admin
         verified: true,
         ageConfirmed: true,
         termsAccepted: true,
@@ -52,6 +58,16 @@ export class SeederService implements OnApplicationBootstrap {
         privacyAcceptedAt: new Date(),
       },
     });
+
+    const channelPayload = {
+      ownerId: user.id,
+      name: user.firstName,
+      handle: user.email.split('@')[0],
+      description: 'Platform owner', // empty string instead of null
+      streamKey: this.generateStreamKey(),
+    };
+
+    await this.prisma.channel.create({ data: channelPayload });
 
     this.logger.log(`✅ Default super admin created: ${superAdminEmail}`);
   }

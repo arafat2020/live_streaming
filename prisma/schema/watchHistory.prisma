@@ -1,9 +1,9 @@
 model WatchHistory {
   id              String  @id @default(uuid())
   userId          String
-  user            User    @relation(fields: [userId], references: [id])
+  user            User    @relation(fields: [userId], references: [id],onDelete: Cascade)
   contentId       String
-  content         Content @relation(fields: [contentId], references: [id])
+  content         Content @relation(fields: [contentId], references: [id],onDelete: Cascade)
   progressSeconds Int
 
   lastWatchedAt DateTime @default(now())
