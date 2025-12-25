@@ -28,7 +28,7 @@ import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { Roles } from '../auth/guards/roles.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AcceptTermsDto } from './dto/user-confirmation.dto';
-import { SkipTermsCheck } from './decorators/skip-terms-check.decorator';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 
 @Controller('user')
 export class UserController {
@@ -36,6 +36,7 @@ export class UserController {
 
   @ApiOperation({ summary: 'Get all Users' })
   @Get()
+  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   async findAll(@Req() req: RequestWithUser,@Res() res: Response) {
     const data= await this.userService.findAll();
     return sendResponse(res, {
@@ -61,7 +62,6 @@ export class UserController {
 
   @UseGuards(JwtAuthGuard)
   @Get('terms-status')
-  @SkipTermsCheck()
   //@ApiBearerAuth()
   @ApiOperation({ summary: 'Get terms acceptance status' })
   async getTermsStatus(@Req() req: GetMe,) {
@@ -80,17 +80,13 @@ export class UserController {
 
 
   // STATIC route first
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   @Get('get-me')
   @ApiOperation({
     summary: 'Retrieve the profile of the authenticated user.',
     description:
       'Returns the full profile details of the currently logged-in user based on the JWT token.',
   })
-
-
-
-
   getMe(@Req() req: GetMe, @Res() res: Response) {
     const user = req.user;
     return sendResponse(res, {
@@ -100,6 +96,7 @@ export class UserController {
       data: user,
     });
   }
+  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve User by ID' })
   @ApiResponse({ status: 200, description: 'The requested User.' })
@@ -114,7 +111,7 @@ export class UserController {
     });
   }
   @ApiOperation({ summary: 'Allows only ADMIN to update a user’s role or status' })
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
   @Roles(UserRole.ADMIN)
   @Patch('admin/:id')
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Res() res: Response) {
@@ -168,6 +165,7 @@ export class UserController {
     },
   },
 })
+  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Patch(':id')
 @UseInterceptors(FileInterceptor('file'))
 async uploadProfileImage(
@@ -186,7 +184,7 @@ async uploadProfileImage(
   });
 }
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Delete(':id')
 async remove(@Param('id') id: string, @Res() res: Response) {
     const data = await this.userService.remove(id);

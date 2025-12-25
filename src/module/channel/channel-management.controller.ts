@@ -25,6 +25,8 @@ import { UpdateChannelDto } from './dto/update-channel.dto';
 import { GetMe } from '../user/dto/request-with-user.interface';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Channel Management')
 @Controller('channel')
@@ -32,7 +34,7 @@ export class ChannelManagementController {
   constructor(private readonly channelService: ChannelService) {}
 
 @ApiTags('Channels')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Get('')
 @HttpCode(200)
 @ApiOperation({ summary: 'Get all channels with optional search and pagination' })
@@ -57,7 +59,7 @@ async getChannels(
   });
 }
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Roles(UserRole.CREATOR)
   @Get('my-chennel')
   async getPrivateChannel(@Req() req: GetMe,@Res() res: Response) {
@@ -73,7 +75,7 @@ async getChannels(
 
 
   /**PATCH /creator/channel - Updates channel metadata (name, description, handle).*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Roles(UserRole.CREATOR)
   @Patch()
   async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto,@Res() res: Response) {
@@ -88,7 +90,7 @@ async getChannels(
   }
 
   /**POST /creator/channel/key/rotate - Generates a new stream key.*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
 @Roles(UserRole.CREATOR)
   @Post('key/rotate')
   @HttpCode(200)
@@ -102,6 +104,7 @@ async getChannels(
       data,
     });
   }
+@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get(':id')
 @HttpCode(200)
 async getChannelById(@Param('id') id: string, @Res() res: Response) {
@@ -114,6 +117,7 @@ async getChannelById(@Param('id') id: string, @Res() res: Response) {
       data,
     });
   }
+@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get('/by-content/:contentId')
 @ApiOperation({
   summary: 'Get contents by channel ID',

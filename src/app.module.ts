@@ -20,6 +20,8 @@ import { R2WorkerModule } from './module/r2-worker/r2-worker.module';
 import { CloudflareModule } from './module/cloudflare/cloudflare.module';
 import { StreamsModule } from './module/streams/streams.module';
 import { VideoModule } from './module/video/video.module';
+import { APP_GUARD } from '@nestjs/core';
+import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
 
 
 @Module({
@@ -65,6 +67,9 @@ import { VideoModule } from './module/video/video.module';
 
   ],
   controllers: [AppController],
-  providers: [AppService,SeederService],
+  providers: [AppService,SeederService,    {
+      provide: APP_GUARD,
+      useClass: TermsAcceptedGuard, // ✅ Applied globally
+    },],
 })
 export class AppModule {}
