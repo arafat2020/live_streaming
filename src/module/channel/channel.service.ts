@@ -2,6 +2,8 @@ import { Injectable,BadRequestException ,NotFoundException, ForbiddenException} 
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { UpdateChannelDto } from './dto/update-channel.dto';
+import { BanType } from '@prisma/client';
+import { BanUserDto } from './dto/ban-user.dto';
 
 @Injectable()
 export class ChannelService {
@@ -262,4 +264,193 @@ async getContentByChannelId (channelId: string){
   }
   return data
 }
+  /**
+   * Ban a user from a channel
+   */
+  async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
+    // Verify channel exists
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+      include: { owner: true },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    // Verify user exists
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Cannot ban channel owner
+    if (user.id === channel.ownerId) {
+      throw new ForbiddenException('Cannot ban the channel owner');
+    }
+
+    // Check if user is already banned
+    const existingBan = await this.prisma.channelBan.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId: dto.userId,
+        },
+      },
+    });
+
+    if (existingBan) {
+      throw new ForbiddenException('User is already banned from this channel');
+    }
+
+    // Validate temporary ban has expiration
+    if (dto.banType === BanType.TEMPORARY && !dto.expiresAt) {
+      throw new ForbiddenException('Temporary bans must have an expiration date');
+    }
+
+    // Create ban
+    const ban = await this.prisma.channelBan.create({
+      data: {
+        channelId,
+        userId: dto.userId,
+        reason: dto.reason,
+        bannedBy,
+        banType: dto.banType,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
+
+    return ban;
+  }
+
+  /**
+   * Unban a user from a channel
+   */
+  async unbanUser(channelId: string, userId: string) {
+    const ban = await this.prisma.channelBan.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId,
+        },
+      },
+    });
+
+    if (!ban) {
+      throw new NotFoundException('Ban not found');
+    }
+
+    await this.prisma.channelBan.delete({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId,
+        },
+      },
+    });
+
+    return { message: 'User unbanned successfully' };
+  }
+
+  /**
+   * Get all banned users for a channel
+   */
+  async getBannedUsers(channelId: string, page: number = 1, pageSize: number = 20) {
+    const skip = (page - 1) * pageSize;
+
+    const [bans, total] = await this.prisma.$transaction([
+      this.prisma.channelBan.findMany({
+        where: { channelId },
+        skip,
+        take: pageSize,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.channelBan.count({ where: { channelId } }),
+    ]);
+
+    return {
+      data: bans,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  /**
+   * Check if user is banned from channel
+   */
+  async isUserBanned(channelId: string, userId: string): Promise<boolean> {
+    const ban = await this.prisma.channelBan.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId,
+        },
+      },
+    });
+
+    if (!ban) return false;
+
+    // Check if temporary ban has expired
+    if (ban.banType === BanType.TEMPORARY && ban.expiresAt) {
+      if (new Date() > ban.expiresAt) {
+        // Auto-remove expired ban
+        await this.prisma.channelBan.delete({
+          where: {
+            channelId_userId: {
+              channelId,
+              userId,
+            },
+          },
+        });
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Clean up expired temporary bans (run via cron job)
+   */
+  async cleanExpiredBans() {
+    const result = await this.prisma.channelBan.deleteMany({
+      where: {
+        banType: BanType.TEMPORARY,
+        expiresAt: {
+          lte: new Date(),
+        },
+      },
+    });
+
+    return { deleted: result.count };
+  }
 }
