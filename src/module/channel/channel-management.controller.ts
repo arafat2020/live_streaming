@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -22,27 +23,43 @@ import { Roles } from '../auth/guards/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { GetMe } from '../user/dto/request-with-user.interface';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { GetChannelsDto } from './dto/get-channels-query.dto';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('Channel Management')
 @Controller('channel')
 export class ChannelManagementController {
   constructor(private readonly channelService: ChannelService) {}
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+
+@ApiTags('Channels')
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Get('')
 @HttpCode(200)
-async getChannels( @Res() res: Response) {
- 
-    const data = await this.channelService.getChannels();
-    return sendResponse(res, {
-      statusCode: HttpStatus.OK,
-      success: true,
-      message: 'Channels retrieved successfully.',
-      data,
-    });
-  }
+@ApiOperation({ summary: 'Get all channels with optional search and pagination' })
+@ApiResponse({
+  status: 200,
+  description: 'Channels retrieved successfully',
+})
+async getChannels(
+  @Query() dto: GetChannelsDto,
+  @Res() res: Response,
+) {
+  const result = await this.channelService.getChannels(dto);
+  
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Channels retrieved successfully.',
+    data: {
+    data: result.data,
+    meta: result.meta,
+    }
+  });
+}
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Roles(UserRole.CREATOR)
   @Get('my-chennel')
   async getPrivateChannel(@Req() req: GetMe,@Res() res: Response) {
@@ -58,7 +75,7 @@ async getChannels( @Res() res: Response) {
 
 
   /**PATCH /creator/channel - Updates channel metadata (name, description, handle).*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Roles(UserRole.CREATOR)
   @Patch()
   async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto,@Res() res: Response) {
@@ -73,7 +90,7 @@ async getChannels( @Res() res: Response) {
   }
 
   /**POST /creator/channel/key/rotate - Generates a new stream key.*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
 @Roles(UserRole.CREATOR)
   @Post('key/rotate')
   @HttpCode(200)
@@ -87,6 +104,7 @@ async getChannels( @Res() res: Response) {
       data,
     });
   }
+@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get(':id')
 @HttpCode(200)
 async getChannelById(@Param('id') id: string, @Res() res: Response) {
@@ -99,6 +117,7 @@ async getChannelById(@Param('id') id: string, @Res() res: Response) {
       data,
     });
   }
+@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get('/by-content/:contentId')
 @ApiOperation({
   summary: 'Get contents by channel ID',

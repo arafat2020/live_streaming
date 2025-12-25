@@ -2,7 +2,7 @@ model Channel {
   id               String   @id @default(uuid())
   logo             String?
   ownerId          String   @unique
-  owner            User     @relation(fields: [ownerId], references: [id])
+  owner            User     @relation(fields: [ownerId], references: [id],onDelete: Cascade)
   handle           String   @unique // e.g., @techguru (used for public URL)
   name             String
   description      String?
@@ -16,6 +16,7 @@ model Channel {
   content  Content[]
   follow   Follow[]   @relation("Following")
   chatRoom ChatRoom[]
+  channelBans ChannelBan[]
 
   @@map("channels")
 }
