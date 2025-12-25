@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -22,25 +23,39 @@ import { Roles } from '../auth/guards/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { GetMe } from '../user/dto/request-with-user.interface';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { GetChannelsDto } from './dto/get-channels-query.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')
 export class ChannelManagementController {
   constructor(private readonly channelService: ChannelService) {}
+
+@ApiTags('Channels')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Get('')
 @HttpCode(200)
-async getChannels( @Res() res: Response) {
- 
-    const data = await this.channelService.getChannels();
-    return sendResponse(res, {
-      statusCode: HttpStatus.OK,
-      success: true,
-      message: 'Channels retrieved successfully.',
-      data,
-    });
-  }
+@ApiOperation({ summary: 'Get all channels with optional search and pagination' })
+@ApiResponse({
+  status: 200,
+  description: 'Channels retrieved successfully',
+})
+async getChannels(
+  @Query() dto: GetChannelsDto,
+  @Res() res: Response,
+) {
+  const result = await this.channelService.getChannels(dto);
+  
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Channels retrieved successfully.',
+    data: {
+    data: result.data,
+    meta: result.meta,
+    }
+  });
+}
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles(UserRole.CREATOR)

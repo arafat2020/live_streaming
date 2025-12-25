@@ -2,8 +2,9 @@ import { Injectable,BadRequestException ,NotFoundException, ForbiddenException} 
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { UpdateChannelDto } from './dto/update-channel.dto';
-import { BanType } from '@prisma/client';
+import { BanType , Prisma} from '@prisma/client';
 import { BanUserDto } from './dto/ban-user.dto';
+import { GetChannelsDto } from './dto/get-channels-query.dto';
 
 @Injectable()
 export class ChannelService {
@@ -184,15 +185,35 @@ export class ChannelService {
     return !!channel && channel.owner.status === 'ACTIVE';
   }
   
-async getChannels() {
+// channel.service.ts
+async getChannels(dto: GetChannelsDto) {
+  const { search, page = 1, limit = 10 } = dto;
+  const skip = (page - 1) * limit;
+
+  // Build where clause for search
+  const where = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' as const } },
+          { handle: { contains: search, mode: 'insensitive' as const } },
+        ],
+      }
+    : {};
+
+  // Get total count for pagination
+  const total = await this.prisma.channel.count({ where });
+
+  // Fetch channels with pagination
   const channels = await this.prisma.channel.findMany({
+    where,
     select: {
       id: true,
       name: true,
       handle: true,
       description: true,
       streamKey: true,
-
+      logo: true,
+      isLive: true,
       owner: {
         select: {
           id: true,
@@ -202,20 +223,28 @@ async getChannels() {
           profileImage: true,
         },
       },
-
       _count: {
         select: {
           content: true,
         },
       },
-
       createdAt: true,
       updatedAt: true,
     },
+    skip,
+    take: limit,
+    orderBy: {
+      createdAt: 'desc',
+    },
   });
 
+  // Get views for the channels
+  const channelIds = channels.map(c => c.id);
   const views = await this.prisma.content.groupBy({
     by: ['channelId'],
+    where: {
+      channelId: { in: channelIds },
+    },
     _sum: {
       views: true,
     },
@@ -225,11 +254,25 @@ async getChannels() {
     views.map(v => [v.channelId, v._sum.views ?? 0])
   );
 
-  return channels.map(channel => ({
+  const data = channels.map(channel => ({
     ...channel,
     totalViews: viewsMap.get(channel.id) ?? 0,
   }));
+
+  return {
+    data,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: page < Math.ceil(total / limit),
+      hasPreviousPage: page > 1,
+    },
+  };
 }
+
+
 
 async getChannelById(channelId: string) {
   const channel = await this.prisma.channel.findUnique({
