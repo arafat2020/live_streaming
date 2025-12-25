@@ -60,7 +60,7 @@ async getChannels(
 }
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
 @UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
-@Roles(UserRole.CREATOR)
+@Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Get('my-chennel')
   async getPrivateChannel(@Req() req: GetMe,@Res() res: Response) {
     const userId = req.user.id;
@@ -76,7 +76,7 @@ async getChannels(
 
   /**PATCH /creator/channel - Updates channel metadata (name, description, handle).*/
 @UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
-@Roles(UserRole.CREATOR)
+@Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Patch()
   async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto,@Res() res: Response) {
     const userId = req.user.id;
@@ -91,7 +91,7 @@ async getChannels(
 
   /**POST /creator/channel/key/rotate - Generates a new stream key.*/
 @UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
-@Roles(UserRole.CREATOR)
+@Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Post('key/rotate')
   @HttpCode(200)
   async rotateStreamKey(@Req() req: GetMe,@Res() res: Response) {
