@@ -49,7 +49,7 @@ export class AuthService {
       lastName: dto.lastName ?? null,
       phone: dto.phone ?? null,
       profileImage: dto.profileImage ?? null,
-      role: UserRole.CREATOR,
+      //role: UserRole.CREATOR,
       is2FAEnabled: dto.is2FAEnabled ?? false,
       twoFactorSecret: null,
       passwordResetToken: null,
