@@ -12,6 +12,7 @@ import {
   BadRequestException,
   UploadedFile,
   UseInterceptors,
+  Post,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -21,11 +22,13 @@ import { GetMe, RequestWithUser } from './dto/request-with-user.interface';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request, Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
-import { ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { Roles } from '../auth/guards/roles.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AcceptTermsDto } from './dto/user-confirmation.dto';
+import { SkipTermsCheck } from './decorators/skip-terms-check.decorator';
 
 @Controller('user')
 export class UserController {
@@ -43,6 +46,39 @@ export class UserController {
     });
   }
 
+ @UseGuards(JwtAuthGuard)
+ @Post('accept-terms')
+  @ApiOperation({ summary: 'Accept Terms of Service and Privacy Policy' })
+  async acceptTerms(@Req() req: GetMe,@Body() dto: AcceptTermsDto, @Res() res: Response) {
+    const data =await this.userService.acceptTermsAndConditions(req.user.id, dto);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'User Accept Terms and Conditions successfully.',
+      data,
+    })
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('terms-status')
+  @SkipTermsCheck()
+  //@ApiBearerAuth()
+  @ApiOperation({ summary: 'Get terms acceptance status' })
+  async getTermsStatus(@Req() req: GetMe,) {
+    console.log("getTermsStatus hit ---------------------->")
+    return this.userService.getTermsStatus(req.user.id);
+  }
+
+  // @Get('terms-status')
+  // @UseGuards(JwtAuthGuard)
+  // @SkipTermsCheck()
+  // @ApiBearerAuth()
+  // @ApiOperation({ summary: 'Get terms acceptance status' })
+  // async getTermsStatus(@Req() req: any) {
+  //   return this.userService.getTermsStatus(req.user.id);
+  // }
+
+
   // STATIC route first
   @UseGuards(JwtAuthGuard)
   @Get('get-me')
@@ -51,6 +87,10 @@ export class UserController {
     description:
       'Returns the full profile details of the currently logged-in user based on the JWT token.',
   })
+
+
+
+
   getMe(@Req() req: GetMe, @Res() res: Response) {
     const user = req.user;
     return sendResponse(res, {
@@ -147,8 +187,8 @@ async uploadProfileImage(
 }
 
 
-  @Delete(':id')
-  async remove(@Param('id') id: string, @Res() res: Response) {
+@Delete(':id')
+async remove(@Param('id') id: string, @Res() res: Response) {
     const data = await this.userService.remove(id);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -156,5 +196,7 @@ async uploadProfileImage(
       message: 'User deleted successfully.',
       data,
     })
-  }
+}
+
+
 }
