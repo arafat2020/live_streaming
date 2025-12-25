@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, UploadedFile, UseInterceptors, BadRequestException, Body, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Param, UploadedFile, UseInterceptors, BadRequestException, Body, NotFoundException, UseGuards } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { v4 as uuidv4 } from 'uuid';
@@ -9,6 +9,11 @@ import * as fs from 'fs';
 import { MediaServerService } from './media-server.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { ApiBody, ApiConsumes, ApiOperation } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
+import { Roles } from '../auth/guards/roles.decorator';
+import { UserRole } from '@prisma/client';
 
 @Controller('video')
 export class VideoController {
@@ -36,6 +41,8 @@ export class VideoController {
   //     playlistUrl,
   //   };
   // }
+  @UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
+  @Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Post('upload')
   @ApiOperation({ summary: 'Upload video and convert to HLS' })
   @ApiConsumes('multipart/form-data')
@@ -90,6 +97,8 @@ export class VideoController {
   }
 
   // Get specific live stream URL
+  @UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
+  @Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Get('live/:streamKey')
   async getLiveStreamUrl(@Param('streamKey') streamKey: string) {
     const liveDir = path.resolve(process.cwd(), 'media', 'live', streamKey);
@@ -111,6 +120,8 @@ export class VideoController {
   }
 
   // Get all active streams
+  @UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
+  @Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Get('live')
   async getActiveStreams() {
     const liveDir = path.resolve(process.cwd(), 'media', 'live');
