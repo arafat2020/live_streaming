@@ -65,7 +65,7 @@ export class UserController {
   //@ApiBearerAuth()
   @ApiOperation({ summary: 'Get terms acceptance status' })
   async getTermsStatus(@Req() req: GetMe,) {
-    console.log("getTermsStatus hit ---------------------->")
+    //console.log("getTermsStatus hit ---------------------->")
     return this.userService.getTermsStatus(req.user.id);
   }
 

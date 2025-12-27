@@ -153,7 +153,7 @@ export class R2UploadService {
       } catch (err) {
         this.logger.warn(`Watcher error: ${err.message}`);
       }
-    }, 1000); // ✅ OPTIMIZED: Check every 500ms instead of 1000ms
+    }, 1000); // ✅ OPTIMIZED: POLLING TIME Check every 500ms instead of 1000ms
 
     return {
       stop: () => {

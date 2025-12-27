@@ -23,8 +23,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       include: {
         channel: true,
         follow: true,
-        watchHistory: true,
-        userNotificationPreference: true,
+        //watchHistory: true,
+        //userNotificationPreference: true,
         notification: true,
         chatMessage: true,
         participants: true,
