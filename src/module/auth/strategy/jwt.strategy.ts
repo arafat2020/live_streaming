@@ -22,12 +22,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub },
       include: {
         channel: true,
-        follow: true,
+        //follow: true,
         //watchHistory: true,
         //userNotificationPreference: true,
-        notification: true,
-        chatMessage: true,
-        participants: true,
+        //notification: true,
+        //chatMessage: true,
+        //participants: true,
       },
     });
     if (!user) {

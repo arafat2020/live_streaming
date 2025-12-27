@@ -11,6 +11,8 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import { CreateContentDto } from './dto/create-content.dto';
@@ -19,6 +21,8 @@ import { QueryContentDto } from './dto/query-content.dto';
 import { Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
 import { ApiOperation } from '@nestjs/swagger';
+import { GetMe } from '../user/dto/request-with-user.interface';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('content')
 export class ContentController {
@@ -37,11 +41,14 @@ export class ContentController {
   @ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
  //@ApiTags('Content')
 @Get()
+@UseGuards(JwtAuthGuard)
 async findAll(
+  @Req() req: GetMe,
   @Query() query: QueryContentDto,
   @Res() res: Response,
 ) {
-  const result = await this.contentService.findAll(query);
+  const userId = req.user?.id;
+  const result = await this.contentService.findAll(query,userId);
 
   return sendResponse(res, {
     statusCode: HttpStatus.OK,
