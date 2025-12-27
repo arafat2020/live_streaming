@@ -62,6 +62,7 @@ async findAll(
 }
   @ApiOperation({ summary: 'Get a single content item by its ID' })
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   async findOne(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const data = await this.contentService.findOne(id);
     return sendResponse(res, {
@@ -73,6 +74,7 @@ async findAll(
   }
   @ApiOperation({ summary: 'Update content by its ID (partial updates supported)' })
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContentDto, @Res() res: Response) {
     const data = await this.contentService.update(id, dto);
     return sendResponse(res, {
@@ -85,9 +87,12 @@ async findAll(
 
   @ApiOperation({ summary: 'Delete content by its ID' })
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(204)
-  async remove(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    const data = await this.contentService.remove(id);
+  async remove(@Req() req: GetMe,@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const userId = req.user?.id;
+    const userRole = req.user.role;
+    const data = await this.contentService.remove(id,userId,userRole);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
