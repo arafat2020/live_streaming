@@ -115,16 +115,19 @@ export class ChannelService {
     if (!channel) {
       throw new NotFoundException('Channel not found.');
     }
+  const isOwner = channel.ownerId === userId;
+    if (!isOwner) {
+    throw new ForbiddenException('You are not authorized to updated this channel. Only the channel owner can updated channel.');
+  }
+    // // Logic for Handle Change Rate Limit (30 days)
+    // if (data.handle && data.handle !== channel.handle) {
+    //   const thirtyDaysAgo = new Date();
+    //   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Logic for Handle Change Rate Limit (30 days)
-    if (data.handle && data.handle !== channel.handle) {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      if (channel.lastHandleUpdate > thirtyDaysAgo) {
-        throw new BadRequestException('Handle can only be changed once every 30 days.');
-      }
-    }
+    //   if (channel.lastHandleUpdate > thirtyDaysAgo) {
+    //     throw new BadRequestException('Handle can only be changed once every 30 days.');
+    //   }
+    // }
 
     return this.prisma.channel.update({
       where: { ownerId: userId },
