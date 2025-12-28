@@ -27,6 +27,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')
@@ -56,6 +57,32 @@ async getChannels(
     data: result.data,
     meta: result.meta,
     }
+  });
+}
+
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
+@Get('recommendedChannels')
+@HttpCode(200)
+@ApiOperation({ summary: 'Get Recommended Channels' })
+@ApiResponse({
+  status: 200,
+  description: 'Channels retrieved successfully',
+})
+async getRecommendedChannels(
+  @Req() req: GetMe,
+  @Query() dto: GetRecommendedChannelsDto,
+  @Res() res: Response,
+) {
+  const result = await this.channelService.getRecommendedChannels(
+    req.user.id,
+    dto.limit,
+  );
+  
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Channels retrieved successfully.',
+    data: result
   });
 }
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
@@ -137,4 +164,6 @@ async getChannelByContent(
     data,
   });
 }
+
+
 }
