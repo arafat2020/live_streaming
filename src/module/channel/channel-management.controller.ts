@@ -33,9 +33,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class ChannelManagementController {
   constructor(private readonly channelService: ChannelService) {}
 
-@ApiTags('Channels')
+// @ApiTags('Channels')
 @UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
-@Get('')
+@Get('channels')
 @HttpCode(200)
 @ApiOperation({ summary: 'Get all channels with optional search and pagination' })
 @ApiResponse({

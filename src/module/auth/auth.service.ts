@@ -49,7 +49,7 @@ export class AuthService {
       lastName: dto.lastName ?? null,
       phone: dto.phone ?? null,
       profileImage: dto.profileImage ?? null,
-      //role: UserRole.CREATOR,
+      role: UserRole.CREATOR,
       is2FAEnabled: dto.is2FAEnabled ?? false,
       twoFactorSecret: null,
       passwordResetToken: null,
@@ -70,7 +70,7 @@ export class AuthService {
       const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, ...safeUser } = user;
       return safeUser;
     } catch (err) {
-      console.error("err------>",err);
+      //console.error("err------>",err);
       throw new InternalServerErrorException('Failed to create user.',err);
     }
   }
