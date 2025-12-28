@@ -127,7 +127,7 @@ export class AuthService {
       { ...payloadBase, tf: true }, // tf=true indicates 2FA satisfied (or not required)
       {
         secret: process.env.JWT_SECRET,
-        expiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
+        expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
       },
     );
 
