@@ -59,16 +59,16 @@ export class TermsAcceptedGuard implements CanActivate {
       user.termsAccepted && 
       user.privacyAccepted;
 
-    if (!hasAcceptedAll) {
-      this.logger.warn(`❌ User ${userId} has NOT accepted terms - blocking`);
+    // if (!hasAcceptedAll) {
+    //   this.logger.warn(`❌ User ${userId} has NOT accepted terms - blocking`);
       
-      throw new ForbiddenException({
-        statusCode: 403,
-        message: 'You must accept the Terms of Service and Privacy Policy to continue',
-        error: 'TERMS_NOT_ACCEPTED',
-        redirectTo: '/accept-terms',
-      });
-    }
+    //   throw new ForbiddenException({
+    //     statusCode: 403,
+    //     message: 'You must accept the Terms of Service and Privacy Policy to continue',
+    //     error: 'TERMS_NOT_ACCEPTED',
+    //     redirectTo: '/accept-terms',
+    //   });
+    // }
 
     this.logger.log(`✅ User ${userId} has accepted terms`);
     return true;
