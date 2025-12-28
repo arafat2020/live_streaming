@@ -499,4 +499,150 @@ async getContentByChannelId (channelId: string){
 
     return { deleted: result.count };
   }
+ 
+ // Get recommended channels for a user
+async getRecommendedChannels(userId: string, limit: number = 5) {
+  // STEP 1: User which channel follow
+  const follows = await this.prisma.follow.findMany({
+    where: {
+      followerId: userId,
+    },
+    select: {
+      followingId: true,
+    },
+  });
+
+  const followedChannelIds = follows.map(f => f.followingId);
+
+  // STEP 2: Similar / Active channels
+  const similarChannels = await this.prisma.channel.findMany({
+    where: {
+      id: {
+        notIn: followedChannelIds,
+      },
+      content: {
+        some: {
+          status: 'AVAILABLE',
+        },
+      },
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          follow: true,
+          content: true,
+        },
+      },
+    },
+    take: 30,
+  });
+
+  // STEP 3: Popular channels (fallback)
+  const popularChannels = await this.prisma.channel.findMany({
+    where: {
+      id: {
+        notIn: followedChannelIds,
+      },
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          follow: true,
+        },
+      },
+    },
+    orderBy: {
+      follow: {
+        _count: 'desc',
+      },
+    },
+    take: 30,
+  });
+
+  // STEP 4: Live channel boost
+  const liveChannels = await this.prisma.channel.findMany({
+    where: {
+      isLive: true,
+      id: {
+        notIn: followedChannelIds,
+      },
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          follow: true,
+          content: true,
+        },
+      },
+    },
+    take: 15,
+  });
+
+  // STEP 5: Merge + unique
+  const channelMap = new Map<string, any>();
+
+  [...similarChannels, ...popularChannels, ...liveChannels].forEach(channel => {
+    if (!channelMap.has(channel.id)) {
+      channelMap.set(channel.id, channel);
+    }
+  });
+
+  // STEP 6: Score system
+  const scoredChannels = Array.from(channelMap.values()).map(channel => {
+    const score =
+      (channel._count?.follow || 0) * 2 +
+      (channel._count?.content || 0) +
+      (channel.isLive ? 5 : 0);
+
+    return {
+      id: channel.id,
+      name: channel.name,
+      handle: channel.handle,
+      logo: channel.logo,
+      description: channel.description,
+      isLive: channel.isLive,
+
+      // ADDED OWNER HERE
+      owner: channel.owner,
+
+      followers: channel._count?.follow || 0,
+      contents: channel._count?.content || 0,
+      score,
+    };
+  });
+
+  // STEP 7: Sort + limit
+  scoredChannels.sort((a, b) => b.score - a.score);
+
+  return scoredChannels.slice(0, limit);
+}
+
+
 }
