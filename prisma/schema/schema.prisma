@@ -25,6 +25,7 @@ enum UserRole {
   ADMIN // Full system access, platform-wide controls
   CREATOR // Manages a Channel, uploads/streams content
   USER // Standard viewer/subscriber
+  MODERATOR  // moderator
 }
 
 // Subscription status, integrated with the billing system

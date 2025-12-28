@@ -99,7 +99,7 @@ export class ChannelService {
   async getPrivateChannel(userId: string) {
     const channel = await this.prisma.channel.findUnique({
       where: { ownerId: userId },
-      include: { owner: { select: { email: true, firstName: true } } },
+      include: { owner: { select: { email: true, firstName: true,profileImage:true } } },
     });
 
     if (!channel) {
@@ -286,7 +286,7 @@ async getChannelById(channelId: string) {
       handle: true,
       streamKey: true,
       description: true,
-      owner: { select: { id: true, firstName: true, lastName: true, status: true } },
+      owner: { select: { id: true, firstName: true, lastName: true, status: true ,profileImage:true} },
       createdAt: true,
       updatedAt: true,
     },

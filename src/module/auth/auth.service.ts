@@ -99,7 +99,7 @@ export class AuthService {
       data: { lastLogin: new Date() },
     });
 
-    // Prepare common payload fields
+    // Prepare common payload fields 
     const payloadBase = {
       sub: user.id,
       email: user.email,
