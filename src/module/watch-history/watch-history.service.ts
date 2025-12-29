@@ -1,143 +1,125 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateWatchHistoryDto } from './dto/create-watch-history.dto';
 import { UpdateWatchHistoryDto } from './dto/update-watch-history.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryWatchHistoryDto } from './dto/query-watch-history.dto';
 import { Prisma } from '@prisma/client';
+import { ContentService } from '../content/content.service';
 
 @Injectable()
 export class WatchHistoryService {
+  private readonly logger = new Logger(ContentService.name);
   constructor(private prisma: PrismaService) {}
 
-  async create(dto: CreateWatchHistoryDto) {
-    const { userId, contentId, progressSeconds } = dto;
+   // Increment view count for content
+   
+  async incrementViews(contentId: string) {
+    this.logger.log(`Incrementing view count for content ${contentId}`);
 
-    // upsert using composite unique (userId, contentId)
-    const record = await this.prisma.watchHistory.upsert({
-      where: { userId_contentId: { userId, contentId } }, // generated unique name by Prisma from @@unique([...])
-      create: {
-        userId,
-        contentId,
-        progressSeconds,
-      },
-      update: {
-        progressSeconds,
-        lastWatchedAt: new Date(),
-        updatedAt: new Date(),
+    // Check if content exists
+    const content = await this.prisma.content.findUnique({
+      where: { id: contentId },
+      select: {
+        id: true,
+        title: true,
+        views: true,
       },
     });
 
-    return record;
-  }
+    if (!content) {
+      throw new NotFoundException('Content not found');
+    }
 
-  async findAll(query: QueryWatchHistoryDto) {
-    const page = query.page ?? 1;
-    const pageSize = Math.min(query.pageSize ?? 20, 100);
-    const where: Prisma.WatchHistoryWhereInput = {};
-
-    if (query.userId) where.userId = query.userId;
-    if (query.contentId) where.contentId = query.contentId;
-
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.watchHistory.findMany({
-        where,
-        orderBy: { lastWatchedAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          // include minimal safe relations (hide passwords)
-          user: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          content: {
-            select: {
-              id: true,
-              title: true,
-              playbackUrl: true,
-              thumbnailUrl: true,
-            },
-          },
+    // Increment view count
+    const updated = await this.prisma.content.update({
+      where: { id: contentId },
+      data: {
+        views: {
+          increment: 1,
         },
-      }),
-      this.prisma.watchHistory.count({ where }),
-    ]);
+      },
+      select: {
+        id: true,
+        views: true,
+      },
+    });
+
+    this.logger.log(
+      `View count incremented for content ${contentId}: ${content.views} → ${updated.views}`,
+    );
 
     return {
-      data: items,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      success: true,
+      contentId: updated.id,
+      views: updated.views,
     };
   }
 
-
+ 
+   // Get content with view count
   async findOne(id: string) {
-    if(!id) {
-      throw new NotFoundException('WatchHistory ID not found');
-    }
-    const record = await this.prisma.watchHistory.findUnique({
+    const content = await this.prisma.content.findUnique({
       where: { id },
       include: {
-        user: {
+        channel: {
           select: {
             id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        content: {
-          select: {
-            id: true,
-            title: true,
-            playbackUrl: true,
+            name: true,
+            handle: true,
+            logo: true,
+            owner: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                profileImage: true,
+              },
+            },
           },
         },
       },
     });
-    if (!record) throw new NotFoundException('WatchHistory not found');
-    return record;
+
+    if (!content) {
+      throw new NotFoundException('Content not found');
+    }
+
+    return content;
   }
 
+   // Get top viewed content
 
-  async update(id: string, dto: UpdateWatchHistoryDto) {
-    // ensure exists
-    if(!id) {
-      throw new NotFoundException('WatchHistory ID not found');
-    }
-    const exists = await this.prisma.watchHistory.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('WatchHistory not found');
-
-    // Build update payload only with provided fields
-    const data: Prisma.WatchHistoryUpdateInput = {};
-    if (dto.progressSeconds !== undefined) data.progressSeconds = dto.progressSeconds;
-    // update lastWatchedAt automatically when progressSeconds updated
-    if (dto.progressSeconds !== undefined) data.lastWatchedAt = new Date();
-
-    const updated = await this.prisma.watchHistory.update({
-      where: { id },
-      data,
+  async getTopViewed(limit = 10) {
+    return this.prisma.content.findMany({
+      // where: {
+      //   status: 'AVAILABLE',
+      // },
+      orderBy: {
+        views: 'desc',
+      },
+      take: Math.min(limit, 50),
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        thumbnailUrl: true,
+        playbackUrl: true,
+        views: true,
+        durationSeconds: true,
+        isPremium: true,
+        contentType: true,
+        createdAt: true,
+        channel: {
+          select: {
+            id: true,
+            name: true,
+            handle: true,
+            logo: true,
+          },
+        },
+      },
     });
-    return updated;
   }
 
-  async remove(id: string) {
-    // ensure exists
-    if(!id) {
-      throw new NotFoundException('WatchHistory ID not found');
-    }
-    const exists = await this.prisma.watchHistory.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('WatchHistory not found');
 
-    await this.prisma.watchHistory.delete({ where: { id } });
-    return { success: true };
-  }
 }
