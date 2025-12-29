@@ -209,6 +209,15 @@ async remove(id: string, userId: string,userRole?: string) {
 }
   // optional: increment view count safely
   async incrementViews(id: string) {
+      // Find the content with channel owner info
+  const content = await this.prisma.content.findUnique({
+    where: { id },
+  });
+
+  // Check if content exists
+  if (!content) {
+    throw new NotFoundException('Content not found');
+  }
     const updated = await this.prisma.content.update({
       where: { id },
       data: { views: { increment: 1 } },
