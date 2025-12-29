@@ -150,7 +150,7 @@ async getChannelById(@Param('id') id: string, @Res() res: Response) {
 @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get('/by-content/:contentId')
 @ApiOperation({
-  summary: 'Get contents by channel ID',
+  summary: 'Get contents by channel ID. This endpoint returns the cntents associated with a specific channel ID.',
   description:
     'This endpoint returns the cntents associated with a specific channel ID.',
 })
