@@ -96,18 +96,72 @@ export class ChannelService {
     };
   }
   /**Retrieves full private channel details for the owner/creator.*/
-  async getPrivateChannel(userId: string) {
-    const channel = await this.prisma.channel.findUnique({
-      where: { ownerId: userId },
-      include: { owner: { select: { email: true, firstName: true,profileImage:true } } },
-    });
+ // channel.service.ts
+async getPrivateChannel(userId: string) {
+  const channel = await this.prisma.channel.findUnique({
+    where: { ownerId: userId },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          content: true,     // Total content count
+          follow: true,      // Total followers
+        },
+      },
+    },
+  });
 
-    if (!channel) {
-      throw new NotFoundException('Creator channel not found.');
-    }
-
-    return channel; // Includes the sensitive streamKey
+  if (!channel) {
+    throw new NotFoundException('Creator channel not found.');
   }
+
+  //  Calculate total views (sum of all content views)
+  const totalViews = await this.prisma.content.aggregate({
+    where: {
+      channelId: channel.id,
+    },
+    _sum: {
+      views: true,
+    },
+  });
+
+  //  Get additional statistics
+  const liveContentCount = await this.prisma.content.count({
+    where: {
+      channelId: channel.id,
+      contentType: 'LIVE_STREAM',
+    },
+  });
+
+  const vodContentCount = await this.prisma.content.count({
+    where: {
+      channelId: channel.id,
+      contentType: 'VOD',
+    },
+  });
+
+  // Destructure _count and restructure response
+  const { _count, ...channelData } = channel;
+
+  return {
+    ...channelData,
+    statistics: {
+      totalViews: totalViews._sum.views || 0,
+      totalContent: _count.content,
+      // totalFollowers: _count.follow,
+      // liveStreamCount: liveContentCount,
+      // vodCount: vodContentCount,
+    },
+  };
+}
 
   /**Allows channel owner to update name, description, and handle (with rate limit).*/
   async updateChannel(userId: string, data: UpdateChannelDto) {
@@ -188,7 +242,7 @@ export class ChannelService {
     return !!channel && channel.owner.status === 'ACTIVE';
   }
   
-// channel.service.ts
+
 async getChannels(dto: GetChannelsDto) {
   const { search, page = 1, limit = 10 } = dto;
   const skip = (page - 1) * limit;
@@ -276,19 +330,27 @@ async getChannels(dto: GetChannelsDto) {
 }
 
 
-
 async getChannelById(channelId: string) {
+  // Get channel with all details and counts
   const channel = await this.prisma.channel.findUnique({
     where: { id: channelId },
-    select: {
-      id: true,
-      name: true,
-      handle: true,
-      streamKey: true,
-      description: true,
-      owner: { select: { id: true, firstName: true, lastName: true, status: true ,profileImage:true} },
-      createdAt: true,
-      updatedAt: true,
+    include: {
+      owner: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          content: true,
+          follow: true,
+        },
+      },
     },
   });
 
@@ -301,8 +363,47 @@ async getChannelById(channelId: string) {
     throw new ForbiddenException('Channel owner is not active.');
   }
 
-  return channel;
+  //  Calculate total views (sum of all content views)
+  const totalViews = await this.prisma.content.aggregate({
+    where: {
+      channelId: channel.id,
+    },
+    _sum: {
+      views: true,
+    },
+  });
+
+  //  Get content breakdown by type
+  const [liveStreamCount, vodCount] = await Promise.all([
+    this.prisma.content.count({
+      where: {
+        channelId: channel.id,
+        contentType: 'LIVE_STREAM',
+      },
+    }),
+    this.prisma.content.count({
+      where: {
+        channelId: channel.id,
+        contentType: 'VOD',
+      },
+    }),
+  ]);
+
+  // Destructure _count and restructure response
+  const { _count, ...channelData } = channel;
+
+  return {
+    ...channelData,
+    statistics: {
+      totalViews: totalViews._sum.views || 0,
+      totalContent: _count.content,
+      // totalFollowers: _count.follow,
+      // liveStreamCount,
+      // vodCount,
+    },
+  };
 }
+
 async getContentByChannelId (channelId: string){
   const data = await this.prisma.content.findMany({where:{channelId:channelId}})
     if (!data) {
