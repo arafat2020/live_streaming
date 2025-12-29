@@ -8,10 +8,13 @@ import { CreateContentDto } from './dto/create-content.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryContentDto ,ContentSortBy} from './dto/query-content.dto';
+import { WatchHistoryService } from '../watch-history/watch-history.service';
 
 @Injectable()
 export class ContentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private readonly watchHistoryService:WatchHistoryService
+  ) {}
 
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
@@ -136,6 +139,7 @@ async liveOnRappioList() {
     });
 
     if (!content) throw new NotFoundException('Content not found');
+    await this.watchHistoryService.incrementViews(content?.id)
     return content;
   }
 

@@ -5,5 +5,6 @@ import { WatchHistoryController } from './watch-history.controller';
 @Module({
   controllers: [WatchHistoryController],
   providers: [WatchHistoryService],
+  exports: [WatchHistoryService],
 })
 export class WatchHistoryModule {}
