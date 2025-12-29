@@ -38,8 +38,8 @@ export class ContentController {
   //     data,
   //   });
   // }
-@ApiOperation({ summary: 'List of Live on Rappio.TV contents' })
-@Get('live-rappio')
+@ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
+@Get('live-broadcast')
 async liveOnRappioList(
   @Res() res: Response,
 ) {
