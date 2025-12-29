@@ -50,7 +50,7 @@ export class VideoService {
 
   /**
    * Process VOD (Video on Demand) upload
-   * ✅ OPTIMIZED: Smaller segments for faster playback start
+   *  OPTIMIZED: Smaller segments for faster playback start
    */
   async processLargeVideo(
     fileBuffer: Buffer,
@@ -94,20 +94,20 @@ export class VideoService {
         '-b:a', '128k',
         '-f', 'hls',
         
-        // ✅ OPTIMIZED: 4-second segments (faster than 6s, reasonable for VOD)
+        //  OPTIMIZED: 4-second segments (faster than 6s, reasonable for VOD)
         '-hls_time', '4',
         
         // Keep all segments (0 = unlimited)
         '-hls_list_size', '0',
         
-        // ✅ OPTIMIZED: Add flags for better compatibility
+        //  OPTIMIZED: Add flags for better compatibility
         '-hls_flags', 'independent_segments',
         
-        // ✅ OPTIMIZED: GOP size for 4-second segments (96 frames at 24fps)
+        //  OPTIMIZED: GOP size for 4-second segments (96 frames at 24fps)
         '-g', '96',
         '-keyint_min', '96',
         
-        // ✅ OPTIMIZED: Disable scene change detection
+        //  OPTIMIZED: Disable scene change detection
         '-sc_threshold', '0',
         
         playlistPath,
@@ -129,7 +129,7 @@ export class VideoService {
             resolved = true;
             resolve(url);
             clearInterval(checker);
-            this.logger.log(`✅ Playlist available: ${url}`);
+            this.logger.log(` Playlist available: ${url}`);
           } catch (err) {
             this.logger.debug('Waiting for playlist to be ready...');
           }
@@ -151,21 +151,21 @@ export class VideoService {
   clearInterval(checker);
   
   if (code === 0) {
-    this.logger.log('✅ FFmpeg completed successfully. Waiting for R2 upload...');
+    this.logger.log(' FFmpeg completed successfully. Waiting for R2 upload...');
     
-    // ✅ CRITICAL FIX: Wait for uploads BEFORE stopping watcher
+    //  CRITICAL FIX: Wait for uploads BEFORE stopping watcher
     await this.waitForUploadComplete(outputDir, 120000);
     
-    // ✅ CRITICAL FIX: Stop watcher AFTER uploads complete
+    //  CRITICAL FIX: Stop watcher AFTER uploads complete
     watcher.stop();
 
     await this.contentService.update(content.id, {
       status: 'AVAILABLE',
     });
 
-    this.logger.log(`✅ Video processing complete for ${lessonId}`);
+    this.logger.log(` Video processing complete for ${lessonId}`);
   } else {
-    // ✅ On error, stop watcher immediately
+    //  On error, stop watcher immediately
     watcher.stop();
     this.logger.error(`FFmpeg exited with code ${code}`);
     await this.contentService.update(content.id, {
@@ -174,7 +174,7 @@ export class VideoService {
     if (!resolved) reject(new Error(`FFmpeg failed with code ${code}`));
   }
 
-  // ✅ Delete local files AFTER everything is done
+  //  Delete local files AFTER everything is done
   setTimeout(() => {
     if (fs.existsSync(outputDir)) {
       try {
@@ -191,7 +191,7 @@ export class VideoService {
 
   /**
    * Wait for all files to be uploaded to R2
-   * ✅ Enhanced with better logging and timeout handling
+   *  Enhanced with better logging and timeout handling
    */
   private async waitForUploadComplete(
     outputDir: string,
@@ -206,7 +206,7 @@ export class VideoService {
     while (Date.now() - startTime < timeout) {
       try {
         if (!fs.existsSync(outputDir)) {
-          this.logger.log('✅ Directory removed - upload complete');
+          this.logger.log(' Directory removed - upload complete');
           return;
         }
 
@@ -224,7 +224,7 @@ export class VideoService {
         }
 
         if (fileCount === 0) {
-          this.logger.log('✅ All segments uploaded to R2');
+          this.logger.log(' All segments uploaded to R2');
           return;
         }
 
@@ -308,7 +308,7 @@ export class VideoService {
           data: { isLive: false },
         });
         
-        this.logger.log(`✅ Channel ${channel.name} marked as offline`);
+        this.logger.log(` Channel ${channel.name} marked as offline`);
       }
 
       // Update content status
@@ -325,13 +325,13 @@ export class VideoService {
           status: 'ENDED' as any,
         });
         
-        this.logger.log(`✅ Content ${content.id} marked as ended`);
+        this.logger.log(` Content ${content.id} marked as ended`);
       }
 
       // Notify via WebSocket
       this.liveGateway.streamEnded();
 
-      this.logger.log(`✅ Stream ${streamKey} ended successfully`);
+      this.logger.log(` Stream ${streamKey} ended successfully`);
 
     } catch (error) {
       this.logger.error(`Error handling stream stop: ${error.message}`);

@@ -8,13 +8,15 @@ import {
   UseGuards,
   HttpStatus,
   Res,
+  Query,
 } from '@nestjs/common';
 import { FollowService } from './follow.service';
 import { RequestWithUser } from '../user/dto/request-with-user.interface';
-import { ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
+import { QueryFollowDto } from './dto/query-follow.dto';
 
 @Controller('follow')
 export class FollowController {
@@ -54,19 +56,43 @@ export class FollowController {
     });
   }
 
-  @ApiOperation({ summary: 'Get all channels the user follows' })
+  // @ApiOperation({ summary: 'Get all channels the user follows' })
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/me/list')
+  // async getMyFollows(@Req() req: RequestWithUser, @Res() res: Response) {
+  //   const data = await this.followService.getFollowedChannels(req.user.id);
+  //   return sendResponse(res, {
+  //     statusCode: HttpStatus.OK,
+  //     success: true,
+  //     message: 'Followed channels retrieved successfully.',
+  //     data,
+  //   });
+  // }
+@ApiOperation({ 
+    summary: 'Get all channels the user follows',
+    description: 'Returns paginated list of followed channels with total count',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number, example: 20 })
   @UseGuards(JwtAuthGuard)
   @Get('/me/list')
-  async getMyFollows(@Req() req: RequestWithUser, @Res() res: Response) {
-    const data = await this.followService.getFollowedChannels(req.user.id);
+  async getMyFollows(
+    @Req() req: RequestWithUser,
+    @Query() query: QueryFollowDto,
+    @Res() res: Response,
+  ) {
+    const result = await this.followService.getFollowedChannels(req.user.id, query);
+    
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Followed channels retrieved successfully.',
-      data,
+      data: {
+        data:result.data,
+        meta: result.meta,
+      }
     });
   }
-
   @ApiOperation({ summary: 'Get all followers of the specified channel' })
   @Get(':channnelId/followers')
   async getFollowers(
