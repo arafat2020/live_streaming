@@ -5,7 +5,7 @@ model Content {
   title           String?
   description     String?       @db.Text // বড় ডেসক্রিপশনের জন্য Text টাইপ ভালো
   contentType     ContentType?   // VOD || LIVE_STREAM
-  status          ContentStatus @default(PROCESSING)  // PROCESSING AVAILABLE FAILED PRIVATE ARCHIVED
+  status          ContentStatus @default(PROCESSING)  // PROCESSING AVAILABLE FAILED PRIVATE ARCHIVED ENDED
   durationSeconds Int?
   
   // Playback & Storage Refactor

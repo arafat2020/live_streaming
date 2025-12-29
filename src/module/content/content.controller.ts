@@ -38,10 +38,23 @@ export class ContentController {
   //     data,
   //   });
   // }
-  @ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
- //@ApiTags('Content')
+@ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
+@Get('live-broadcast')
+async liveOnRappioList(
+  @Res() res: Response,
+) {
+  const data = await this.contentService.liveOnRappioList();
+
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Content retrieved successfully.',
+    data: data
+  });
+}
+@ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
 @Get()
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 async findAll(
   @Req() req: GetMe,
   @Query() query: QueryContentDto,
@@ -108,4 +121,5 @@ async findAll(
   incrementViews(@Param('id', ParseUUIDPipe) id: string) {
     return this.contentService.incrementViews(id);
   }
+
 }

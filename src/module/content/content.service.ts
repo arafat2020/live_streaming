@@ -116,7 +116,15 @@ async findAll(query: QueryContentDto, userId?: string) {
     },
   };
 }
+async liveOnRappioList() {
+  // ENDED   AVAILABLE
+    const content = await this.prisma.content.findMany({
+      where: { status:"AVAILABLE",contentType:"LIVE_STREAM" },
+    });
 
+    if (!content) throw new NotFoundException('Content not found');
+    return content;
+  }
 
   async findOne(id: string) {
     const content = await this.prisma.content.findUnique({
