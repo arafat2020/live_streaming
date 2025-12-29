@@ -86,6 +86,7 @@ async getRecommendedChannels(
   });
 }
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
+@ApiOperation({ summary: 'My Chennel. Retrieves the private channel details Calculate total views across all channel content' })
 @UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Get('my-chennel')
@@ -131,6 +132,8 @@ async getRecommendedChannels(
       data,
     });
   }
+
+@ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })  
 @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get(':id')
 @HttpCode(200)
