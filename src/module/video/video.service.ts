@@ -86,32 +86,32 @@ export class VideoService {
 
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', [
-        '-y',
-        '-i', 'pipe:0',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-f', 'hls',
-        
-        //  OPTIMIZED: 4-second segments (faster than 6s, reasonable for VOD)
-        '-hls_time', '4',
-        
-        // Keep all segments (0 = unlimited)
-        '-hls_list_size', '0',
-        
-        //  OPTIMIZED: Add flags for better compatibility
-        '-hls_flags', 'independent_segments',
-        
-        //  OPTIMIZED: GOP size for 4-second segments (96 frames at 24fps)
-        '-g', '96',
-        '-keyint_min', '96',
-        
-        //  OPTIMIZED: Disable scene change detection
-        '-sc_threshold', '0',
-        
-        playlistPath,
-      ]);
+  '-y',
+  '-i', 'pipe:0',
+  
+  // 🌟 HIGHEST QUALITY SETTINGS
+  '-c:v', 'libx264',
+  '-preset', 'slow',                // Even better quality (slower)
+  '-crf', '20',                     // Higher quality (18-20 = near lossless)
+  '-profile:v', 'high',             // Better compression at same quality
+  '-level', '4.0',                  // Wide device compatibility
+  '-pix_fmt', 'yuv420p',            // Pixel format for broad device compatibility
+  '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',  // Keep original size, ensure even dimensions
+  
+  '-c:a', 'aac',
+  '-b:a', '256k',                   // Highest audio quality
+  '-ar', '48000',
+  
+  '-f', 'hls',
+  '-hls_time', '4',
+  '-hls_list_size', '0',
+  '-hls_flags', 'independent_segments',
+  '-g', '96',
+  '-keyint_min', '96',
+  '-sc_threshold', '0',
+  
+  playlistPath,
+]);
 
       const readable = new Readable();
       readable.push(fileBuffer);
