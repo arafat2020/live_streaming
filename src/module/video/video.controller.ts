@@ -154,7 +154,7 @@ async initChunkedUpload(
       file.buffer,
     );
 
-    return {
+    return { 
       success: true,
       uploadId,
       chunkIndex: parseInt(chunkIndex, 10),
