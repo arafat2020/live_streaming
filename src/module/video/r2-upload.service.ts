@@ -85,83 +85,94 @@ export class R2UploadService {
    * ✅ OPTIMIZED: Parallel uploads, faster polling, better error handling
    * Returns a controller object with stop() method
    */
-  watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
-    const uploaded = new Set<string>();
-    // ✅ OPTIMIZED: Track files currently being uploaded to prevent duplicates
-    const uploading = new Set<string>();
-    const playlistPath = path.join(localDir, 'index.m3u8');
+ // r2-upload.service.ts - UPDATED watchAndUpload method
 
-    this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
+/**
+ * Watch directory and automatically upload new segments
+ * ✅ WITH AUTO-DELETE after upload
+ */
+watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
+  const uploaded = new Set<string>();
+  const uploading = new Set<string>();
+  const playlistPath = path.join(localDir, 'index.m3u8');
 
-    // ✅ OPTIMIZED: Poll every 500ms instead of 1000ms for faster detection
-    const interval = setInterval(async () => {
-      try {
-        if (!fs.existsSync(localDir)) {
-          this.logger.warn(`Directory disappeared: ${localDir}`);
-          return;
-        }
+  this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
 
-        const files = fs
-          .readdirSync(localDir)
-          .filter((f) => f.endsWith('.ts'));
-
-        // ✅ OPTIMIZED: Upload segments in parallel instead of sequentially
-        const uploadPromises = files
-          .filter(file => !uploaded.has(file) && !uploading.has(file))
-          .map(async (file) => {
-            uploading.add(file);
-            
-            const localPath = path.join(localDir, file);
-            
-            try {
-              // ✅ OPTIMIZED: Reduced wait time from 3000ms to 1000ms
-              await this.waitForFileReady(localPath, 1000);
-
-              if (!fs.existsSync(localPath)) {
-                uploading.delete(file);
-                return;
-              }
-
-              // Upload segment
-              await this.uploadFile(
-                localPath,
-                `${r2Prefix}/${file}`,
-                'video/mp2t',
-              );
-
-              uploaded.add(file);
-              uploading.delete(file);
-              
-              this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
-            } catch (err) {
-              uploading.delete(file);
-              this.logger.error(`Failed to upload ${file}: ${err.message}`);
-            }
-          });
-
-        // ✅ OPTIMIZED: Wait for all uploads to complete
-        await Promise.all(uploadPromises);
-
-        // ✅ OPTIMIZED: Upload playlist AFTER all segments are uploaded
-        if (fs.existsSync(playlistPath)) {
-          await this.uploadPlaylist(
-            playlistPath,
-            `${r2Prefix}/index.m3u8`,
-          );
-        }
-
-      } catch (err) {
-        this.logger.warn(`Watcher error: ${err.message}`);
+  const interval = setInterval(async () => {
+    try {
+      if (!fs.existsSync(localDir)) {
+        this.logger.warn(`Directory disappeared: ${localDir}`);
+        return;
       }
-    }, 1000); // ✅ OPTIMIZED: POLLING TIME Check every 500ms instead of 1000ms
 
-    return {
-      stop: () => {
-        clearInterval(interval);
-        this.logger.log(`⏹️ Stopped watching: ${localDir}`);
-      },
-    };
-  }
+      const files = fs
+        .readdirSync(localDir)
+        .filter((f) => f.endsWith('.ts'));
+
+      // Upload segments in parallel
+      const uploadPromises = files
+        .filter(file => !uploaded.has(file) && !uploading.has(file))
+        .map(async (file) => {
+          uploading.add(file);
+          
+          const localPath = path.join(localDir, file);
+          
+          try {
+            await this.waitForFileReady(localPath, 1000);
+
+            if (!fs.existsSync(localPath)) {
+              uploading.delete(file);
+              return;
+            }
+
+            // Upload segment
+            await this.uploadFile(
+              localPath,
+              `${r2Prefix}/${file}`,
+              'video/mp2t',
+            );
+
+            uploaded.add(file);
+            uploading.delete(file);
+            
+            this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
+            
+            // ✅ DELETE LOCAL FILE AFTER SUCCESSFUL UPLOAD
+            try {
+              fs.unlinkSync(localPath);
+              this.logger.log(`🗑️ Deleted local: ${file}`);
+            } catch (delErr) {
+              this.logger.warn(`Failed to delete ${file}: ${delErr.message}`);
+            }
+            
+          } catch (err) {
+            uploading.delete(file);
+            this.logger.error(`Failed to upload ${file}: ${err.message}`);
+          }
+        });
+
+      await Promise.all(uploadPromises);
+
+      // Upload playlist after segments
+      if (fs.existsSync(playlistPath)) {
+        await this.uploadPlaylist(
+          playlistPath,
+          `${r2Prefix}/index.m3u8`,
+        );
+      }
+
+    } catch (err) {
+      this.logger.warn(`Watcher error: ${err.message}`);
+    }
+  }, 1000);
+
+  return {
+    stop: () => {
+      clearInterval(interval);
+      this.logger.log(`⏹️ Stopped watching: ${localDir}`);
+    },
+  };
+}
 
   /**
    * Wait for file to be fully written to disk
