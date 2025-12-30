@@ -5,11 +5,12 @@ import { R2UploadService } from './r2-upload.service';
 import {ContentModule} from '../content/content.module'
 import { MediaServerService } from './media-server.service';
 import { LiveCommentModule } from '../live-comment/live-comment.module';
+import { VideoChunkService } from './video-chunk.service';
  
 @Module({
   imports:[ContentModule,LiveCommentModule],
   controllers: [VideoController],
-  providers: [VideoService,R2UploadService,MediaServerService],
+  providers: [VideoService,R2UploadService,MediaServerService,VideoChunkService],
   exports: [VideoService,R2UploadService],
 })
 export class VideoModule {}
