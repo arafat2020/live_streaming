@@ -1,4 +1,3 @@
-// video-chunk.service.ts
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -49,42 +48,68 @@ export class VideoChunkService {
     this.logger.log(`📦 Upload session initialized: ${data.uploadId}`);
   }
 
-  // Save individual chunk
+  // Save individual chunk WITH IDEMPOTENCY
   async saveChunk(
     uploadId: string,
     chunkIndex: number,
     buffer: Buffer,
   ): Promise<{ chunksReceived: number; totalChunks: number }> {
-    const sessionDir = path.join(this.uploadDir, uploadId);
-    const metadataPath = path.join(sessionDir, 'metadata.json');
+    try {
+      this.logger.log(`💾 Saving chunk ${chunkIndex} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+      
+      const sessionDir = path.join(this.uploadDir, uploadId);
+      const metadataPath = path.join(sessionDir, 'metadata.json');
 
-    if (!fs.existsSync(metadataPath)) {
-      throw new BadRequestException('Upload session not found');
+      if (!fs.existsSync(metadataPath)) {
+        this.logger.error(`❌ Session not found: ${uploadId}`);
+        throw new BadRequestException('Upload session not found');
+      }
+
+      const chunkPath = path.join(sessionDir, `chunk_${chunkIndex}`);
+      
+      // ✅ IDEMPOTENCY CHECK: Skip if chunk already exists
+      if (fs.existsSync(chunkPath)) {
+        this.logger.warn(`⚠️ Chunk ${chunkIndex} already exists, skipping (idempotent request)`);
+        
+        // Still return current progress
+        const metadata: UploadSession = JSON.parse(
+          fs.readFileSync(metadataPath, 'utf8'),
+        );
+        
+        return {
+          chunksReceived: metadata.chunks.length,
+          totalChunks: metadata.totalChunks,
+        };
+      }
+      
+      // Save chunk
+      fs.writeFileSync(chunkPath, buffer);
+
+      // Update metadata
+      const metadata: UploadSession = JSON.parse(
+        fs.readFileSync(metadataPath, 'utf8'),
+      );
+
+      if (!metadata.chunks.includes(chunkIndex)) {
+        metadata.chunks.push(chunkIndex);
+      }
+
+      fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+
+      this.logger.log(
+        `✅ Chunk ${chunkIndex} saved. Progress: ${metadata.chunks.length}/${metadata.totalChunks}`,
+      );
+
+      return {
+        chunksReceived: metadata.chunks.length,
+        totalChunks: metadata.totalChunks,
+      };
+      
+    } catch (error) {
+      this.logger.error(`❌ Save chunk failed: ${error.message}`);
+      this.logger.error(`  Upload ID: ${uploadId}, Chunk: ${chunkIndex}`);
+      throw error;
     }
-
-    // Save chunk
-    const chunkPath = path.join(sessionDir, `chunk_${chunkIndex}`);
-    fs.writeFileSync(chunkPath, buffer);
-
-    // Update metadata
-    const metadata: UploadSession = JSON.parse(
-      fs.readFileSync(metadataPath, 'utf8'),
-    );
-
-    if (!metadata.chunks.includes(chunkIndex)) {
-      metadata.chunks.push(chunkIndex);
-    }
-
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-
-    this.logger.log(
-      `✅ Chunk ${chunkIndex} saved. Progress: ${metadata.chunks.length}/${metadata.totalChunks}`,
-    );
-
-    return {
-      chunksReceived: metadata.chunks.length,
-      totalChunks: metadata.totalChunks,
-    };
   }
 
   // Merge all chunks into single buffer
@@ -97,9 +122,6 @@ export class VideoChunkService {
     const sessionDir = path.join(this.uploadDir, uploadId);
     const metadataPath = path.join(sessionDir, 'metadata.json');
 
-    this.logger.log(`📂 Session directory: ${sessionDir}`);
-    this.logger.log(`📄 Metadata path: ${metadataPath}`);
-
     if (!fs.existsSync(metadataPath)) {
       this.logger.error(`❌ Metadata file not found: ${metadataPath}`);
       throw new BadRequestException('Upload session not found');
@@ -108,8 +130,6 @@ export class VideoChunkService {
     const metadata: UploadSession = JSON.parse(
       fs.readFileSync(metadataPath, 'utf8'),
     );
-
-    this.logger.log(`📊 Metadata loaded: ${JSON.stringify(metadata, null, 2)}`);
 
     // Verify all chunks received
     if (metadata.chunks.length !== metadata.totalChunks) {
@@ -152,21 +172,17 @@ export class VideoChunkService {
 
     if (fs.existsSync(sessionDir)) {
       try {
-        // Wait a bit to ensure all file handles are closed
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
         fs.rmSync(sessionDir, { recursive: true, force: true });
         this.logger.log(`🗑️ Cleaned up session: ${uploadId}`);
       } catch (error) {
         this.logger.error(`Failed to cleanup session ${uploadId}: ${error.message}`);
-        
-        // Retry once after a delay
         try {
           await new Promise(resolve => setTimeout(resolve, 2000));
           fs.rmSync(sessionDir, { recursive: true, force: true });
           this.logger.log(`🗑️ Cleaned up session (retry): ${uploadId}`);
         } catch (retryError) {
-          this.logger.error(`Failed to cleanup session after retry: ${retryError.message}`);
+          this.logger.error(`Failed to cleanup after retry: ${retryError.message}`);
         }
       }
     }
@@ -198,7 +214,7 @@ export class VideoChunkService {
     };
   }
 
-  // Cleanup old sessions (run periodically)
+  // Cleanup old sessions
   async cleanupOldSessions(maxAgeHours: number = 24): Promise<void> {
     const sessions = fs.readdirSync(this.uploadDir);
     const now = Date.now();
