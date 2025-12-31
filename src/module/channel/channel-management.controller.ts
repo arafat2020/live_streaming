@@ -60,7 +60,7 @@ async getChannels(
   });
 }
 
-@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
+// @UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Get('recommendedChannels')
 @HttpCode(200)
 @ApiOperation({ summary: 'Get Recommended Channels' })
@@ -73,8 +73,9 @@ async getRecommendedChannels(
   @Query() dto: GetRecommendedChannelsDto,
   @Res() res: Response,
 ) {
+   const userId = (req as any).user?.id || null;
   const result = await this.channelService.getRecommendedChannels(
-    req.user.id,
+    userId,
     dto.limit,
   );
   

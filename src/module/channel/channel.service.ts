@@ -602,24 +602,28 @@ async getContentByChannelId (channelId: string){
   }
  
  // Get recommended channels for a user
-async getRecommendedChannels(userId: string, limit: number = 5) {
-  // STEP 1: User which channel follow
-  const follows = await this.prisma.follow.findMany({
-    where: {
-      followerId: userId,
-    },
-    select: {
-      followingId: true,
-    },
-  });
-
-  const followedChannelIds = follows.map(f => f.followingId);
+async getRecommendedChannels(userId: string | null, limit: number = 5) {
+  let followedChannelIds: string[] = [];
+  
+  // STEP 1: Get followed channels only if user is authenticated
+  if (userId) {
+    const follows = await this.prisma.follow.findMany({
+      where: {
+        followerId: userId,
+      },
+      select: {
+        followingId: true,
+      },
+    });
+    
+    followedChannelIds = follows.map(f => f.followingId);
+  }
 
   // STEP 2: Similar / Active channels
   const similarChannels = await this.prisma.channel.findMany({
     where: {
       id: {
-        notIn: followedChannelIds,
+        notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
       },
       content: {
         some: {
@@ -651,7 +655,7 @@ async getRecommendedChannels(userId: string, limit: number = 5) {
   const popularChannels = await this.prisma.channel.findMany({
     where: {
       id: {
-        notIn: followedChannelIds,
+        notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
       },
     },
     include: {
@@ -683,7 +687,7 @@ async getRecommendedChannels(userId: string, limit: number = 5) {
     where: {
       isLive: true,
       id: {
-        notIn: followedChannelIds,
+        notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
       },
     },
     include: {
@@ -729,10 +733,7 @@ async getRecommendedChannels(userId: string, limit: number = 5) {
       logo: channel.logo,
       description: channel.description,
       isLive: channel.isLive,
-
-      // ADDED OWNER HERE
       owner: channel.owner,
-
       followers: channel._count?.follow || 0,
       contents: channel._count?.content || 0,
       score,
