@@ -35,7 +35,7 @@ export class ChannelManagementController {
   constructor(private readonly channelService: ChannelService) {}
 
 // @ApiTags('Channels')
-@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
+//@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
 @Get('channels')
 @HttpCode(200)
 @ApiOperation({ summary: 'Get all channels with optional search and pagination' })
