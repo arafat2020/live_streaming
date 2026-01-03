@@ -22,6 +22,7 @@ import { StreamsModule } from './module/streams/streams.module';
 import { VideoModule } from './module/video/video.module';
 import { APP_GUARD } from '@nestjs/core';
 import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
+import { ModeratorModule } from './module/moderator/moderator.module';
 
 
 @Module({
@@ -64,6 +65,7 @@ import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
       CloudflareModule,
       StreamsModule,
       VideoModule,
+      ModeratorModule,
 
   ],
   controllers: [AppController],

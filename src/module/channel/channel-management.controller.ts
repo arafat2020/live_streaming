@@ -135,7 +135,7 @@ async getRecommendedChannels(
   }
 
 @ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })  
-@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+// @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get(':id')
 @HttpCode(200)
 async getChannelById(@Param('id') id: string, @Res() res: Response) {
