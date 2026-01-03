@@ -323,7 +323,26 @@ async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
   });
 
   if (existingBan) {
-    throw new ForbiddenException('User already banned');
+   return this.prisma.banUser.update({
+      where: { id: existingBan.id },
+      data: {
+        banType: dto.banType,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        updatedAt: new Date(),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
+    //throw new ForbiddenException('User already banned');
   }
 
   if (dto.banType === BanType.TEMPORARY && !dto.expiresAt) {
@@ -350,6 +369,7 @@ async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
     },
   });
 }
+
 async checkUserBan(channelId: string, userId: string) {
   console.log("hit check Ban User")
   const ban = await this.prisma.banUser.findUnique({
