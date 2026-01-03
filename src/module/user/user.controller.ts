@@ -96,7 +96,7 @@ export class UserController {
       data: user,
     });
   }
-  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+  // @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve User by ID' })
   @ApiResponse({ status: 200, description: 'The requested User.' })

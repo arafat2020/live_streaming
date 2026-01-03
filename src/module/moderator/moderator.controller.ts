@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Res, HttpStatus, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Res, HttpStatus, NotFoundException, ForbiddenException, UseGuards } from '@nestjs/common';
 import { ModeratorService } from './moderator.service';
 import { CreateModeratorDto } from './dto/create-moderator.dto';
 import { UpdateModeratorDto } from './dto/update-moderator.dto';
@@ -6,6 +6,11 @@ import { GetMe } from '../user/dto/request-with-user.interface';
 import sendResponse from '../utils/sendResponse';
 import { Request, Response } from 'express';
 import { BanUserDto } from './dto/ban-user.dto';
+import { ApiOperation } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/guards/roles.decorator';
+import { UserRole } from '@prisma/client';
 @Controller('moderator')
 export class ModeratorController {
   constructor(private readonly moderatorService: ModeratorService) {}
@@ -24,8 +29,10 @@ async verifyChannelOwner(channelId: string, userId: string) {
     throw new ForbiddenException('Only channel owner can ban users');
   }
 }
+
   @Post()
-  create(@Body() createModeratorDto: CreateModeratorDto) {
+  async create(@Body() createModeratorDto: CreateModeratorDto,  @Req() req: GetMe,@Res() res: Response) {
+
     return this.moderatorService.create(createModeratorDto);
   }
 
@@ -57,7 +64,9 @@ async checkUserBan(
   ) {
     return this.moderatorService.checkIsModerator(userId, channelId);
   }
-  
+
+  @ApiOperation({ summary: 'Allows only MODERATOR can perform' })
+  @UseGuards(JwtAuthGuard)  
 @Post('ban/:channelId')
 async banUser(
   @Param('channelId') channelId: string,
@@ -66,8 +75,16 @@ async banUser(
   @Res() res: Response
 ) {
   const userId = req.user.id;
-
-  await this.verifyChannelOwner(channelId, userId);
+      const checkIsModerator =await this.moderatorService.checkIsModerator(userId,channelId);
+  if(!checkIsModerator){
+    return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: false,
+    message: 'You are not this channel Moderator',
+    data:null
+  });
+  }
+  //await this.verifyChannelOwner(channelId, userId);
 
   const data = await this.moderatorService.banUser(channelId, dto, userId);
 

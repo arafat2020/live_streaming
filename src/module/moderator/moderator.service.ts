@@ -280,6 +280,7 @@ export class ModeratorService {
   }
 
   async checkIsModerator(userId: string, channelId: string): Promise<boolean> {
+    console.log("hit checkIsModerator")
     const moderator = await this.prisma.moderator.findFirst({
       where: {
         userId,
@@ -291,6 +292,7 @@ export class ModeratorService {
   }
 
 async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
+
   const channel = await this.prisma.channel.findUnique({
     where: { id: channelId },
   });
@@ -349,6 +351,7 @@ async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
   });
 }
 async checkUserBan(channelId: string, userId: string) {
+  console.log("hit check Ban User")
   const ban = await this.prisma.banUser.findUnique({
     where: {
       channelId_userId: {
