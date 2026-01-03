@@ -39,6 +39,7 @@ model User {
   participants               ChatParticipant[]
   liveComment                LiveComment[]
   bans ChannelBan[] // Add this relation
-
+  moderator Moderator[]
+  banUser BanUser[]
   @@map("users")
 }

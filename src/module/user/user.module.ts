@@ -7,5 +7,6 @@ import { VideoModule } from '../video/video.module';
   imports:[ VideoModule],
   controllers: [UserController],
   providers: [UserService],
+  exports:[UserModule]
 })
 export class UserModule {}

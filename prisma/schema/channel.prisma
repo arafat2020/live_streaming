@@ -17,6 +17,7 @@ model Channel {
   follow   Follow[]   @relation("Following")
   chatRoom ChatRoom[]
   channelBans ChannelBan[]
-
+  moderator Moderator[]
+    banUser BanUser[]
   @@map("channels")
 }
