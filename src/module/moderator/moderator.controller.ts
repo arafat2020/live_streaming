@@ -31,7 +31,7 @@ async verifyChannelOwner(channelId: string, userId: string) {
 }
 
   @Post()
-  async create(@Body() createModeratorDto: CreateModeratorDto,  @Req() req: GetMe,@Res() res: Response) {
+  async create(@Body() createModeratorDto: CreateModeratorDto) {
 
     return this.moderatorService.create(createModeratorDto);
   }
