@@ -28,6 +28,7 @@ import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
+import { PaginationDto } from './dto/pagination.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')
@@ -148,24 +149,35 @@ async getChannelById(@Param('id') id: string, @Res() res: Response) {
       data,
     });
   }
-@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+// Controller
+@UseGuards(JwtAuthGuard, TermsAcceptedGuard)
 @Get('/by-content/:contentId')
 @ApiOperation({
-  summary: 'Get contents by channel ID. This endpoint returns the cntents associated with a specific channel ID.',
+  summary: 'Get contents by channel ID with pagination.',
   description:
-    'This endpoint returns the cntents associated with a specific channel ID.',
+    'This endpoint returns the contents associated with a specific channel ID with pagination support.',
 })
 async getChannelByContent(
-  @Param('contentId') contentId: string,
+  @Param('contentId') contentId: string, // ✅ Added missing @Param
+  @Query() paginationDto: PaginationDto,
   @Res() res: Response,
 ) {
-  const data = await this.channelService.getContentByChannelId(contentId);
+  // ✅ Use paginationDto instance, not the class
+  const pageNumber = paginationDto.page || 1;
+  const limitNumber = paginationDto.limit || 10;
+
+  const data = await this.channelService.getContentByChannelId(
+    contentId,
+    pageNumber,
+    limitNumber,
+  );
 
   return sendResponse(res, {
     statusCode: HttpStatus.OK,
     success: true,
-    message: 'Cntent retrieved successfully.',
-    data,
+    message: 'Content retrieved successfully.',
+    data: data, // ✅ Return contents array
+
   });
 }
 

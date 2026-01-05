@@ -404,12 +404,34 @@ async getChannelById(channelId: string) {
   };
 }
 
-async getContentByChannelId (channelId: string){
-  const data = await this.prisma.content.findMany({where:{channelId:channelId}})
-    if (!data) {
+async getContentByChannelId(channelId: string, page: number = 1, limit: number = 10) {
+  // Validate pagination parameters
+  const validPage = Math.max(1, page);
+  const validLimit = Math.max(1, Math.min(100, limit)); // Max 100 items per page
+  const skip = (validPage - 1) * validLimit;
+
+  // Get total count
+  const total = await this.prisma.content.count({
+    where: { channelId: channelId },
+  });
+
+  if (total === 0) {
     throw new NotFoundException('Content not found.');
   }
-  return data
+
+  // Get paginated data
+  const contents = await this.prisma.content.findMany({
+    where: { channelId: channelId },
+    skip: skip,
+    take: validLimit,
+    orderBy: { createdAt: 'desc' }, // Optional: order by creation date
+  });
+
+  return {
+    contents,
+    total,
+    totalPages: Math.ceil(total / validLimit),
+  };
 }
   /**
    * Ban a user from a channel
