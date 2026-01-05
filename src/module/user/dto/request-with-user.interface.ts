@@ -19,6 +19,7 @@ export interface GetMe extends Request {
     role: string;
     password: string;
     profileImage?: string;
+    channel?:any
     
   };
 }

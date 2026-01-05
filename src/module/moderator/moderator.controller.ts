@@ -65,7 +65,7 @@ async checkUserBan(
     return this.moderatorService.checkIsModerator(userId, channelId);
   }
 
-  @ApiOperation({ summary: 'Allows only MODERATOR can perform' })
+  @ApiOperation({ summary: 'Allows only MODERATOR and owner can perform' })
   @UseGuards(JwtAuthGuard)  
 @Post('ban/:channelId')
 async banUser(
@@ -75,18 +75,11 @@ async banUser(
   @Res() res: Response
 ) {
   const userId = req.user.id;
+  const user = req.user;
+  //console.log("user---------->",user?.channel?.id)
       const checkIsModerator =await this.moderatorService.checkIsModerator(userId,channelId);
-  if(!checkIsModerator){
-    return sendResponse(res, {
-    statusCode: HttpStatus.OK,
-    success: false,
-    message: 'You are not this channel Moderator',
-    data:null
-  });
-  }
-  //await this.verifyChannelOwner(channelId, userId);
-
-  const data = await this.moderatorService.banUser(channelId, dto, userId);
+  if(checkIsModerator || user?.channel?.id ===channelId){
+      const data = await this.moderatorService.banUser(channelId, dto, userId);
 
   return sendResponse(res, {
     statusCode: HttpStatus.CREATED,
@@ -94,6 +87,17 @@ async banUser(
     message: 'User banned successfully',
     data,
   });
+
+  }
+    return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: false,
+    message: 'You are not this channel Moderator',
+    data:null
+  });
+  //await this.verifyChannelOwner(channelId, userId);
+
+
 }
 
 
