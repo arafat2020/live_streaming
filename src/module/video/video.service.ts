@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  BadRequestException
 } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
@@ -57,10 +58,20 @@ export class VideoService {
     lessonId: string,
     dto: CreateVideoDto,
   ): Promise<string> {
+    // ✅ VALIDATE BUFFER FIRST
+    if (!fileBuffer || fileBuffer.length === 0) {
+      throw new BadRequestException('Invalid or empty video buffer');
+    }
+
+    this.logger.log(`📦 Processing video buffer: ${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+
     const r2Prefix = `videos/${lessonId}`;
     const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
 
-    fs.mkdirSync(outputDir, { recursive: true });
+    // Ensure directory exists
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
 
     const playlistPath = path.join(outputDir, 'index.m3u8');
 
@@ -68,7 +79,7 @@ export class VideoService {
     const channel = await this.prisma.channel.findFirst({
       where: { streamKey: dto.streamKey },
     });
-    
+
     if (!channel) {
       throw new NotFoundException('Channel not found');
     }
@@ -85,121 +96,284 @@ export class VideoService {
     const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
 
     return new Promise((resolve, reject) => {
+      // ✅ FIXED: More compatible FFmpeg settings
       const ffmpeg = spawn('ffmpeg', [
-  '-y',
-  '-i', 'pipe:0',
-  
-  // 🌟 HIGHEST QUALITY SETTINGS
-  '-c:v', 'libx264',
-  '-preset', 'slow',                // Even better quality (slower)
-  '-crf', '20',                     // Higher quality (18-20 = near lossless)
-  '-profile:v', 'high',             // Better compression at same quality
-  '-level', '4.0',                  // Wide device compatibility
-  '-pix_fmt', 'yuv420p',            // Pixel format for broad device compatibility
-  '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',  // Keep original size, ensure even dimensions
-  
-  '-c:a', 'aac',
-  '-b:a', '256k',                   // Highest audio quality
-  '-ar', '48000',
-  
-  '-f', 'hls',
-  '-hls_time', '4',
-  '-hls_list_size', '0',
-  '-hls_flags', 'independent_segments',
-  '-g', '96',
-  '-keyint_min', '96',
-  '-sc_threshold', '0',
-  
-  playlistPath,
-]);
+        '-y',
+        '-i', 'pipe:0',
 
-      const readable = new Readable();
-      readable.push(fileBuffer);
-      readable.push(null);
-      readable.pipe(ffmpeg.stdin);
+        // Video encoding
+        '-c:v', 'libx264',
+        '-preset', 'medium',              // Balanced speed/quality
+        '-crf', '23',                     // Good quality (lower = better)
+        '-profile:v', 'main',             // Better compatibility
+        '-level', '4.0',
+        '-pix_fmt', 'yuv420p',
+        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+
+        // Audio encoding
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-ar', '48000',
+        '-ac', '2',                       // Stereo
+
+        // HLS settings
+        '-f', 'hls',
+        '-hls_time', '6',                 // 6 second segments
+        '-hls_list_size', '0',
+        '-hls_flags', 'independent_segments+delete_segments',
+        '-hls_segment_type', 'mpegts',
+        '-hls_segment_filename', path.join(outputDir, 'segment_%03d.ts'),
+        '-g', '48',                       // GOP size
+        '-keyint_min', '48',
+        '-sc_threshold', '0',
+
+        playlistPath,
+      ], {
+        stdio: ['pipe', 'pipe', 'pipe']  // ✅ Explicit stdio config
+      });
+
+      // ✅ FIXED: Better buffer streaming
+      const bufferStream = new Readable({
+        read() {
+          this.push(fileBuffer);
+          this.push(null);
+        }
+      });
+
+      // ✅ Handle stdin errors
+      ffmpeg.stdin.on('error', (err) => {
+        this.logger.error(`FFmpeg stdin error: ${err.message}`);
+      });
+
+      // Pipe buffer to FFmpeg
+      bufferStream.pipe(ffmpeg.stdin).on('error', (err) => {
+        this.logger.error(`Buffer pipe error: ${err.message}`);
+      });
 
       let resolved = false;
+      let ffmpegError = '';
 
-      // Check for playlist availability
+      // Collect stderr for debugging
+      ffmpeg.stderr.on('data', (data) => {
+        const output = data.toString();
+        ffmpegError += output;
+
+        // Only log important messages
+        if (output.includes('error') || output.includes('Error') ||
+          output.includes('failed') || output.includes('time=')) {
+          this.logger.debug(`[FFmpeg] ${output.trim()}`);
+        }
+      });
+
+      // ✅ Check for playlist with timeout
       const checker = setInterval(async () => {
-        if (fs.existsSync(playlistPath) && !resolved) {
+        if (resolved) {
+          clearInterval(checker);
+          return;
+        }
+
+        if (fs.existsSync(playlistPath)) {
           try {
-            const url = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
-            await this.contentService.update(content.id, { playbackUrl: url });
-            resolved = true;
-            resolve(url);
-            clearInterval(checker);
-            this.logger.log(` Playlist available: ${url}`);
+            const playlistContent = fs.readFileSync(playlistPath, 'utf-8');
+
+            // Verify playlist has segments
+            if (playlistContent.includes('.ts')) {
+              const url = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
+              await this.contentService.update(content.id, { playbackUrl: url });
+
+              resolved = true;
+              clearInterval(checker);
+              this.logger.log(`✅ Playlist available: ${url}`);
+              resolve(url);
+            }
           } catch (err) {
-            this.logger.debug('Waiting for playlist to be ready...');
+            this.logger.debug('Waiting for valid playlist...');
           }
         }
       }, 2000);
 
-      ffmpeg.stderr.on('data', (data) => {
-        this.logger.debug(`[FFmpeg VOD] ${data.toString().trim()}`);
-      });
+      // ✅ Timeout protection (5 minutes)
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          clearInterval(checker);
+          watcher.stop();
+          ffmpeg.kill('SIGKILL');
+
+          this.logger.error('⏱️ FFmpeg processing timeout (5 minutes)');
+          this.logger.error(`Last FFmpeg output: ${ffmpegError.slice(-500)}`);
+
+          reject(new Error('Video processing timeout'));
+        }
+      }, 5 * 60 * 1000);
 
       ffmpeg.on('error', (error) => {
         clearInterval(checker);
+        clearTimeout(timeout);
         watcher.stop();
-        this.logger.error(`FFmpeg error: ${error.message}`);
-        if (!resolved) reject(error);
-      });
-      // video.service.ts - UPDATED ffmpeg close handler
 
-ffmpeg.on('close', async (code) => {
-  clearInterval(checker);
-  
-  if (code === 0) {
-    this.logger.log('✅ FFmpeg completed successfully. Waiting for R2 upload...');
-    
-    try {
-      // Wait for uploads BEFORE stopping watcher
-      await this.waitForUploadComplete(outputDir, 120000);
-      
-      this.logger.log('✅ All files uploaded to R2');
-      
-      // Stop watcher
-      watcher.stop();
-      
-      // Wait a bit for watcher to fully stop
-      await new Promise(resolve => setTimeout(resolve, 2000));
+        this.logger.error(`❌ FFmpeg spawn error: ${error.message}`);
 
-      // Update content status
-      await this.contentService.update(content.id, {
-        status: 'AVAILABLE',
+        if (!resolved) {
+          reject(error);
+        }
       });
 
-      this.logger.log(`✅ Video processing complete for ${lessonId}`);
-      
-      // ✅ IMMEDIATE CLEANUP after upload complete
-      await this.cleanupLocalFiles(outputDir);
-      
-    } catch (uploadError) {
-      this.logger.error(`Upload/Cleanup error: ${uploadError.message}`);
-      watcher.stop();
-      await this.contentService.update(content.id, {
-        status: 'FAILED',
+      ffmpeg.on('close', async (code) => {
+        clearInterval(checker);
+        clearTimeout(timeout);
+
+        if (code === 0) {
+          this.logger.log('✅ FFmpeg completed successfully');
+
+          try {
+            // Wait for uploads
+            await this.waitForUploadComplete(outputDir, 120000);
+
+            this.logger.log('✅ All files uploaded to R2');
+
+            // Stop watcher
+            watcher.stop();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Update content status
+            await this.contentService.update(content.id, {
+              status: 'AVAILABLE',
+            });
+
+            this.logger.log(`✅ Video processing complete for ${lessonId}`);
+
+            // Cleanup
+            await this.cleanupLocalFiles(outputDir);
+
+            if (!resolved) {
+              resolve(`${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`);
+            }
+
+          } catch (uploadError) {
+            this.logger.error(`Upload error: ${uploadError.message}`);
+            watcher.stop();
+
+            await this.contentService.update(content.id, {
+              status: 'FAILED',
+            });
+
+            if (!resolved) {
+              reject(uploadError);
+            }
+          }
+        } else {
+          // FFmpeg failed
+          watcher.stop();
+
+          this.logger.error(`❌ FFmpeg exited with code ${code}`);
+          this.logger.error(`FFmpeg error output: ${ffmpegError.slice(-1000)}`);
+
+          await this.contentService.update(content.id, {
+            status: 'FAILED',
+          });
+
+          await this.cleanupLocalFiles(outputDir);
+
+          if (!resolved) {
+            reject(new Error(`FFmpeg failed with code ${code}: ${ffmpegError.slice(-200)}`));
+          }
+        }
       });
-    }
-  } else {
-    // On error, stop watcher immediately
-    watcher.stop();
-    this.logger.error(`FFmpeg exited with code ${code}`);
-    
-    await this.contentService.update(content.id, {
-      status: 'FAILED',
     });
-    
-    // Cleanup on failure
-    await this.cleanupLocalFiles(outputDir);
-    
-    if (!resolved) reject(new Error(`FFmpeg failed with code ${code}`));
   }
-});
- 
-    });
+
+  /**
+   * Wait for all files to be uploaded to R2
+   */
+  private async waitForUploadComplete(
+    outputDir: string,
+    timeout: number = 120000,
+  ): Promise<void> {
+    const startTime = Date.now();
+    let lastFileCount = -1;
+    let stableCount = 0;
+
+    this.logger.log(`⏳ Waiting for R2 upload to complete...`);
+
+    while (Date.now() - startTime < timeout) {
+      try {
+        if (!fs.existsSync(outputDir)) {
+          this.logger.log('✅ Directory removed - upload complete');
+          return;
+        }
+
+        const files = fs.readdirSync(outputDir).filter(f =>
+          f.endsWith('.ts') || f.endsWith('.m3u8')
+        );
+
+        const fileCount = files.length;
+
+        if (fileCount !== lastFileCount) {
+          this.logger.log(`📊 Files remaining: ${fileCount}`);
+          lastFileCount = fileCount;
+          stableCount = 0;
+        } else {
+          stableCount++;
+        }
+
+        if (fileCount === 0) {
+          this.logger.log('✅ All segments uploaded');
+          return;
+        }
+
+        if (stableCount >= 5) {
+          this.logger.log(`ℹ️ File count stable, considering complete`);
+
+          for (const file of files) {
+            try {
+              fs.unlinkSync(path.join(outputDir, file));
+            } catch (err) {
+              this.logger.warn(`Could not delete ${file}`);
+            }
+          }
+          return;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+      } catch (err) {
+        this.logger.warn(`Error checking upload: ${err.message}`);
+        return;
+      }
+    }
+
+    this.logger.warn('⚠️ Upload timeout reached');
+  }
+
+  /**
+   * Cleanup local files with retry logic
+   */
+  private async cleanupLocalFiles(outputDir: string): Promise<void> {
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (fs.existsSync(outputDir)) {
+          const files = fs.readdirSync(outputDir);
+          this.logger.log(`🗑️ Cleaning up ${files.length} files`);
+
+          fs.rmSync(outputDir, { recursive: true, force: true });
+
+          this.logger.log(`✅ Cleaned up: ${outputDir}`);
+          return;
+        } else {
+          this.logger.log(`ℹ️ Already removed: ${outputDir}`);
+          return;
+        }
+      } catch (err) {
+        this.logger.warn(`⚠️ Cleanup attempt ${attempt} failed: ${err.message}`);
+
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
   }
 
   // video.service.ts - IMPROVED waitForUploadComplete
@@ -207,73 +381,7 @@ ffmpeg.on('close', async (code) => {
  * Wait for all files to be uploaded to R2
  * Enhanced with better detection
  */
-private async waitForUploadComplete(
-  outputDir: string,
-  timeout: number = 120000,
-): Promise<void> {
-  const startTime = Date.now();
-  let lastFileCount = -1;
-  let stableCount = 0;
 
-  this.logger.log(`⏳ Waiting for R2 upload to complete...`);
-
-  while (Date.now() - startTime < timeout) {
-    try {
-      if (!fs.existsSync(outputDir)) {
-        this.logger.log('✅ Directory removed - upload complete');
-        return;
-      }
-
-      // Check if any .ts or .m3u8 files still exist
-      const files = fs.readdirSync(outputDir).filter(f => 
-        f.endsWith('.ts') || f.endsWith('.m3u8')
-      );
-      
-      const fileCount = files.length;
-      
-      // Log progress if file count changed
-      if (fileCount !== lastFileCount) {
-        this.logger.log(`📊 Files remaining: ${fileCount} - ${files.slice(0, 3).join(', ')}${files.length > 3 ? '...' : ''}`);
-        lastFileCount = fileCount;
-        stableCount = 0;
-      } else {
-        stableCount++;
-      }
-
-      // If no files left, we're done
-      if (fileCount === 0) {
-        this.logger.log('✅ All segments uploaded and deleted from local storage');
-        return;
-      }
-
-      // If file count stable for 5 checks (10 seconds), assume done
-      if (stableCount >= 5) {
-        this.logger.log(`ℹ️ File count stable at ${fileCount} for 10 seconds, considering upload complete`);
-        
-        // Try to delete remaining files
-        for (const file of files) {
-          try {
-            const filePath = path.join(outputDir, file);
-            fs.unlinkSync(filePath);
-            this.logger.log(`🗑️ Force deleted: ${file}`);
-          } catch (err) {
-            this.logger.warn(`Could not delete ${file}: ${err.message}`);
-          }
-        }
-        return;
-      }
-
-      // Wait before checking again 
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-    } catch (err) {
-      this.logger.warn(`Error checking upload status: ${err.message}`);
-      return;
-    }
-  }
-
-  this.logger.warn('⚠️ Upload timeout reached, proceeding with cleanup anyway');
-}
 
   /**
    * Handle live stream start
@@ -416,42 +524,5 @@ private async waitForUploadComplete(
       return null;
     }
   }
-  // video.service.ts - Add this method to VideoService class
 
-/**
- * Cleanup local files with retry logic
- */
-private async cleanupLocalFiles(outputDir: string): Promise<void> {
-  const maxRetries = 3;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      if (fs.existsSync(outputDir)) {
-        // List files before deletion for logging
-        const files = fs.readdirSync(outputDir);
-        this.logger.log(`🗑️ Cleaning up ${files.length} files from ${outputDir}`);
-        
-        // Delete directory recursively
-        fs.rmSync(outputDir, { recursive: true, force: true });
-        
-        this.logger.log(`✅ Successfully cleaned up local files: ${outputDir}`);
-        return;
-      } else {
-        this.logger.log(`ℹ️ Directory already removed: ${outputDir}`);
-        return;
-      }
-    } catch (err) {
-      this.logger.warn(`⚠️ Cleanup attempt ${attempt}/${maxRetries} failed: ${err.message}`);
-      
-      if (attempt < maxRetries) {
-        // Wait before retry (exponential backoff: 1s, 2s, 4s)
-        const delay = Math.pow(2, attempt) * 1000;
-        this.logger.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      } else {
-        this.logger.error(`❌ Failed to cleanup after ${maxRetries} attempts: ${outputDir}`);
-      }
-    }
-  }
-}
 }
