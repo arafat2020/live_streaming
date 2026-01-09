@@ -1,5 +1,6 @@
 import { Injectable ,NotFoundException,BadRequestException} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { QueryFollowDto } from './dto/query-follow.dto';
 
 @Injectable()
 export class FollowService {
@@ -71,16 +72,94 @@ export class FollowService {
         },
       },
     });
-
+   
     return { isFollowing: !!follow };
   }
 
-  async getFollowedChannels(userId: string) {
-    return this.prisma.follow.findMany({
-      where: { followerId: userId },
-      include: { following: true }, // Channel info
-    });
-  }
+// follow.service.ts
+async getFollowedChannels(userId: string, query?: QueryFollowDto) {
+  const page = Math.max(query?.page ?? 1, 1);
+  const pageSize = Math.min(query?.pageSize ?? 20, 100);
+  const skip = (page - 1) * pageSize;
+
+  // Get followed channels with pagination and total count
+  const [follows, total] = await this.prisma.$transaction([
+    // Get paginated data
+    this.prisma.follow.findMany({
+      where: {
+        followerId: userId,
+      },
+      skip,
+      take: pageSize,
+      orderBy: {
+        createdAt: 'desc', // Most recently followed first
+      },
+      select: {
+        createdAt: true,
+        following: {
+          select: {
+            id: true,
+            name: true,
+            handle: true,
+            logo: true,
+            description: true,
+            isLive: true,
+            createdAt: true,
+            updatedAt: true,
+
+            owner: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                status: true,
+                profileImage: true,
+              },
+            },
+
+            _count: {
+              select: {
+                follow: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+
+    // Get total count
+    this.prisma.follow.count({
+      where: {
+        followerId: userId,
+      },
+    }),
+  ]);
+
+  // Flatten and restructure response
+  const data = follows.map((item) => {
+    const { _count, ...channelData } = item.following;
+
+    return {
+      followedAt: item.createdAt,
+      channel: {
+        ...channelData,
+        followerCount: _count.follow,
+      },
+      owner: item.following.owner,
+    };
+  });
+
+  return {
+    data,
+    meta: {
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+}
+
 
   async getFollowers(channnelId: string) {
     const channel = await this.prisma.channel.findUnique({

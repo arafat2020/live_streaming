@@ -30,7 +30,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Serve HLS files from uploads
+  // Serve HLS files from uploads     
   app.use(
     '/uploads',
     express.static(path.join(process.cwd(), 'uploads')),
@@ -60,8 +60,10 @@ async function bootstrap() {
   
   setupSwagger(app);
   const port = process.env.PORT || 8000;
-  await app.listen(port);
-  console.log(`🚀 Server running on http://localhost:${port}`);
+  app.listen(port, '0.0.0.0', () => {
+   console.log(`🚀 Server running on http://localhost:${port}`);
+});
+ 
 }
 
 bootstrap();

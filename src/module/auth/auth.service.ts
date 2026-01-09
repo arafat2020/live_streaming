@@ -70,7 +70,7 @@ export class AuthService {
       const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, ...safeUser } = user;
       return safeUser;
     } catch (err) {
-      console.error("err------>",err);
+      //console.error("err------>",err);
       throw new InternalServerErrorException('Failed to create user.',err);
     }
   }
@@ -99,7 +99,7 @@ export class AuthService {
       data: { lastLogin: new Date() },
     });
 
-    // Prepare common payload fields
+    // Prepare common payload fields 
     const payloadBase = {
       sub: user.id,
       email: user.email,
@@ -127,7 +127,7 @@ export class AuthService {
       { ...payloadBase, tf: true }, // tf=true indicates 2FA satisfied (or not required)
       {
         secret: process.env.JWT_SECRET,
-        expiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
+        expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
       },
     );
 

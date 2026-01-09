@@ -1,7 +1,7 @@
 model Notification {
   id        String            @id @default(uuid())
   userId    String
-  user      User              @relation(fields: [userId], references: [id])
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      NotificationType? // e.g., 'CHANNEL_LIVE', 'NEW_VIDEO', 'ANNOUNCEMENT'
   message   String // The text displayed to the user
   contentId String? // Optional: link back to the content

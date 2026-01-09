@@ -18,6 +18,14 @@ model User {
   is2FAEnabled         Boolean            @default(false)
   twoFactorSecret      String? // The secret key used by the Authenticator app
 
+  // Age and Terms confirmation
+  ageConfirmed        Boolean   @default(false)
+  termsAccepted       Boolean   @default(false)
+  termsAcceptedAt     DateTime?
+  privacyAccepted     Boolean   @default(false)
+  privacyAcceptedAt   DateTime?
+  dateOfBirth         DateTime? // Optional: store actual DOB
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -30,6 +38,8 @@ model User {
   chatMessage                ChatMessage[]
   participants               ChatParticipant[]
   liveComment                LiveComment[]
-
+  bans ChannelBan[] // Add this relation
+  moderator Moderator[]
+  banUser BanUser[]
   @@map("users")
 }

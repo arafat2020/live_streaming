@@ -1,11 +1,16 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
+  Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  ParseIntPipe,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -17,64 +22,86 @@ import { CreateChannelDto } from './dto/create-channel.dto';
 import { GetMe } from '../user/dto/request-with-user.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { BanUserDto, UnbanUserDto } from './dto/ban-user.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 
-@Controller('channels')
+@Controller('channels/:channelId')
+@UseGuards(JwtAuthGuard)
 export class ChannelController {
-  constructor(private readonly channelService: ChannelService) {}
+  constructor(private readonly channelService: ChannelService,private prisma: PrismaService) {}
 
-  // @UseGuards(JwtAuthGuard)
-  // @Post('onboard')
-  // @HttpCode(HttpStatus.CREATED)
-  // //@ApiBearerAuth()
-  // @ApiOperation({ summary: 'Onboard a Creator: Create the initial channel profile' })
-  // //@ApiResponse({ status: 201, description: 'Channel created successfully.', type: CreatorChannelResponseDto })
-  // @ApiResponse({ status: 400, description: 'User already owns a channel.' })
-  // @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  // @ApiResponse({ status: 403, description: 'Forbidden (User is not a CREATOR).' })
-  // async onboardCreator(@Req() req: GetMe, @Body() body: CreateChannelDto) {
-  //   const userId = req.user.id; // User ID attached by the AuthGuard
-  //   //console.log("userId---------->", userId);
-  //   // Call the factory method you already created in ChannelService
-  //   const channel = await this.channelService.createChannelForCreator(
-  //     userId,
-  //     body.name,
-  //   );
-
-  //   return {
-  //     message: 'Channel created successfully. You can now access /creator/channel endpoints.',
-  //     channelHandle: channel.handle,
-  //     channelId: channel.id,
-  //   };
-  // }
+  @Post('ban')
+  async banUser(
+    @Param('channelId') channelId: string,
+    @Body() dto: BanUserDto,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+    const userId = req.user.id; 
+    // Verify user is channel owner
+    await this.verifyChannelOwner(channelId, userId);
+    
+    const data =await this.channelService.banUser(channelId, dto, userId);
+      return sendResponse(res, {
+      statusCode: HttpStatus.CREATED,
+      success: true,
+      message: 'User ban successfully.',
+      data: data,
+    });
+  }
 
 
-  // /**GET /channels/:handle - Public view of a channel profile and content list.*/
-  // @Get(':handle')
-  // async getChannel(@Param('handle') handle: string,@Res() res: Response) {
-  //   const data = await this.channelService.getPublicChannel(handle);
-  //   return sendResponse(res, {
-  //     statusCode: HttpStatus.OK,
-  //     success: true,
-  //     message: 'view of a channel profile and content list successfully.',
-  //     data,
-  //   });
-  // }
-  // //GET /channels/validate-stream/:key - Internal/RTMP Server route for stream key validation.
-  // //NOTE: This should be heavily secured, ideally not exposed publicly, but placed here for demonstration.
+  @Delete('unban')
+  async unbanUser(
+    @Param('channelId') channelId: string,
+    @Body() dto: UnbanUserDto,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+     const userId = req.user.id; 
+    await this.verifyChannelOwner(channelId, userId);
+    
+    const data =await this.channelService.unbanUser(channelId, dto.userId);
+      return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'User unbanned successfully.',
+      data: data,
+    });
+  }
 
-  // @Get('validate-stream/:key')
-  // @HttpCode(200)
-  // async validateStreamKey(@Param('key') key: string,@Res() res: Response,) {
-  //   const isValid = await this.channelService.validateStreamKey(key);
-  //   // Return a simple boolean status for the RTMP server || return { valid: isValid };
-  //   return sendResponse(res, {
-  //     statusCode: HttpStatus.OK,
-  //     success: true,
-  //     message: 'view of a channel profile and content list successfully.',
-  //     data: { valid: isValid },
-  //   });
-  // }
+ 
+  @Get('bans')
+  async getBannedUsers(
+    @Param('channelId') channelId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe)
+    page: number,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe)
+    pageSize: number,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+     const userId = req.user.id; 
+    await this.verifyChannelOwner(channelId, userId);
+    
+    const data = await this.channelService.getBannedUsers(channelId, page, pageSize);
+      return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Banned users fetched successfully.',
+      data: data,
+    });
+  }
 
+  private async verifyChannelOwner(channelId: string, userId: string) {
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+    });
+
+    if (!channel || channel.ownerId !== userId) {
+      throw new ForbiddenException('Only channel owner can moderate');
+    }
+  }
   
 }

@@ -5,9 +5,9 @@ model ChatParticipant {
   leftAt   DateTime?
 
   roomId String
-  room   ChatRoom @relation(fields: [roomId], references: [id])
+  room   ChatRoom @relation(fields: [roomId], references: [id],onDelete: Cascade)
   userId String
-  user   User     @relation(fields: [userId], references: [id])
+  user   User     @relation(fields: [userId], references: [id],onDelete: Cascade)
 
   @@map("chat_participants")
 }

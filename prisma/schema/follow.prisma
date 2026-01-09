@@ -1,8 +1,8 @@
 model Follow {
   followerId  String
-  follower    User    @relation("Follower", fields: [followerId], references: [id])
+  follower    User    @relation("Follower", fields: [followerId], references: [id] , onDelete: Cascade)
   followingId String
-  following   Channel @relation("Following", fields: [followingId], references: [id])
+  following   Channel @relation("Following", fields: [followingId], references: [id] , onDelete: Cascade)
 
   createdAt DateTime @default(now())
 

@@ -2,7 +2,7 @@ import { Injectable, OnApplicationBootstrap, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { UserRole } from '@prisma/client';
-
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
@@ -14,31 +14,61 @@ export class SeederService implements OnApplicationBootstrap {
     await this.seedAdmin();
   }
 
-  private async seedAdmin() {
-    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL as string;
-    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD as string;
+  // generate a stream key using uuidv4
+  private generateStreamKey(): string {
+    return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
+  }
 
-    const supperAdmin = await this.prisma.user.findFirst({
-      where: { role: UserRole.ADMIN},
+  private async seedAdmin() {
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
+
+    if (!superAdminEmail || !superAdminPassword) {
+      this.logger.warn(
+        'SUPER_ADMIN_EMAIL or SUPER_ADMIN_PASSWORD not set. Skipping admin seeding.',
+      );
+      return;
+    }
+
+    const superAdmin = await this.prisma.user.findFirst({
+      where: { role: UserRole.ADMIN },
     });
 
-    if ( supperAdmin) {
-      this.logger.log('Admin is already exists, skipping seeding.');
+    if (superAdmin) {
+      this.logger.log('Admin already exists, skipping seeding.');
       return;
     }
 
     const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
 
-    await this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         email: superAdminEmail,
         password: hashedPassword,
-        firstName: 'Admin',
-        lastName: 'User',
-        role: UserRole.ADMIN
+        firstName: 'Super',
+        lastName: 'Admin',
+        role: UserRole.ADMIN,
+
+        // Important flags for admin
+        verified: true,
+        ageConfirmed: true,
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        privacyAccepted: true,
+        privacyAcceptedAt: new Date(),
       },
     });
 
-    this.logger.log(`Default super admin created: ${superAdminEmail}`);
+    const channelPayload = {
+      ownerId: user.id,
+      name: user.firstName,
+      handle: user.email.split('@')[0],
+      description: 'Platform owner', // empty string instead of null
+      streamKey: this.generateStreamKey(),
+    };
+
+    await this.prisma.channel.create({ data: channelPayload });
+
+    this.logger.log(`✅ Default super admin created: ${superAdminEmail}`);
   }
 }

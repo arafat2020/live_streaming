@@ -9,6 +9,10 @@ import {
   UseGuards,
   HttpStatus,
   Delete,
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
+  Post,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -18,10 +22,13 @@ import { GetMe, RequestWithUser } from './dto/request-with-user.interface';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request, Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
-import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { Roles } from '../auth/guards/roles.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { AcceptTermsDto } from './dto/user-confirmation.dto';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 
 @Controller('user')
 export class UserController {
@@ -29,6 +36,7 @@ export class UserController {
 
   @ApiOperation({ summary: 'Get all Users' })
   @Get()
+  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   async findAll(@Req() req: RequestWithUser,@Res() res: Response) {
     const data= await this.userService.findAll();
     return sendResponse(res, {
@@ -39,8 +47,40 @@ export class UserController {
     });
   }
 
-  // STATIC route first
+ @UseGuards(JwtAuthGuard)
+ @Post('accept-terms')
+  @ApiOperation({ summary: 'Accept Terms of Service and Privacy Policy' })
+  async acceptTerms(@Req() req: GetMe,@Body() dto: AcceptTermsDto, @Res() res: Response) {
+    const data =await this.userService.acceptTermsAndConditions(req.user.id, dto);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'User Accept Terms and Conditions successfully.',
+      data,
+    })
+  }
+
   @UseGuards(JwtAuthGuard)
+  @Get('terms-status')
+  //@ApiBearerAuth()
+  @ApiOperation({ summary: 'Get terms acceptance status' })
+  async getTermsStatus(@Req() req: GetMe,) {
+    //console.log("getTermsStatus hit ---------------------->")
+    return this.userService.getTermsStatus(req.user.id);
+  }
+
+  // @Get('terms-status')
+  // @UseGuards(JwtAuthGuard)
+  // @SkipTermsCheck()
+  // @ApiBearerAuth()
+  // @ApiOperation({ summary: 'Get terms acceptance status' })
+  // async getTermsStatus(@Req() req: any) {
+  //   return this.userService.getTermsStatus(req.user.id);
+  // }
+
+
+  // STATIC route first
+  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   @Get('get-me')
   @ApiOperation({
     summary: 'Retrieve the profile of the authenticated user.',
@@ -56,6 +96,7 @@ export class UserController {
       data: user,
     });
   }
+  // @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve User by ID' })
   @ApiResponse({ status: 200, description: 'The requested User.' })
@@ -70,7 +111,7 @@ export class UserController {
     });
   }
   @ApiOperation({ summary: 'Allows only ADMIN to update a user’s role or status' })
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
   @Roles(UserRole.ADMIN)
   @Patch('admin/:id')
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Res() res: Response) {
@@ -83,21 +124,69 @@ export class UserController {
     });
   }
 
-  @ApiOperation({ summary: 'update my profile' })
-  @Patch(':id')
-  async myProfile(@Param('id') id: string,@Body() dto: UpdateMyProfileDto,@Req() req: RequestWithUser, @Res() res: Response) {
-    const data = await this.userService.myProfile(id, dto);
-    return sendResponse(res, {
-      statusCode: HttpStatus.CREATED,
-      success: true,
-      message: 'Profile updated successfully.',
-      data,
-    });
-  }
+  // @ApiOperation({ summary: 'update my profile' })
+  // @Patch(':id')
+  // async myProfile(@Param('id') id: string,@Body() dto: UpdateMyProfileDto,@Req() req: RequestWithUser, @Res() res: Response) {
+  //   const data = await this.userService.myProfile(id, dto);
+  //   return sendResponse(res, {
+  //     statusCode: HttpStatus.CREATED,
+  //     success: true,
+  //     message: 'Profile updated successfully.',
+  //     data,
+  //   });
+  // }
+@ApiOperation({ summary: 'Update profile with image' })
+@ApiConsumes('multipart/form-data')
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Profile image (JPG, PNG, WEBP - Max 5MB)',
+      },
+      email: {
+        type: 'string',
+        example: 'user@gmail.com',
+      },
+      firstName: {
+        type: 'string',
+        example: 'Sarah',
+      },
+      lastName: {
+        type: 'string',
+        example: 'Connor',
+      },
+      phone: {
+        type: 'string',
+        example: '0190000000',
+      },
+    },
+  },
+})
+  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+@Patch(':id')
+@UseInterceptors(FileInterceptor('file'))
+async uploadProfileImage(
+  @Param('id') id: string,
+  @UploadedFile() file: Express.Multer.File,
+  @Body() dto: UpdateMyProfileDto,
+  @Res() res: Response,
+) {
+  const data = await this.userService.myProfile(id, dto, file);
 
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Profile updated successfully.',
+    data,
+  });
+}
 
-  @Delete(':id')
-  async remove(@Param('id') id: string, @Res() res: Response) {
+@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+@Delete(':id')
+async remove(@Param('id') id: string, @Res() res: Response) {
     const data = await this.userService.remove(id);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -105,5 +194,7 @@ export class UserController {
       message: 'User deleted successfully.',
       data,
     })
-  }
+}
+
+
 }

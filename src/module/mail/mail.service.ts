@@ -38,7 +38,7 @@ export class MailService {
   }
 
   async sendMail(options: SendMailOptions) {
-    console.log('Sending mail...',options);
+    //console.log('Sending mail...',options);
     const { to, subject, html } = options;
     const data = await this.transporter.sendMail({
       from:process.env.SMTP_FROM,

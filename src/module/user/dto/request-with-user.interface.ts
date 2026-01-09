@@ -7,6 +7,7 @@ export interface RequestWithUser extends Request {
     firstName: string;
     lastName: string;
     role: string;
+    profileImage?: string;
   };
 }
 export interface GetMe extends Request {
@@ -17,5 +18,8 @@ export interface GetMe extends Request {
     lastName: string;
     role: string;
     password: string;
+    profileImage?: string;
+    channel?:any
+    
   };
 }

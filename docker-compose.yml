@@ -20,10 +20,11 @@ services:
   app:
     build: .
     container_name: rappio_app
+    #network_mode: "host"
     ports:
-      - "5000:5000"
-      - "8001:8001"
-      - "1935:1935"
+      - "8000:8000"   # NestJS API
+      - "8001:8001"   # Media HTTP (HLS)
+      - "1935:1935"   # RTMP
     env_file:
       - .env
     depends_on:
@@ -31,8 +32,8 @@ services:
         condition: service_healthy
     command: >
       sh -c "
-      echo '⏳ Waiting for DB...' &&
-      npx prisma migrate deploy || echo '⚠️ Migration skipped' &&
+      echo 'Waiting for DB...' &&
+      npx prisma migrate deploy || echo 'Migration skipped' &&
       node dist/main.js
       "
     volumes:

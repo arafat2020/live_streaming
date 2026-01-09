@@ -2,6 +2,9 @@ import { Injectable,BadRequestException ,NotFoundException, ForbiddenException} 
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { UpdateChannelDto } from './dto/update-channel.dto';
+import { BanType , Prisma} from '@prisma/client';
+import { BanUserDto } from './dto/ban-user.dto';
+import { GetChannelsDto } from './dto/get-channels-query.dto';
 
 @Injectable()
 export class ChannelService {
@@ -93,18 +96,72 @@ export class ChannelService {
     };
   }
   /**Retrieves full private channel details for the owner/creator.*/
-  async getPrivateChannel(userId: string) {
-    const channel = await this.prisma.channel.findUnique({
-      where: { ownerId: userId },
-      include: { owner: { select: { email: true, firstName: true } } },
-    });
+ // channel.service.ts
+async getPrivateChannel(userId: string) {
+  const channel = await this.prisma.channel.findUnique({
+    where: { ownerId: userId },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          content: true,     // Total content count
+          follow: true,      // Total followers
+        },
+      },
+    },
+  });
 
-    if (!channel) {
-      throw new NotFoundException('Creator channel not found.');
-    }
-
-    return channel; // Includes the sensitive streamKey
+  if (!channel) {
+    throw new NotFoundException('Creator channel not found.');
   }
+
+  //  Calculate total views (sum of all content views)
+  const totalViews = await this.prisma.content.aggregate({
+    where: {
+      channelId: channel.id,
+    },
+    _sum: {
+      views: true,
+    },
+  });
+
+  //  Get additional statistics
+  const liveContentCount = await this.prisma.content.count({
+    where: {
+      channelId: channel.id,
+      contentType: 'LIVE_STREAM',
+    },
+  });
+
+  const vodContentCount = await this.prisma.content.count({
+    where: {
+      channelId: channel.id,
+      contentType: 'VOD',
+    },
+  });
+
+  // Destructure _count and restructure response
+  const { _count, ...channelData } = channel;
+
+  return {
+    ...channelData,
+    statistics: {
+      totalViews: totalViews._sum.views || 0,
+      totalContent: _count.content,
+      // totalFollowers: _count.follow,
+      // liveStreamCount: liveContentCount,
+      // vodCount: vodContentCount,
+    },
+  };
+}
 
   /**Allows channel owner to update name, description, and handle (with rate limit).*/
   async updateChannel(userId: string, data: UpdateChannelDto) {
@@ -112,16 +169,19 @@ export class ChannelService {
     if (!channel) {
       throw new NotFoundException('Channel not found.');
     }
+  const isOwner = channel.ownerId === userId;
+    if (!isOwner) {
+    throw new ForbiddenException('You are not authorized to updated this channel. Only the channel owner can updated channel.');
+  }
+    // // Logic for Handle Change Rate Limit (30 days)
+    // if (data.handle && data.handle !== channel.handle) {
+    //   const thirtyDaysAgo = new Date();
+    //   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Logic for Handle Change Rate Limit (30 days)
-    if (data.handle && data.handle !== channel.handle) {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      if (channel.lastHandleUpdate > thirtyDaysAgo) {
-        throw new BadRequestException('Handle can only be changed once every 30 days.');
-      }
-    }
+    //   if (channel.lastHandleUpdate > thirtyDaysAgo) {
+    //     throw new BadRequestException('Handle can only be changed once every 30 days.');
+    //   }
+    // }
 
     return this.prisma.channel.update({
       where: { ownerId: userId },
@@ -182,34 +242,115 @@ export class ChannelService {
     return !!channel && channel.owner.status === 'ACTIVE';
   }
   
-async getChannels() {
+
+async getChannels(dto: GetChannelsDto) {
+  const { search, page = 1, limit = 10 } = dto;
+  const skip = (page - 1) * limit;
+
+  // Build where clause for search
+  const where = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' as const } },
+          { handle: { contains: search, mode: 'insensitive' as const } },
+        ],
+      }
+    : {};
+
+  // Get total count for pagination
+  const total = await this.prisma.channel.count({ where });
+
+  // Fetch channels with pagination
   const channels = await this.prisma.channel.findMany({
+    where,
     select: {
       id: true,
       name: true,
       handle: true,
-      streamKey: true,
       description: true,
-      owner: { select: { id: true, firstName: true, lastName: true, status: true } },
+      streamKey: true,
+      logo: true,
+      isLive: true,
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          content: true,
+        },
+      },
       createdAt: true,
       updatedAt: true,
     },
+    skip,
+    take: limit,
+    orderBy: {
+      createdAt: 'desc',
+    },
   });
 
-  return channels;
+  // Get views for the channels
+  const channelIds = channels.map(c => c.id);
+  const views = await this.prisma.content.groupBy({
+    by: ['channelId'],
+    where: {
+      channelId: { in: channelIds },
+    },
+    _sum: {
+      views: true,
+    },
+  });
+
+  const viewsMap = new Map(
+    views.map(v => [v.channelId, v._sum.views ?? 0])
+  );
+
+  const data = channels.map(channel => ({
+    ...channel,
+    totalViews: viewsMap.get(channel.id) ?? 0,
+  }));
+
+  return {
+    data,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: page < Math.ceil(total / limit),
+      hasPreviousPage: page > 1,
+    },
+  };
 }
+
+
 async getChannelById(channelId: string) {
+  // Get channel with all details and counts
   const channel = await this.prisma.channel.findUnique({
     where: { id: channelId },
-    select: {
-      id: true,
-      name: true,
-      handle: true,
-      streamKey: true,
-      description: true,
-      owner: { select: { id: true, firstName: true, lastName: true, status: true } },
-      createdAt: true,
-      updatedAt: true,
+    include: {
+      owner: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          content: true,
+          follow: true,
+        },
+      },
     },
   });
 
@@ -222,7 +363,410 @@ async getChannelById(channelId: string) {
     throw new ForbiddenException('Channel owner is not active.');
   }
 
-  return channel;
+  //  Calculate total views (sum of all content views)
+  const totalViews = await this.prisma.content.aggregate({
+    where: {
+      channelId: channel.id,
+    },
+    _sum: {
+      views: true,
+    },
+  });
+
+  //  Get content breakdown by type
+  const [liveStreamCount, vodCount] = await Promise.all([
+    this.prisma.content.count({
+      where: {
+        channelId: channel.id,
+        contentType: 'LIVE_STREAM',
+      },
+    }),
+    this.prisma.content.count({
+      where: {
+        channelId: channel.id,
+        contentType: 'VOD',
+      },
+    }),
+  ]);
+
+  // Destructure _count and restructure response
+  const { _count, ...channelData } = channel;
+
+  return {
+    ...channelData,
+    statistics: {
+      totalViews: totalViews._sum.views || 0,
+      totalContent: _count.content,
+      // totalFollowers: _count.follow,
+      // liveStreamCount,
+      // vodCount,
+    },
+  };
 }
+
+async getContentByChannelId(channelId: string, page: number = 1, limit: number = 10) {
+  // Validate pagination parameters
+  const validPage = Math.max(1, page);
+  const validLimit = Math.max(1, Math.min(100, limit)); // Max 100 items per page
+  const skip = (validPage - 1) * validLimit;
+
+  // Get total count
+  const total = await this.prisma.content.count({
+    where: { channelId: channelId },
+  });
+
+  if (total === 0) {
+    throw new NotFoundException('Content not found.');
+  }
+
+  // Get paginated data
+  const contents = await this.prisma.content.findMany({
+    where: { channelId: channelId },
+    skip: skip,
+    take: validLimit,
+    orderBy: { createdAt: 'desc' }, // Optional: order by creation date
+  });
+
+  return {
+    contents,
+    total,
+    totalPages: Math.ceil(total / validLimit),
+  };
+}
+  /**
+   * Ban a user from a channel
+   */
+  async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
+    // Verify channel exists
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+      include: { owner: true },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    // Verify user exists
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Cannot ban channel owner
+    if (user.id === channel.ownerId) {
+      throw new ForbiddenException('Cannot ban the channel owner');
+    }
+
+    // Check if user is already banned
+    const existingBan = await this.prisma.channelBan.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId: dto.userId,
+        },
+      },
+    });
+
+    if (existingBan) {
+      throw new ForbiddenException('User is already banned from this channel');
+    }
+
+    // Validate temporary ban has expiration
+    if (dto.banType === BanType.TEMPORARY && !dto.expiresAt) {
+      throw new ForbiddenException('Temporary bans must have an expiration date');
+    }
+
+    // Create ban
+    const ban = await this.prisma.channelBan.create({
+      data: {
+        channelId,
+        userId: dto.userId,
+        reason: dto.reason,
+        bannedBy,
+        banType: dto.banType,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
+
+    return ban;
+  }
+
+  /**
+   * Unban a user from a channel
+   */
+  async unbanUser(channelId: string, userId: string) {
+    const ban = await this.prisma.channelBan.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId,
+        },
+      },
+    });
+
+    if (!ban) {
+      throw new NotFoundException('Ban not found');
+    }
+
+    await this.prisma.channelBan.delete({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId,
+        },
+      },
+    });
+
+    return { message: 'User unbanned successfully' };
+  }
+
+  /**
+   * Get all banned users for a channel
+   */
+  async getBannedUsers(channelId: string, page: number = 1, pageSize: number = 20) {
+    const skip = (page - 1) * pageSize;
+
+    const [bans, total] = await this.prisma.$transaction([
+      this.prisma.channelBan.findMany({
+        where: { channelId },
+        skip,
+        take: pageSize,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.channelBan.count({ where: { channelId } }),
+    ]);
+
+    return {
+      data: bans,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  /**
+   * Check if user is banned from channel
+   */
+  async isUserBanned(channelId: string, userId: string): Promise<boolean> {
+    const ban = await this.prisma.channelBan.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId,
+        },
+      },
+    });
+
+    if (!ban) return false;
+
+    // Check if temporary ban has expired
+    if (ban.banType === BanType.TEMPORARY && ban.expiresAt) {
+      if (new Date() > ban.expiresAt) {
+        // Auto-remove expired ban
+        await this.prisma.channelBan.delete({
+          where: {
+            channelId_userId: {
+              channelId,
+              userId,
+            },
+          },
+        });
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Clean up expired temporary bans (run via cron job)
+   */
+  async cleanExpiredBans() {
+    const result = await this.prisma.channelBan.deleteMany({
+      where: {
+        banType: BanType.TEMPORARY,
+        expiresAt: {
+          lte: new Date(),
+        },
+      },
+    });
+
+    return { deleted: result.count };
+  }
+ 
+ // Get recommended channels for a user
+async getRecommendedChannels(userId: string | null, limit: number = 5) {
+  let followedChannelIds: string[] = [];
+  
+  // STEP 1: Get followed channels only if user is authenticated
+  if (userId) {
+    const follows = await this.prisma.follow.findMany({
+      where: {
+        followerId: userId,
+      },
+      select: {
+        followingId: true,
+      },
+    });
+    
+    followedChannelIds = follows.map(f => f.followingId);
+  }
+
+  // STEP 2: Similar / Active channels
+  const similarChannels = await this.prisma.channel.findMany({
+    where: {
+      id: {
+        notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
+      },
+      content: {
+        some: {
+          status: 'AVAILABLE',
+        },
+      },
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          follow: true,
+          content: true,
+        },
+      },
+    },
+    take: 30,
+  });
+
+  // STEP 3: Popular channels (fallback)
+  const popularChannels = await this.prisma.channel.findMany({
+    where: {
+      id: {
+        notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
+      },
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          follow: true,
+        },
+      },
+    },
+    orderBy: {
+      follow: {
+        _count: 'desc',
+      },
+    },
+    take: 30,
+  });
+
+  // STEP 4: Live channel boost
+  const liveChannels = await this.prisma.channel.findMany({
+    where: {
+      isLive: true,
+      id: {
+        notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
+      },
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          profileImage: true,
+        },
+      },
+      _count: {
+        select: {
+          follow: true,
+          content: true,
+        },
+      },
+    },
+    take: 15,
+  });
+
+  // STEP 5: Merge + unique
+  const channelMap = new Map<string, any>();
+
+  [...similarChannels, ...popularChannels, ...liveChannels].forEach(channel => {
+    if (!channelMap.has(channel.id)) {
+      channelMap.set(channel.id, channel);
+    }
+  });
+
+  // STEP 6: Score system
+  const scoredChannels = Array.from(channelMap.values()).map(channel => {
+    const score =
+      (channel._count?.follow || 0) * 2 +
+      (channel._count?.content || 0) +
+      (channel.isLive ? 5 : 0);
+
+    return {
+      id: channel.id,
+      name: channel.name,
+      handle: channel.handle,
+      logo: channel.logo,
+      description: channel.description,
+      isLive: channel.isLive,
+      owner: channel.owner,
+      followers: channel._count?.follow || 0,
+      contents: channel._count?.content || 0,
+      score,
+    };
+  });
+
+  // STEP 7: Sort + limit
+  scoredChannels.sort((a, b) => b.score - a.score);
+
+  return scoredChannels.slice(0, limit);
+}
+
 
 }

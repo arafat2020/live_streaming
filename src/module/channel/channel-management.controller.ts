@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -22,28 +23,74 @@ import { Roles } from '../auth/guards/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { GetMe } from '../user/dto/request-with-user.interface';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { GetChannelsDto } from './dto/get-channels-query.dto';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
+import { PaginationDto } from './dto/pagination.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')
 export class ChannelManagementController {
   constructor(private readonly channelService: ChannelService) {}
-@UseGuards(AuthGuard('jwt'), RolesGuard)
-@Get('')
+
+// @ApiTags('Channels')
+//@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
+@Get('channels')
 @HttpCode(200)
-async getChannels( @Res() res: Response) {
- 
-    const data = await this.channelService.getChannels();
-    return sendResponse(res, {
-      statusCode: HttpStatus.OK,
-      success: true,
-      message: 'Channels retrieved successfully.',
-      data,
-    });
-  }
+@ApiOperation({ summary: 'Get all channels with optional search and pagination' })
+@ApiResponse({
+  status: 200,
+  description: 'Channels retrieved successfully',
+})
+async getChannels(
+  @Query() dto: GetChannelsDto,
+  @Res() res: Response,
+) {
+  const result = await this.channelService.getChannels(dto);
+  
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Channels retrieved successfully.',
+    data: {
+    data: result.data,
+    meta: result.meta,
+    }
+  });
+}
+
+// @UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
+@Get('recommendedChannels')
+@HttpCode(200)
+@ApiOperation({ summary: 'Get Recommended Channels' })
+@ApiResponse({
+  status: 200,
+  description: 'Channels retrieved successfully',
+})
+async getRecommendedChannels(
+  @Req() req: GetMe,
+  @Query() dto: GetRecommendedChannelsDto,
+  @Res() res: Response,
+) {
+   const userId = (req as any).user?.id || null;
+  const result = await this.channelService.getRecommendedChannels(
+    userId,
+    dto.limit,
+  );
+  
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Channels retrieved successfully.',
+    data: result
+  });
+}
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles(UserRole.CREATOR)
+@ApiOperation({ summary: 'My Chennel. Retrieves the private channel details Calculate total views across all channel content' })
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
+@Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Get('my-chennel')
   async getPrivateChannel(@Req() req: GetMe,@Res() res: Response) {
     const userId = req.user.id;
@@ -58,8 +105,8 @@ async getChannels( @Res() res: Response) {
 
 
   /**PATCH /creator/channel - Updates channel metadata (name, description, handle).*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles(UserRole.CREATOR)
+@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
+@Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Patch()
   async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto,@Res() res: Response) {
     const userId = req.user.id;
@@ -73,8 +120,8 @@ async getChannels( @Res() res: Response) {
   }
 
   /**POST /creator/channel/key/rotate - Generates a new stream key.*/
-@UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles(UserRole.CREATOR)
+@UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
+@Roles(UserRole.CREATOR,UserRole.ADMIN)
   @Post('key/rotate')
   @HttpCode(200)
   async rotateStreamKey(@Req() req: GetMe,@Res() res: Response) {
@@ -88,6 +135,8 @@ async getChannels( @Res() res: Response) {
     });
   }
 
+@ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })  
+// @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
 @Get(':id')
 @HttpCode(200)
 async getChannelById(@Param('id') id: string, @Res() res: Response) {
@@ -100,4 +149,37 @@ async getChannelById(@Param('id') id: string, @Res() res: Response) {
       data,
     });
   }
+// Controller
+@UseGuards(JwtAuthGuard, TermsAcceptedGuard)
+@Get('/by-content/:contentId')
+@ApiOperation({
+  summary: 'Get contents by channel ID with pagination.',
+  description:
+    'This endpoint returns the contents associated with a specific channel ID with pagination support.',
+})
+async getChannelByContent(
+  @Param('contentId') contentId: string, // ✅ Added missing @Param
+  @Query() paginationDto: PaginationDto,
+  @Res() res: Response,
+) {
+  // ✅ Use paginationDto instance, not the class
+  const pageNumber = paginationDto.page || 1;
+  const limitNumber = paginationDto.limit || 10;
+
+  const data = await this.channelService.getContentByChannelId(
+    contentId,
+    pageNumber,
+    limitNumber,
+  );
+
+  return sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: 'Content retrieved successfully.',
+    data: data, // ✅ Return contents array
+
+  });
+}
+
+
 }
