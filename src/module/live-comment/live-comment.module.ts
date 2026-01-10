@@ -4,11 +4,12 @@ import { LiveCommentController } from './live-comment.controller';
 import { LiveCommentGateway } from './liveComment.gateway';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { ModeratorModule } from '../moderator/moderator.module';
 
 @Module({
-  imports: [PrismaModule,AuthModule],
+  imports: [PrismaModule, AuthModule, ModeratorModule],
   controllers: [LiveCommentController],
-  providers: [LiveCommentService,LiveCommentGateway],
-  exports:[LiveCommentGateway]
+  providers: [LiveCommentService, LiveCommentGateway],
+  exports: [LiveCommentGateway]
 })
-export class LiveCommentModule {}
+export class LiveCommentModule { }

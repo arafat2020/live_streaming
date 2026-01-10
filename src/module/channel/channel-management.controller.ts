@@ -219,7 +219,6 @@ export class ChannelManagementController {
     });
   }
   // Controller
-  @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
   @Get('/by-content/:contentId')
   @ApiOperation({
     summary: 'Get contents by channel ID with pagination.',

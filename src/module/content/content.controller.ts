@@ -26,7 +26,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('content')
 export class ContentController {
-  constructor(private readonly contentService: ContentService) {}
+  constructor(private readonly contentService: ContentService) { }
   // @ApiOperation({ summary: 'Create new content for a channel' })
   // @Post()
   // async create(@Body() dto: CreateContentDto, @Res() res: Response) {
@@ -38,44 +38,43 @@ export class ContentController {
   //     data,
   //   });
   // }
-@ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
-@Get('live-broadcast')
-async liveOnRappioList(
-  @Res() res: Response,
-) {
-  const data = await this.contentService.liveOnRappioList();
+  @ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
+  @Get('live-broadcast')
+  async liveOnRappioList(
+    @Res() res: Response,
+  ) {
+    const data = await this.contentService.liveOnRappioList();
 
-  return sendResponse(res, {
-    statusCode: HttpStatus.OK,
-    success: true,
-    message: 'Content retrieved successfully.',
-    data: data
-  });
-}
-@ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
-@Get()
-// @UseGuards(JwtAuthGuard)
-async findAll(
-  @Req() req: GetMe,
-  @Query() query: QueryContentDto,
-  @Res() res: Response,
-) {
-  const userId = req.user?.id;
-  const result = await this.contentService.findAll(query,userId);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Content retrieved successfully.',
+      data: data
+    });
+  }
+  @ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
+  @Get()
+  // @UseGuards(JwtAuthGuard)
+  async findAll(
+    @Req() req: GetMe,
+    @Query() query: QueryContentDto,
+    @Res() res: Response,
+  ) {
+    const userId = req.user?.id;
+    const result = await this.contentService.findAll(query, userId);
 
-  return sendResponse(res, {
-    statusCode: HttpStatus.OK,
-    success: true,
-    message: 'Content retrieved successfully.',
-    data: {
-      data:result.data,
-      meta: result.meta,
-    }
-  });
-}
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Content retrieved successfully.',
+      data: {
+        data: result.data,
+        meta: result.meta,
+      }
+    });
+  }
   @ApiOperation({ summary: 'Get a single content item by its ID' })
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
   async findOne(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const data = await this.contentService.findOne(id);
     return sendResponse(res, {
@@ -102,10 +101,10 @@ async findAll(
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
-  async remove(@Req() req: GetMe,@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+  async remove(@Req() req: GetMe, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const userId = req.user?.id;
     const userRole = req.user.role;
-    const data = await this.contentService.remove(id,userId,userRole);
+    const data = await this.contentService.remove(id, userId, userRole);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
