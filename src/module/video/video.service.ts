@@ -12,9 +12,10 @@ import { R2UploadService } from './r2-upload.service';
 import { R2_PUBLIC_URL } from '../../config/r2.config';
 import { ContentService } from '../content/content.service';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
+import { ThumbnailService } from './thumbnail.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateVideoDto } from './dto/create-video.dto';
-import { ContentType } from '@prisma/client';
+// import { ContentType } from '@prisma/client';
 
 @Injectable()
 export class VideoService {
@@ -25,7 +26,8 @@ export class VideoService {
     private readonly contentService: ContentService,
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
-  ) {}
+    private readonly thumbnailService: ThumbnailService,
+  ) { }
 
   /**
    * Validate if a stream key exists and belongs to an active channel
@@ -54,19 +56,33 @@ export class VideoService {
    *  OPTIMIZED: Smaller segments for faster playback start
    */
   async processLargeVideo(
-    fileBuffer: Buffer,
     lessonId: string,
     dto: CreateVideoDto,
+    fileBuffer?: Buffer,
+    inputPath?: string, // ✅ Allow passing a file path directly
   ): Promise<string> {
-    // ✅ VALIDATE BUFFER FIRST
-    if (!fileBuffer || fileBuffer.length === 0) {
-      throw new BadRequestException('Invalid or empty video buffer');
+    // ✅ VALIDATE INPUT
+    if (!fileBuffer && !inputPath) {
+      throw new BadRequestException('Either fileBuffer or inputPath must be provided');
     }
-
-    this.logger.log(`📦 Processing video buffer: ${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
     const r2Prefix = `videos/${lessonId}`;
     const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
+
+    // Ensure directory exists
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    const finalInputPath = inputPath || path.join(outputDir, 'input_video.tmp');
+
+    // Save buffer to file if provided
+    if (fileBuffer) {
+      this.logger.log(`📦 Processing video buffer: ${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+      fs.writeFileSync(finalInputPath, fileBuffer);
+    } else {
+      this.logger.log(`📦 Processing video from file: ${finalInputPath}`);
+    }
 
     // Ensure directory exists
     if (!fs.existsSync(outputDir)) {
@@ -88,7 +104,7 @@ export class VideoService {
     const content = await this.contentService.create({
       title: dto.title || 'Untitled Video',
       channelId: channel.id,
-      contentType: ContentType.VOD,
+      contentType: 'VOD' as any,
       status: 'PROCESSING' as any,
       r2Prefix,
     });
@@ -96,16 +112,16 @@ export class VideoService {
     const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
 
     return new Promise((resolve, reject) => {
-      // ✅ FIXED: More compatible FFmpeg settings
+      // ✅ Use file path instead of pipe:0
       const ffmpeg = spawn('ffmpeg', [
         '-y',
-        '-i', 'pipe:0',
+        '-i', finalInputPath,
 
         // Video encoding
         '-c:v', 'libx264',
-        '-preset', 'medium',              // Balanced speed/quality
-        '-crf', '23',                     // Good quality (lower = better)
-        '-profile:v', 'main',             // Better compatibility
+        '-preset', 'medium',
+        '-crf', '23',
+        '-profile:v', 'main',
         '-level', '4.0',
         '-pix_fmt', 'yuv420p',
         '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
@@ -114,41 +130,21 @@ export class VideoService {
         '-c:a', 'aac',
         '-b:a', '128k',
         '-ar', '48000',
-        '-ac', '2',                       // Stereo
+        '-ac', '2',
 
         // HLS settings
         '-f', 'hls',
-        '-hls_time', '6',                 // 6 second segments
+        '-hls_time', '6',
         '-hls_list_size', '0',
         '-hls_flags', 'independent_segments+delete_segments',
         '-hls_segment_type', 'mpegts',
         '-hls_segment_filename', path.join(outputDir, 'segment_%03d.ts'),
-        '-g', '48',                       // GOP size
+        '-g', '48',
         '-keyint_min', '48',
         '-sc_threshold', '0',
 
         playlistPath,
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe']  // ✅ Explicit stdio config
-      });
-
-      // ✅ FIXED: Better buffer streaming
-      const bufferStream = new Readable({
-        read() {
-          this.push(fileBuffer);
-          this.push(null);
-        }
-      });
-
-      // ✅ Handle stdin errors
-      ffmpeg.stdin.on('error', (err) => {
-        this.logger.error(`FFmpeg stdin error: ${err.message}`);
-      });
-
-      // Pipe buffer to FFmpeg
-      bufferStream.pipe(ffmpeg.stdin).on('error', (err) => {
-        this.logger.error(`Buffer pipe error: ${err.message}`);
-      });
+      ]);
 
       let resolved = false;
       let ffmpegError = '';
@@ -179,7 +175,22 @@ export class VideoService {
             // Verify playlist has segments
             if (playlistContent.includes('.ts')) {
               const url = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
-              await this.contentService.update(content.id, { playbackUrl: url });
+              // Generate Thumbnail
+              try {
+                const thumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
+                  finalInputPath,
+                  r2Prefix,
+                  lessonId,
+                );
+                await this.contentService.update(content.id, {
+                  playbackUrl: url,
+                  thumbnailUrl: thumbnailUrl
+                });
+                this.logger.log(`📸 Thumbnail generated: ${thumbnailUrl}`);
+              } catch (thumbErr) {
+                this.logger.warn(`⚠️ Thumbnail generation failed: ${thumbErr.message}`);
+                await this.contentService.update(content.id, { playbackUrl: url });
+              }
 
               resolved = true;
               clearInterval(checker);
@@ -377,10 +388,10 @@ export class VideoService {
   }
 
   // video.service.ts - IMPROVED waitForUploadComplete
-/**
- * Wait for all files to be uploaded to R2
- * Enhanced with better detection
- */
+  /**
+   * Wait for all files to be uploaded to R2
+   * Enhanced with better detection
+   */
 
 
   /**
@@ -390,7 +401,7 @@ export class VideoService {
   async handleLiveStream(
     streamKey: string,
     liveDir: string,
-  ): Promise<{ stop: () => void }> {
+  ): Promise<{ watcher: { stop: () => void }; contentId: string }> {
     try {
       const r2Prefix = `videos/${streamKey}`;
       const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
@@ -425,15 +436,23 @@ export class VideoService {
       this.logger.log(`📝 Content ID: ${content.id}`);
 
       // Notify via WebSocket
-      this.liveGateway.streamLive(playbackUrl ,content);
+      this.liveGateway.streamLive(playbackUrl, content);
 
       // Start R2 upload watcher
-      return this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
+      const watcher = this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
+      return { watcher, contentId: content.id };
 
     } catch (error) {
       this.logger.error(`Failed to handle live stream: ${error.message}`);
       throw error;
     }
+  }
+
+  /**
+   * Broadcast live stats to viewers and creator
+   */
+  broadcastLiveStats(contentId: string, stats: any) {
+    this.liveGateway.broadcastLiveStats(contentId, stats);
   }
 
   /**
@@ -451,13 +470,13 @@ export class VideoService {
           where: { id: channel.id },
           data: { isLive: false },
         });
-        
+
         this.logger.log(` Channel ${channel.name} marked as offline`);
       }
 
       // Update content status
       const content = await this.prisma.content.findFirst({
-        where: { 
+        where: {
           r2Prefix: `videos/${streamKey}`,
           contentType: 'LIVE_STREAM' as any,
         },
@@ -468,7 +487,7 @@ export class VideoService {
         await this.contentService.update(content.id, {
           status: 'ENDED' as any,
         });
-        
+
         this.logger.log(` Content ${content.id} marked as ended`);
       }
 
@@ -515,6 +534,7 @@ export class VideoService {
         currentStream: currentStream ? {
           id: currentStream.id,
           title: currentStream.title,
+          description: currentStream.description,
           startedAt: currentStream.createdAt,
           playbackUrl: currentStream.playbackUrl,
         } : null,
@@ -525,4 +545,33 @@ export class VideoService {
     }
   }
 
+  /**
+   * Update the thumbnail URL for a live stream
+   */
+  async updateLiveThumbnail(streamKey: string, thumbnailUrl: string): Promise<void> {
+    try {
+      const r2Prefix = `videos/${streamKey}`;
+
+      const content = await this.prisma.content.findFirst({
+        where: {
+          r2Prefix,
+          contentType: 'LIVE_STREAM' as any,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (content) {
+        await this.prisma.content.update({
+          where: { id: content.id },
+          data: { thumbnailUrl },
+        });
+
+        this.logger.log(`✅ Updated thumbnail for live stream ${streamKey}: ${thumbnailUrl}`);
+      } else {
+        this.logger.warn(`⚠️ Could not find content for stream key ${streamKey} to update thumbnail`);
+      }
+    } catch (error) {
+      this.logger.error(`❌ Failed to update live thumbnail: ${error.message}`);
+    }
+  }
 }

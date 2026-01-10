@@ -25,7 +25,7 @@ async function bootstrap() {
   //app.setGlobalPrefix('api/v1');
 
   app.enableCors({
-    origin: ['http://localhost:5173','https://rappio-tv.netlify.app', '*'],
+    origin: ['http://localhost:5173', 'https://rappio-tv.netlify.app', '*'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
@@ -57,13 +57,13 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  
+
   setupSwagger(app);
   const port = process.env.PORT || 8000;
   app.listen(port, '0.0.0.0', () => {
-   console.log(`🚀 Server running on http://localhost:${port}`);
-});
- 
+    console.log(`🚀 Server running on http://localhost:${port}`);
+  });
+
 }
 
 bootstrap();

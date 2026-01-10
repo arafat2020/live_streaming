@@ -3,6 +3,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { VideoService } from './video.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { CreateVideoDto } from './dto/create-video.dto';
 import { ApiBody, ApiConsumes, ApiOperation } from '@nestjs/swagger';
@@ -16,12 +18,12 @@ import { CompleteChunkedUploadDto, InitChunkedUploadDto, UploadChunkDto } from '
 
 @Controller('video')
 export class VideoController {
-   private readonly logger = new Logger(VideoController.name);
+  private readonly logger = new Logger(VideoController.name);
   constructor(
     private readonly videoService: VideoService,
     private readonly chunkService: VideoChunkService,
-  ) {}
- // =====================================================
+  ) { }
+  // =====================================================
   // EXISTING ENDPOINT (Keep for backward compatibility)
   // =====================================================
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
@@ -44,12 +46,12 @@ export class VideoController {
     }
 
     const lessonId = uuidv4();
-    
+
     // Use SAME processLargeVideo method
     const playlistUrl = await this.videoService.processLargeVideo(
-      file.buffer,
       lessonId,
       dto,
+      file.buffer,
     );
 
     return {
@@ -61,59 +63,59 @@ export class VideoController {
   // =====================================================
   // NEW CHUNKED UPLOAD ENDPOINTS
   // =====================================================
-@UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-@Roles(UserRole.CREATOR, UserRole.ADMIN)
-@Post('upload/init')
-@ApiOperation({ summary: 'Initialize chunked video upload' })
-async initChunkedUpload(
-  @Body('fileName') fileName: string,
-  @Body('fileSize') fileSize: number,
-  @Body('totalChunks') totalChunks: number,
-  @Body('title') title: string,
-  @Body('streamKey') streamKey: string,
-  @Body('description') description?: string,
-) {
-  // Log to debug
-  this.logger.log(`📊 Received params:`);
-  this.logger.log(`  fileName: ${fileName}`);
-  this.logger.log(`  fileSize: ${fileSize}`);
-  this.logger.log(`  totalChunks: ${totalChunks}`);
-  this.logger.log(`  streamKey: ${streamKey}`);
+  @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
+  @Roles(UserRole.CREATOR, UserRole.ADMIN)
+  @Post('upload/init')
+  @ApiOperation({ summary: 'Initialize chunked video upload' })
+  async initChunkedUpload(
+    @Body('fileName') fileName: string,
+    @Body('fileSize') fileSize: number,
+    @Body('totalChunks') totalChunks: number,
+    @Body('title') title: string,
+    @Body('streamKey') streamKey: string,
+    @Body('description') description?: string,
+  ) {
+    // Log to debug
+    this.logger.log(`📊 Received params:`);
+    this.logger.log(`  fileName: ${fileName}`);
+    this.logger.log(`  fileSize: ${fileSize}`);
+    this.logger.log(`  totalChunks: ${totalChunks}`);
+    this.logger.log(`  streamKey: ${streamKey}`);
 
-  // Validation
-  if (!fileName || fileName.trim() === '') {
-    throw new BadRequestException('fileName is required');
-  }
-  if (!fileSize || fileSize <= 0) {
-    throw new BadRequestException('fileSize is required and must be greater than 0');
-  }
-  if (!totalChunks || totalChunks <= 0) {
-    throw new BadRequestException('totalChunks is required and must be greater than 0');
-  }
-  if (!streamKey || streamKey.trim() === '') {
-    throw new BadRequestException('streamKey is required');
-  }
+    // Validation
+    if (!fileName || fileName.trim() === '') {
+      throw new BadRequestException('fileName is required');
+    }
+    if (!fileSize || fileSize <= 0) {
+      throw new BadRequestException('fileSize is required and must be greater than 0');
+    }
+    if (!totalChunks || totalChunks <= 0) {
+      throw new BadRequestException('totalChunks is required and must be greater than 0');
+    }
+    if (!streamKey || streamKey.trim() === '') {
+      throw new BadRequestException('streamKey is required');
+    }
 
-  const uploadId = uuidv4();
-  
-  this.logger.log(`🚀 Initializing upload: ${uploadId}`);
-  
-  await this.chunkService.initializeSession({
-    uploadId,
-    fileName,
-    fileSize,
-    totalChunks,
-    title: title || 'Untitled Video',
-    description: description || '',
-    streamKey,
-  });
+    const uploadId = uuidv4();
 
-  return {
-    success: true,
-    uploadId,
-    message: 'Upload session initialized',
-  };
-}
+    this.logger.log(`🚀 Initializing upload: ${uploadId}`);
+
+    await this.chunkService.initializeSession({
+      uploadId,
+      fileName,
+      fileSize,
+      totalChunks,
+      title: title || 'Untitled Video',
+      description: description || '',
+      streamKey,
+    });
+
+    return {
+      success: true,
+      uploadId,
+      message: 'Upload session initialized',
+    };
+  }
 
   // Step 2: Upload chunk
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
@@ -154,7 +156,7 @@ async initChunkedUpload(
       file.buffer,
     );
 
-    return { 
+    return {
       success: true,
       uploadId,
       chunkIndex: parseInt(chunkIndex, 10),
@@ -175,20 +177,28 @@ async initChunkedUpload(
 
     this.logger.log(`🎬 Completing upload: ${uploadId}`);
 
-    const { buffer, metadata } = await this.chunkService.mergeChunks(uploadId);
-
     const lessonId = uuidv4();
+    const tempOutputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
+
+    if (!fs.existsSync(tempOutputDir)) {
+      fs.mkdirSync(tempOutputDir, { recursive: true });
+    }
+
+    const mergedFilePath = path.join(tempOutputDir, 'merged_input.mp4');
+
+    const metadata = await this.chunkService.mergeChunksToFile(uploadId, mergedFilePath);
 
     this.logger.log(`🎥 Starting video processing: ${lessonId}`);
 
     const playlistUrl = await this.videoService.processLargeVideo(
-      buffer,
       lessonId,
       {
         title: metadata.title,
         description: metadata.description,
         streamKey: metadata.streamKey,
       },
+      undefined, // No buffer
+      mergedFilePath, // Pass file path
     );
 
     await this.chunkService.cleanupSession(uploadId);
@@ -213,7 +223,7 @@ async initChunkedUpload(
 
     await this.chunkService.cleanupSession(uploadId);
     this.logger.log(`❌ Upload cancelled: ${uploadId}`);
-    
+
     return { success: true, message: 'Upload cancelled' };
   }
 
