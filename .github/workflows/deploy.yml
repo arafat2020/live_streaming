@@ -36,9 +36,6 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_SSH_USERNAME }}
           passward: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          timeout: 60m
-          command_timeout: 60m
           script: |
             cd ~/server
 
