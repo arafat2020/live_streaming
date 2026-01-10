@@ -41,7 +41,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
-          username: root
+          username: koodaaja
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
             cd server  # Navigate to the project directory on the server
