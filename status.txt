@@ -1,0 +1,17 @@
+ M docker-compose.yml
+ M prisma/schema/schema.prisma
+ M src/main.ts
+ M src/module/channel/channel-management.controller.ts
+ M src/module/channel/channel.module.ts
+ M src/module/channel/channel.service.ts
+ M src/module/content/content.service.ts
+ M src/module/content/dto/query-content.dto.ts
+ M src/module/live-comment/liveComment.gateway.ts
+ M src/module/video/media-server.service.ts
+ M src/module/video/r2-upload.service.ts
+ M src/module/video/video-chunk.service.ts
+ M src/module/video/video.controller.ts
+ M src/module/video/video.module.ts
+ M src/module/video/video.service.ts
+?? src/module/video/thumbnail.service.ts
+?? status.txt

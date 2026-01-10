@@ -48,4 +48,12 @@ export class QueryContentDto {
   @IsOptional()
   @IsString()
   title?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by content status',
+    example: 'ENDED',
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
 }

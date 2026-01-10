@@ -8,11 +8,13 @@ import {
   Delete,
   Req,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { LiveCommentService } from './live-comment.service';
 import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
 import { UpdateLiveCommentDto } from './dto/update-live-comment.dto';
-import { ApiTags } from '@nestjs/swagger';
+import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetMe } from '../user/dto/request-with-user.interface';
 
@@ -21,12 +23,18 @@ import { GetMe } from '../user/dto/request-with-user.interface';
 @Controller('live-comments')
 export class LiveCommentController {
   //constructor(private readonly liveCommentService: LiveCommentService) {}
-  constructor(private readonly service: LiveCommentService) {}
+  constructor(private readonly service: LiveCommentService) { }
 
   // GET /live-comments/:videoId
   @Get(':videoId')
-  getAll(@Param('videoId') videoId: string) {
-    return this.service.getAll(videoId);
+  @ApiOperation({ summary: 'Get all comments for a video with pagination' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20, max: 100)' })
+  getAll(
+    @Param('videoId') videoId: string,
+    @Query() paginationQuery: PaginationQueryDto,
+  ) {
+    return this.service.getAll(videoId, paginationQuery);
   }
 
 

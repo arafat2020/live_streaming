@@ -29,7 +29,7 @@ export class VideoChunkService {
   // Initialize upload session
   async initializeSession(data: Omit<UploadSession, 'createdAt' | 'chunks'>): Promise<void> {
     const sessionDir = path.join(this.uploadDir, data.uploadId);
-    
+
     // Create session directory
     fs.mkdirSync(sessionDir, { recursive: true });
 
@@ -56,7 +56,7 @@ export class VideoChunkService {
   ): Promise<{ chunksReceived: number; totalChunks: number }> {
     try {
       this.logger.log(`💾 Saving chunk ${chunkIndex} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
-      
+
       const sessionDir = path.join(this.uploadDir, uploadId);
       const metadataPath = path.join(sessionDir, 'metadata.json');
 
@@ -66,22 +66,22 @@ export class VideoChunkService {
       }
 
       const chunkPath = path.join(sessionDir, `chunk_${chunkIndex}`);
-      
+
       // ✅ IDEMPOTENCY CHECK: Skip if chunk already exists
       if (fs.existsSync(chunkPath)) {
         this.logger.warn(`⚠️ Chunk ${chunkIndex} already exists, skipping (idempotent request)`);
-        
+
         // Still return current progress
         const metadata: UploadSession = JSON.parse(
           fs.readFileSync(metadataPath, 'utf8'),
         );
-        
+
         return {
           chunksReceived: metadata.chunks.length,
           totalChunks: metadata.totalChunks,
         };
       }
-      
+
       // Save chunk
       fs.writeFileSync(chunkPath, buffer);
 
@@ -104,7 +104,7 @@ export class VideoChunkService {
         chunksReceived: metadata.chunks.length,
         totalChunks: metadata.totalChunks,
       };
-      
+
     } catch (error) {
       this.logger.error(`❌ Save chunk failed: ${error.message}`);
       this.logger.error(`  Upload ID: ${uploadId}, Chunk: ${chunkIndex}`);
@@ -112,18 +112,14 @@ export class VideoChunkService {
     }
   }
 
-  // Merge all chunks into single buffer
-  async mergeChunks(uploadId: string): Promise<{
-    buffer: Buffer;
-    metadata: UploadSession;
-  }> {
-    this.logger.log(`🔍 Starting merge for uploadId: ${uploadId}`);
-    
+  // Merge all chunks into single file (Memory Efficient)
+  async mergeChunksToFile(uploadId: string, targetFilePath: string): Promise<UploadSession> {
+    this.logger.log(`🔍 Starting merge for uploadId: ${uploadId} into ${targetFilePath}`);
+
     const sessionDir = path.join(this.uploadDir, uploadId);
     const metadataPath = path.join(sessionDir, 'metadata.json');
 
     if (!fs.existsSync(metadataPath)) {
-      this.logger.error(`❌ Metadata file not found: ${metadataPath}`);
       throw new BadRequestException('Upload session not found');
     }
 
@@ -131,39 +127,47 @@ export class VideoChunkService {
       fs.readFileSync(metadataPath, 'utf8'),
     );
 
-    // Verify all chunks received
     if (metadata.chunks.length !== metadata.totalChunks) {
       throw new BadRequestException(
         `Missing chunks. Received ${metadata.chunks.length}/${metadata.totalChunks}`,
       );
     }
 
-    this.logger.log(`🔄 Merging ${metadata.totalChunks} chunks...`);
+    // Ensure target directory exists
+    const targetDir = path.dirname(targetFilePath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    // Create/Clear target file
+    if (fs.existsSync(targetFilePath)) {
+      fs.unlinkSync(targetFilePath);
+    }
 
     // Sort chunks
-    const sortedChunks = metadata.chunks.sort((a, b) => a - b);
+    const sortedChunks = [...metadata.chunks].sort((a, b) => a - b);
 
-    // Merge chunks
-    const buffers: Buffer[] = [];
-    
+    // Merge chunks using streams for memory efficiency
+    const writeStream = fs.createWriteStream(targetFilePath);
+
     for (const chunkIndex of sortedChunks) {
       const chunkPath = path.join(sessionDir, `chunk_${chunkIndex}`);
-      
+
       if (!fs.existsSync(chunkPath)) {
+        writeStream.end();
         throw new BadRequestException(`Chunk ${chunkIndex} not found`);
       }
 
       const chunkBuffer = fs.readFileSync(chunkPath);
-      buffers.push(chunkBuffer);
+      writeStream.write(chunkBuffer);
     }
 
-    const mergedBuffer = Buffer.concat(buffers);
+    await new Promise((resolve) => {
+      writeStream.end(resolve);
+    });
 
-    this.logger.log(
-      `✅ Merged file size: ${(mergedBuffer.length / 1024 / 1024).toFixed(2)} MB`,
-    );
-
-    return { buffer: mergedBuffer, metadata };
+    this.logger.log(`✅ Merge complete: ${targetFilePath}`);
+    return metadata;
   }
 
   // Cleanup session (with retry logic)

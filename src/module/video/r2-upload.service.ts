@@ -36,10 +36,10 @@ export class R2UploadService {
       });
 
       await upload.done();
-      
+
       const url = `${R2_PUBLIC_URL}/${r2Key}`;
       this.logger.debug(`✅ Uploaded: ${r2Key}`);
-      
+
       return url;
     } catch (error) {
       this.logger.error(`Failed to upload ${r2Key}: ${error.message}`);
@@ -72,7 +72,7 @@ export class R2UploadService {
       );
 
       this.logger.debug(`✅ Uploaded playlist: ${r2Key}`);
-      
+
       return `${R2_PUBLIC_URL}/${r2Key}`;
     } catch (error) {
       this.logger.error(`Failed to upload playlist: ${error.message}`);
@@ -85,94 +85,98 @@ export class R2UploadService {
    * ✅ OPTIMIZED: Parallel uploads, faster polling, better error handling
    * Returns a controller object with stop() method
    */
- // r2-upload.service.ts - UPDATED watchAndUpload method
+  // r2-upload.service.ts - UPDATED watchAndUpload method
 
-/**
- * Watch directory and automatically upload new segments
- * ✅ WITH AUTO-DELETE after upload
- */
-watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
-  const uploaded = new Set<string>();
-  const uploading = new Set<string>();
-  const playlistPath = path.join(localDir, 'index.m3u8');
+  /**
+   * Watch directory and automatically upload new segments
+   * ✅ WITH AUTO-DELETE after upload
+   */
+  watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
+    const uploaded = new Set<string>();
+    const uploading = new Set<string>();
+    const playlistPath = path.join(localDir, 'index.m3u8');
 
-  this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
+    this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
 
-  const interval = setInterval(async () => {
-    try {
-      if (!fs.existsSync(localDir)) {
-        this.logger.warn(`Directory disappeared: ${localDir}`);
-        return;
-      }
+    const interval = setInterval(async () => {
+      try {
+        if (!fs.existsSync(localDir)) {
+          this.logger.warn(`Directory disappeared: ${localDir}`);
+          return;
+        }
 
-      const files = fs
-        .readdirSync(localDir)
-        .filter((f) => f.endsWith('.ts'));
+        const files = fs
+          .readdirSync(localDir)
+          .filter((f) => f.endsWith('.ts'));
 
-      // Upload segments in parallel
-      const uploadPromises = files
-        .filter(file => !uploaded.has(file) && !uploading.has(file))
-        .map(async (file) => {
-          uploading.add(file);
-          
-          const localPath = path.join(localDir, file);
-          
-          try {
-            await this.waitForFileReady(localPath, 1000);
+        // Upload segments in parallel
+        const uploadPromises = files
+          .filter(file => !uploaded.has(file) && !uploading.has(file))
+          .map(async (file) => {
+            uploading.add(file);
 
-            if (!fs.existsSync(localPath)) {
-              uploading.delete(file);
-              return;
-            }
+            const localPath = path.join(localDir, file);
 
-            // Upload segment
-            await this.uploadFile(
-              localPath,
-              `${r2Prefix}/${file}`,
-              'video/mp2t',
-            );
-
-            uploaded.add(file);
-            uploading.delete(file);
-            
-            this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
-            
-            // ✅ DELETE LOCAL FILE AFTER SUCCESSFUL UPLOAD
             try {
-              fs.unlinkSync(localPath);
-              this.logger.log(`🗑️ Deleted local: ${file}`);
-            } catch (delErr) {
-              this.logger.warn(`Failed to delete ${file}: ${delErr.message}`);
+              await this.waitForFileReady(localPath, 1000);
+
+              if (!fs.existsSync(localPath)) {
+                uploading.delete(file);
+                return;
+              }
+
+              // Upload segment
+              await this.uploadFile(
+                localPath,
+                `${r2Prefix}/${file}`,
+                'video/mp2t',
+              );
+
+              uploaded.add(file);
+              uploading.delete(file);
+
+              this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
+
+              // ✅ DELETE LOCAL FILE AFTER SUCCESSFUL UPLOAD (Except 000.ts which we need for thumbnail)
+              try {
+                if (file !== '000.ts') {
+                  fs.unlinkSync(localPath);
+                  this.logger.log(`🗑️ Deleted local: ${file}`);
+                } else {
+                  this.logger.log(`ℹ️ Preserving ${file} for thumbnail generation`);
+                }
+              } catch (delErr) {
+                this.logger.warn(`Failed to delete ${file}: ${delErr.message}`);
+              }
+
+            } catch (err) {
+              uploading.delete(file);
+              this.logger.error(`Failed to upload ${file}: ${err.message}`);
             }
-            
-          } catch (err) {
-            uploading.delete(file);
-            this.logger.error(`Failed to upload ${file}: ${err.message}`);
-          }
-        });
+          });
 
-      await Promise.all(uploadPromises);
+        await Promise.all(uploadPromises);
 
-      // Upload playlist after segments
-      if (fs.existsSync(playlistPath)) {
-        await this.uploadPlaylist(
-          playlistPath,
-          `${r2Prefix}/index.m3u8`,
-        );
+        // Upload playlist after segments
+        if (fs.existsSync(playlistPath)) {
+          await this.uploadPlaylist(
+            playlistPath,
+            `${r2Prefix}/index.m3u8`,
+          );
+        }
+
+      } catch (err) {
+        this.logger.warn(`Watcher error: ${err.message}`);
       }
+    }, 1000);
 
-    } catch (err) {
-      this.logger.warn(`Watcher error: ${err.message}`);
-    }
-  }, 1000);
-
-  return {
-    stop: () => {
-      clearInterval(interval);
-      this.logger.log(`⏹️ Stopped watching: ${localDir}`);
-    },
-  };
-}
+    return {
+      stop: () => {
+        clearInterval(interval);
+        this.logger.log(`⏹️ Stopped watching: ${localDir}`);
+      },
+    };
+  }
 
   /**
    * Wait for file to be fully written to disk
@@ -219,7 +223,7 @@ watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
       } catch (error) {
         lastError = error;
         this.logger.warn(`Upload attempt ${attempt}/${maxRetries} failed for ${r2Key}: ${error.message}`);
-        
+
         if (attempt < maxRetries) {
           // Exponential backoff: 1s, 2s, 4s
           const delay = Math.pow(2, attempt - 1) * 1000;
@@ -242,7 +246,7 @@ watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
           Key: r2Key,
         }),
       );
-      
+
       this.logger.debug(`🗑️ Deleted from R2: ${r2Key}`);
     } catch (error) {
       this.logger.error(`Failed to delete ${r2Key}: ${error.message}`);
@@ -259,7 +263,7 @@ watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
         Bucket: R2_BUCKET,
         Key: r2Key,
       });
-      
+
       await r2Client.send(command);
       return true;
     } catch (error) {
@@ -290,10 +294,10 @@ watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
       });
 
       await upload.done();
-      
+
       const url = `${R2_PUBLIC_URL}/${r2Key}`;
       this.logger.log(`✅ Uploaded to R2: ${r2Key}`);
-      
+
       return url;
     } catch (error) {
       this.logger.error(`❌ Failed to upload to R2 ${r2Key}: ${error.message}`);

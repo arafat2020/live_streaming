@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { VideoService } from '../video/video.service';
+import { ThumbnailService } from './thumbnail.service';
 
 const NodeMediaServer = require('node-media-server');
 
@@ -12,25 +13,58 @@ interface StreamSession {
   watcher: { stop: () => void };
   liveDir: string;
   startTime: Date;
+  contentId: string; // ✅ Track contentId for stats
 }
 
 @Injectable()
 export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MediaServerService.name);
   private nms: any;
-  
+
   // Store all active stream sessions
   private activeSessions = new Map<string, StreamSession>();
 
-  constructor(private readonly videoService: VideoService) {}
+  constructor(
+    private readonly videoService: VideoService,
+    private readonly thumbnailService: ThumbnailService,
+  ) { }
 
   onModuleInit() {
     this.initializeMediaServer();
+    this.startStatsBroadcast();
   }
 
   onModuleDestroy() {
-    // Clean up all sessions on shutdown
+    this.stopStatsBroadcast();
     this.cleanupAllSessions();
+  }
+
+  private statsInterval: NodeJS.Timeout;
+
+  private startStatsBroadcast() {
+    this.statsInterval = setInterval(() => {
+      this.broadcastAllStats();
+    }, 5000); // Every 5 seconds
+  }
+
+  private stopStatsBroadcast() {
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+    }
+  }
+
+  private async broadcastAllStats() {
+    for (const [streamKey, session] of this.activeSessions) {
+      const uptime = Math.floor((Date.now() - session.startTime.getTime()) / 1000);
+
+      // Tell Gateway to broadcast stats to rooms
+      // We'll add this method to VideoService or call Gateway directly if possible
+      this.videoService.broadcastLiveStats(session.contentId, {
+        uptime,
+        streamKey,
+        status: 'LIVE'
+      });
+    }
   }
 
   /**
@@ -69,13 +103,13 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   private registerEventHandlers() {
     // Stream started
     this.nms.on('postPublish', (id: any) => this.handleStreamStart(id));
-    
+
     // Stream stopped
     this.nms.on('donePublish', (id: any) => this.handleStreamStop(id));
 
     // Connection events for debugging
-    this.nms.on('preConnect', (id: any) => {
-      this.logger.debug(`Client connecting: ${id}`);
+    this.nms.on('preConnect', (id: any, args: any) => {
+      this.logger.debug(`Client connecting: ${id} with args: ${JSON.stringify(args)}`);
     });
   }
 
@@ -84,7 +118,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   private async handleStreamStart(id: any) {
     const streamKey = id?.streamName;
-    
+
     if (!streamKey) {
       this.logger.warn('❌ No stream key provided');
       return;
@@ -99,14 +133,14 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     try {
       // Step 3.1: Validate stream key
       const isValid = await this.videoService.validateStreamKey(streamKey);
-      
+
       if (!isValid) {
         this.logger.warn(`❌ Invalid streamKey: ${streamKey}`);
         this.rejectStream(id);
         return;
       }
 
-      this.logger.log(`🔴 Stream starting: ${streamKey}`);
+      this.logger.log(`🔴 Stream starting: ${streamKey} (ID: ${id})`);
 
       // Step 3.2: Create directory for this stream
       const liveDir = this.createStreamDirectory(streamKey);
@@ -115,7 +149,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       const ffmpegProcess = this.startFFmpegTranscoding(streamKey, liveDir);
 
       // Step 3.4: Start R2 upload watcher
-      const watcher = await this.videoService.handleLiveStream(streamKey, liveDir);
+      const { watcher, contentId } = await this.videoService.handleLiveStream(streamKey, liveDir);
 
       // Step 3.5: Store session information
       this.activeSessions.set(streamKey, {
@@ -124,13 +158,54 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
         watcher,
         liveDir,
         startTime: new Date(),
+        contentId,
       });
 
-      this.logger.log(`✅ Stream ${streamKey} started successfully (Total active: ${this.activeSessions.size})`);
+      this.logger.log(`✅ Stream ${streamKey} started (Total active: ${this.activeSessions.size})`);
+
+      // Step 3.6: Generate thumbnail asynchronously from the first local segment
+      const r2Prefix = `videos/${streamKey}`;
+      const firstSegmentPath = path.join(liveDir, '000.ts');
+
+      this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
 
     } catch (error) {
-      this.logger.error(`❌ Failed to start stream ${streamKey}: ${error.message}`);
-      this.cleanupSession(streamKey);
+      this.logger.error(`❌ Failed to start stream ${streamKey}: ${error.stack || error.message}`);
+      await this.cleanupSession(streamKey);
+    }
+  }
+
+  /**
+   * Helper to generate thumbnail after first segment is ready
+   */
+  private async generateThumbnailDelayed(streamKey: string, segmentPath: string, r2Prefix: string) {
+    try {
+      this.logger.log(`⏳ Waiting for first segment to generate thumbnail: ${streamKey}`);
+
+      // Poll for the first segment file (up to 30 seconds)
+      let attempts = 0;
+      while (attempts < 30) {
+        if (fs.existsSync(segmentPath) && fs.statSync(segmentPath).size > 0) {
+          const thumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
+            segmentPath,
+            r2Prefix,
+            streamKey
+          );
+          await this.videoService.updateLiveThumbnail(streamKey, thumbnailUrl);
+
+          // Cleanup preserved segment after thumbnail is done
+          if (fs.existsSync(segmentPath)) {
+            fs.unlinkSync(segmentPath);
+            this.logger.log(`🗑️ Deleted preserved segment: ${segmentPath}`);
+          }
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+      this.logger.warn(`⚠️ Timeout waiting for segment ${segmentPath} for thumbnail`);
+    } catch (err) {
+      this.logger.error(`❌ Thumbnail generation failed for ${streamKey}: ${err.message}`);
     }
   }
 
@@ -139,7 +214,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   private createStreamDirectory(streamKey: string): string {
     const liveDir = path.resolve(process.cwd(), 'media', 'live', streamKey);
-    
+
     if (!fs.existsSync(liveDir)) {
       fs.mkdirSync(liveDir, { recursive: true });
       this.logger.debug(`📁 Created directory: ${liveDir}`);
@@ -155,38 +230,38 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   private startFFmpegTranscoding(streamKey: string, liveDir: string): ChildProcess {
     const rtmpHost = process.env.RTMP_HOST;
     const rtmpUrl = `rtmp://${rtmpHost}:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
-    
+
     this.logger.log(`🎬 FFmpeg connecting to: ${rtmpUrl}`);
-    
+
     const ffmpeg = spawn('ffmpeg', [
       '-i', rtmpUrl,
       '-c:v', 'copy',
       '-c:a', 'aac',
       '-b:a', '128k',
       '-f', 'hls',
-      
+
       // ✅ OPTIMIZED: 2-second segments for faster playback start
       '-hls_time', '2',
-      
+
       // ✅ OPTIMIZED: Keep 10 segments (20 seconds of video)
       '-hls_list_size', '10',
-      
+
       // ✅ OPTIMIZED: Better flags for live streaming
       '-hls_flags', 'delete_segments+independent_segments+program_date_time',
-      
+
       // ✅ OPTIMIZED: Event playlist type for live streams
       '-hls_playlist_type', 'event',
-      
+
       // ✅ OPTIMIZED: Start numbering from 0
       '-start_number', '0',
-      
+
       // ✅ OPTIMIZED: GOP size for 2-second segments (48 frames at 24fps)
       '-g', '48',
       '-keyint_min', '48',
-      
+
       // ✅ OPTIMIZED: Disable scene change detection for consistent segments
       '-sc_threshold', '0',
-      
+
       '-hls_segment_filename', path.join(liveDir, '%03d.ts'),
       path.join(liveDir, 'index.m3u8'),
     ]);
@@ -203,6 +278,8 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     ffmpeg.on('close', (code) => {
       if (code !== 0 && code !== null) {
         this.logger.warn(`⚠️ FFmpeg exited with code ${code} for ${streamKey}`);
+      } else {
+        this.logger.log(`✅ FFmpeg process for ${streamKey} closed normally`);
       }
     });
 
@@ -214,7 +291,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   private async handleStreamStop(id: any) {
     const streamKey = id?.streamName;
-    
+
     if (!streamKey) {
       this.logger.warn('❌ No stream key in stop event');
       return;
@@ -225,10 +302,10 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     try {
       // Notify video service about stream end
       await this.videoService.handleLiveStop(streamKey);
-      
+
       // Clean up session
       await this.cleanupSession(streamKey);
-      
+
       this.logger.log(`✅ Stream ${streamKey} stopped (Remaining active: ${this.activeSessions.size})`);
     } catch (error) {
       this.logger.error(`❌ Error stopping stream ${streamKey}: ${error.message}`);
@@ -240,7 +317,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   private async cleanupSession(streamKey: string) {
     const session = this.activeSessions.get(streamKey);
-    
+
     if (!session) {
       this.logger.debug(`No session found for ${streamKey}`);
       return;
@@ -261,11 +338,15 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
       // Delete local files after a delay (give R2 time to upload)
       setTimeout(() => {
-        if (fs.existsSync(session.liveDir)) {
-          fs.rmSync(session.liveDir, { recursive: true, force: true });
-          this.logger.debug(`🗑️ Deleted directory: ${session.liveDir}`);
+        try {
+          if (fs.existsSync(session.liveDir)) {
+            fs.rmSync(session.liveDir, { recursive: true, force: true });
+            this.logger.debug(`🗑️ Deleted directory: ${session.liveDir}`);
+          }
+        } catch (err) {
+          this.logger.error(`Failed to delete directory ${session.liveDir}: ${err.message}`);
         }
-      }, 10000); // ✅ 10 seconds delay for R2 upload completion
+      }, 15000); // ✅ Increased to 15 seconds delay for R2 upload completion
 
       // Remove from active sessions
       this.activeSessions.delete(streamKey);
@@ -280,7 +361,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   private cleanupAllSessions() {
     this.logger.log('🧹 Cleaning up all active streams...');
-    
+
     for (const [streamKey] of this.activeSessions) {
       this.cleanupSession(streamKey);
     }
@@ -295,9 +376,11 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   private rejectStream(id: any) {
     try {
-      const session = this.nms.getSession(id?.id);
+      // In Node Media Server, we can get session by it's internal id
+      const session = this.nms.getSession(typeof id === 'string' ? id : id?.id);
       if (session) {
         session.reject();
+        this.logger.log(`🚫 Connection rejected: ${id}`);
       }
     } catch (error) {
       this.logger.error(`Failed to reject stream: ${error.message}`);
@@ -331,15 +414,16 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   getStreamStats(streamKey: string) {
     const session = this.activeSessions.get(streamKey);
-    
+
     if (!session) {
       return null;
     }
 
     const uptime = Date.now() - session.startTime.getTime();
-    
+
     return {
       streamKey,
+      contentId: session.contentId,
       startTime: session.startTime,
       uptime: Math.floor(uptime / 1000), // seconds
       isActive: true,

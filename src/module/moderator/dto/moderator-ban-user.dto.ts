@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, IsDateString } from 'class-validator';
 import { BanType } from '@prisma/client';
 
-export class BanUserDto {
+export class ModeratorBanUserDto {
   @ApiProperty({
     description: 'User ID to ban',
     example: 'b3c2d8c1-7e5e-4a6b-9b8a-123456789abc',
