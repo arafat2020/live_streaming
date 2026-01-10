@@ -224,11 +224,12 @@ export class ThumbnailService {
     private async cleanupThumbnailFiles(dir: string): Promise<void> {
         try {
             if (fs.existsSync(dir)) {
+                // Check if directory is empty or contains files we can safely remove
                 fs.rmSync(dir, { recursive: true, force: true });
                 this.logger.debug(`🗑️ Cleaned up thumbnail directory: ${dir}`);
             }
         } catch (error) {
-            this.logger.warn(`Failed to cleanup thumbnail files: ${error.message}`);
+            this.logger.warn(`Failed to cleanup thumbnail files in ${dir}: ${error.message}`);
         }
     }
 }

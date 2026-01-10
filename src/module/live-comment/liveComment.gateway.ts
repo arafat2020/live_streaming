@@ -147,7 +147,11 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
    * NEW: Broadcast combined live stats (uptime + viewer count)
    */
   broadcastLiveStats(contentId: string, stats: any) {
-    const room = this.server.sockets.adapter.rooms.get(`content:${contentId}`);
+    if (!this.server) return;
+
+    // In namespaced gateways, this.server is the Namespace, which has 'adapter' directly
+    const adapter = (this.server as any).adapter || (this.server.sockets as any)?.adapter;
+    const room = adapter?.rooms?.get(`content:${contentId}`);
     const viewerCount = room ? room.size : 0;
 
     this.server.to(`content:${contentId}`).emit('live_stats_update', {
@@ -202,7 +206,10 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
   @SubscribeMessage('get_stats')
   async handleGetStats(@MessageBody() contentId: string) {
-    const room = this.server.sockets.adapter.rooms.get(`content:${contentId}`);
+    if (!this.server) return { contentId, connectedClients: 0 };
+
+    const adapter = (this.server as any).adapter || (this.server.sockets as any)?.adapter;
+    const room = adapter?.rooms?.get(`content:${contentId}`);
     const viewerCount = room ? room.size : 0;
 
     return {

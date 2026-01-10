@@ -3,13 +3,13 @@ import { CreateModeratorDto } from './dto/create-moderator.dto';
 import { UpdateModeratorDto } from './dto/update-moderator.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { BanType } from '@prisma/client';
-import { BanUserDto } from './dto/ban-user.dto';
+import { ModeratorBanUserDto } from './dto/moderator-ban-user.dto';
 
 
 @Injectable()
 export class ModeratorService {
-    constructor(private readonly prisma: PrismaService) {}
-    
+  constructor(private readonly prisma: PrismaService) { }
+
 
   async create(createModeratorDto: CreateModeratorDto) {
     const { userId, channelId } = createModeratorDto;
@@ -55,7 +55,7 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
-            lastName:true,
+            lastName: true,
             email: true,
           },
         },
@@ -291,44 +291,70 @@ export class ModeratorService {
     return !!moderator;
   }
 
-async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
+  async banUser(channelId: string, dto: ModeratorBanUserDto, bannedBy: string) {
 
-  const channel = await this.prisma.channel.findUnique({
-    where: { id: channelId },
-  });
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+    });
 
-  if (!channel) {
-    throw new NotFoundException('Channel not found');
-  }
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
 
-  const user = await this.prisma.user.findUnique({
-    where: { id: dto.userId },
-  });
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
 
-  if (!user) {
-    throw new NotFoundException('User not found');
-  }
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
 
-  if (user.id === channel.ownerId) {
-    throw new ForbiddenException('Cannot ban channel owner');
-  }
+    if (user.id === channel.ownerId) {
+      throw new ForbiddenException('Cannot ban channel owner');
+    }
 
-  const existingBan = await this.prisma.banUser.findUnique({
-    where: {
-      channelId_userId: {
+    const existingBan = await this.prisma.banUser.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId: dto.userId,
+        },
+      },
+    });
+
+    if (existingBan) {
+      return this.prisma.banUser.update({
+        where: { id: existingBan.id },
+        data: {
+          banType: dto.banType,
+          expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+          updatedAt: new Date(),
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
+      //throw new ForbiddenException('User already banned');
+    }
+
+    if (dto.banType === BanType.TEMPORARY && !dto.expiresAt) {
+      throw new BadRequestException('Temporary ban requires expiresAt');
+    }
+
+    return this.prisma.banUser.create({
+      data: {
         channelId,
         userId: dto.userId,
-      },
-    },
-  });
-
-  if (existingBan) {
-   return this.prisma.banUser.update({
-      where: { id: existingBan.id },
-      data: {
         banType: dto.banType,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
-        updatedAt: new Date(),
       },
       include: {
         user: {
@@ -342,68 +368,42 @@ async banUser(channelId: string, dto: BanUserDto, bannedBy: string) {
         },
       },
     });
-    //throw new ForbiddenException('User already banned');
   }
 
-  if (dto.banType === BanType.TEMPORARY && !dto.expiresAt) {
-    throw new BadRequestException('Temporary ban requires expiresAt');
-  }
-
-  return this.prisma.banUser.create({
-    data: {
-      channelId,
-      userId: dto.userId,
-      banType: dto.banType,
-      expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          profileImage: true,
+  async checkUserBan(channelId: string, userId: string) {
+    console.log("hit check Ban User")
+    const ban = await this.prisma.banUser.findUnique({
+      where: {
+        channelId_userId: {
+          channelId,
+          userId,
         },
       },
-    },
-  });
-}
+    });
 
-async checkUserBan(channelId: string, userId: string) {
-  console.log("hit check Ban User")
-  const ban = await this.prisma.banUser.findUnique({
-    where: {
-      channelId_userId: {
-        channelId,
-        userId,
-      },
-    },
-  });
+    // No ban record
+    if (!ban) {
+      return {
+        isBanned: false,
+      };
+    }
 
-  // No ban record
-  if (!ban) {
+    // Temporary ban expired → treat as unbanned
+    if (
+      ban.banType === BanType.TEMPORARY &&
+      ban.expiresAt &&
+      ban.expiresAt < new Date()
+    ) {
+      return {
+        isBanned: false,
+      };
+    }
+
+    // Active ban
     return {
-      isBanned: false,
+      isBanned: true,
+      banType: ban.banType,
+      expiresAt: ban.expiresAt,
     };
   }
-
-  // Temporary ban expired → treat as unbanned
-  if (
-    ban.banType === BanType.TEMPORARY &&
-    ban.expiresAt &&
-    ban.expiresAt < new Date()
-  ) {
-    return {
-      isBanned: false,
-    };
-  }
-
-  // Active ban
-  return {
-    isBanned: true,
-    banType: ban.banType,
-    expiresAt: ban.expiresAt,
-  };
-}
 }

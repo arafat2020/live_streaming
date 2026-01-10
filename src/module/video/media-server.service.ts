@@ -108,8 +108,8 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     this.nms.on('donePublish', (id: any) => this.handleStreamStop(id));
 
     // Connection events for debugging
-    this.nms.on('preConnect', (id: any) => {
-      this.logger.debug(`Client connecting: ${id}`);
+    this.nms.on('preConnect', (id: any, args: any) => {
+      this.logger.debug(`Client connecting: ${id} with args: ${JSON.stringify(args)}`);
     });
   }
 
@@ -140,7 +140,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      this.logger.log(`🔴 Stream starting: ${streamKey}`);
+      this.logger.log(`🔴 Stream starting: ${streamKey} (ID: ${id})`);
 
       // Step 3.2: Create directory for this stream
       const liveDir = this.createStreamDirectory(streamKey);
@@ -161,7 +161,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
         contentId,
       });
 
-      this.logger.log(`✅ Stream ${streamKey} started successfully (Total active: ${this.activeSessions.size})`);
+      this.logger.log(`✅ Stream ${streamKey} started (Total active: ${this.activeSessions.size})`);
 
       // Step 3.6: Generate thumbnail asynchronously from the first local segment
       const r2Prefix = `videos/${streamKey}`;
@@ -170,8 +170,8 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
 
     } catch (error) {
-      this.logger.error(`❌ Failed to start stream ${streamKey}: ${error.message}`);
-      this.cleanupSession(streamKey);
+      this.logger.error(`❌ Failed to start stream ${streamKey}: ${error.stack || error.message}`);
+      await this.cleanupSession(streamKey);
     }
   }
 
@@ -205,7 +205,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       }
       this.logger.warn(`⚠️ Timeout waiting for segment ${segmentPath} for thumbnail`);
     } catch (err) {
-      this.logger.error(`❌ Thumbnail generation failed: ${err.message}`);
+      this.logger.error(`❌ Thumbnail generation failed for ${streamKey}: ${err.message}`);
     }
   }
 
@@ -278,6 +278,8 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     ffmpeg.on('close', (code) => {
       if (code !== 0 && code !== null) {
         this.logger.warn(`⚠️ FFmpeg exited with code ${code} for ${streamKey}`);
+      } else {
+        this.logger.log(`✅ FFmpeg process for ${streamKey} closed normally`);
       }
     });
 
@@ -336,11 +338,15 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
       // Delete local files after a delay (give R2 time to upload)
       setTimeout(() => {
-        if (fs.existsSync(session.liveDir)) {
-          fs.rmSync(session.liveDir, { recursive: true, force: true });
-          this.logger.debug(`🗑️ Deleted directory: ${session.liveDir}`);
+        try {
+          if (fs.existsSync(session.liveDir)) {
+            fs.rmSync(session.liveDir, { recursive: true, force: true });
+            this.logger.debug(`🗑️ Deleted directory: ${session.liveDir}`);
+          }
+        } catch (err) {
+          this.logger.error(`Failed to delete directory ${session.liveDir}: ${err.message}`);
         }
-      }, 10000); // ✅ 10 seconds delay for R2 upload completion
+      }, 15000); // ✅ Increased to 15 seconds delay for R2 upload completion
 
       // Remove from active sessions
       this.activeSessions.delete(streamKey);
@@ -370,9 +376,11 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    */
   private rejectStream(id: any) {
     try {
-      const session = this.nms.getSession(id?.id);
+      // In Node Media Server, we can get session by it's internal id
+      const session = this.nms.getSession(typeof id === 'string' ? id : id?.id);
       if (session) {
         session.reject();
+        this.logger.log(`🚫 Connection rejected: ${id}`);
       }
     } catch (error) {
       this.logger.error(`Failed to reject stream: ${error.message}`);
