@@ -58,11 +58,18 @@ export class ModeratorController {
   }
 
   @Get('check')
-  checkIsModerator(
+  async checkIsModerator(
     @Query('userId') userId: string,
     @Query('channelId') channelId: string,
+    @Res() res: Response,
   ) {
-    return this.moderatorService.checkIsModerator(userId, channelId);
+    const isModerator = await this.moderatorService.checkIsModerator(userId, channelId);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Moderator status checked successfully',
+      data: isModerator,
+    });
   }
 
   @ApiOperation({ summary: 'Allows only MODERATOR and owner can perform' })
