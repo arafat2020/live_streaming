@@ -280,7 +280,17 @@ export class ModeratorService {
   }
 
   async checkIsModerator(userId: string, channelId: string): Promise<boolean> {
-    console.log("hit checkIsModerator")
+    // 1. Check if user is the channel owner
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { ownerId: true },
+    });
+
+    if (channel && channel.ownerId === userId) {
+      return true;
+    }
+
+    // 2. Check if user is an assigned moderator
     const moderator = await this.prisma.moderator.findFirst({
       where: {
         userId,

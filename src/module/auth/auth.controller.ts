@@ -22,13 +22,13 @@ import sendResponse from 'src/utils/sendResponse';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('register')
   @ApiOperation({ summary: 'Register User' })
   @ApiResponse({ status: 201, description: 'Registered User successfully.' })
   @ApiBody({ type: RegisterDto })
-  async register(@Body() dto: RegisterDto,@Res() res: Response) {
+  async register(@Body() dto: RegisterDto, @Res() res: Response) {
     const data = await this.authService.register(dto);
     return sendResponse(res, {
       statusCode: HttpStatus.CREATED,
@@ -42,7 +42,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Login User' })
   @ApiResponse({ status: 201, description: 'LoggedIn User successfully.' })
   @ApiBody({ type: LoginDto })
-  async login(@Body() dto: LoginDto,@Res() res: Response) {
+  async login(@Body() dto: LoginDto, @Res() res: Response) {
     const data = await this.authService.login(dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -52,10 +52,35 @@ export class AuthController {
     });
   }
 
+  @Post('refresh')
+  @ApiOperation({ summary: 'Refresh Access Token' })
+  @ApiResponse({ status: 200, description: 'Token refreshed successfully.' })
+  async refresh(@Body('refreshToken') refreshToken: string, @Res() res: Response) {
+    const data = await this.authService.refreshTokens(refreshToken);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Token refreshed successfully.',
+      data,
+    });
+  }
+
+  @Post('logout')
+  @ApiOperation({ summary: 'Logout User' })
+  async logout(@Body('userId') userId: string, @Res() res: Response) {
+    const result = await this.authService.logout(userId);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Logged out successfully',
+      data: result,
+    });
+  }
+
   // change password
   @Patch('change-password')
   async changePassword(@Body() dto: ChangePasswordDto, @Req() req: Request, @Res() res: Response) {
-    const result = await this.authService.changePassword("test@gmail.com",dto);
+    const result = await this.authService.changePassword("test@gmail.com", dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -76,7 +101,7 @@ export class AuthController {
     });
   }
 
-  
+
   @Post('verify-reset-code')
   async verifyResetCode(@Body() dto: VerifyResetCodeDto, @Res() res: Response) {
     const result = await this.authService.verifyResetCode(dto);
@@ -90,7 +115,7 @@ export class AuthController {
 
 
 
- 
+
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto, @Res() res: Response) {
     const result = await this.authService.resetPassword(dto);

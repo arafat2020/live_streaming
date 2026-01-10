@@ -18,7 +18,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserRole, UserStatus } from '@prisma/client';
-import {generateOtpCode,hashOtpCode} from '../../utils/generateOtpCode';
+import { generateOtpCode, hashOtpCode } from '../../utils/generateOtpCode';
 import { MailService } from '../mail/mail.service';
 //import { MailerService } from '@nestjs-modules/mailer';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,16 +29,16 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailerService: MailService,
-  ) {}
+  ) { }
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }
-  async register(dto: RegisterDto){
+  async register(dto: RegisterDto) {
     const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existingUser) {
       throw new ConflictException('User with this email already exists.');
     }
-    if(dto.password !== dto.confirmPassword){
+    if (dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Password not match.');
     }
     const hashedPassword = await bcrypt.hash(dto.password, parseInt(process.env.SALT_ROUND!));
@@ -57,21 +57,21 @@ export class AuthService {
     };
     try {
       const user = await this.prisma.user.create({ data: payload });
-    const channelPayload = {
-      ownerId: user.id,
-      name: user.firstName,
-      handle: user.email.split('@')[0],
-      description: null,
-      streamKey: this.generateStreamKey(),
-    };
+      const channelPayload = {
+        ownerId: user.id,
+        name: user.firstName,
+        handle: user.email.split('@')[0],
+        description: null,
+        streamKey: this.generateStreamKey(),
+      };
 
-    await this.prisma.channel.create({ data: channelPayload });
+      await this.prisma.channel.create({ data: channelPayload });
       // sanitize sensitive fields before returning
       const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, ...safeUser } = user;
       return safeUser;
     } catch (err) {
       //console.error("err------>",err);
-      throw new InternalServerErrorException('Failed to create user.',err);
+      throw new InternalServerErrorException('Failed to create user.', err);
     }
   }
 
@@ -126,27 +126,112 @@ export class AuthService {
     const accessToken = this.jwtService.sign(
       { ...payloadBase, tf: true }, // tf=true indicates 2FA satisfied (or not required)
       {
-        secret: process.env.JWT_SECRET,
+        secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
         expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
       },
     );
 
-    // Optional: create refresh token (recommended)
-    // const refreshToken = this.jwtService.sign(
-    //   { ...payloadBase, tf: true },
-    //   { secret: process.env.JWT_REFRESH_SECRET, expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d' }
-    // );
+    // ✅ NEW: create refresh token
+    const refreshToken = this.jwtService.sign(
+      { ...payloadBase, tf: true },
+      {
+        secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'replace_with_a_strong_secret',
+        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+      },
+    );
+
+    // ✅ Store refresh token in database (hashed for security)
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, parseInt(process.env.SALT_ROUND!));
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: hashedRefreshToken },
+    });
 
     // Sanitize user object before returning
-    const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, ...safeUser } = user;
+    const {
+      password,
+      twoFactorSecret,
+      passwordResetToken,
+      passwordResetExpires,
+      refreshToken: _,
+      ...safeUser
+    } = user;
 
     return {
       accessToken,
-      //refreshToken,
+      refreshToken,
       user: safeUser,
     };
   }
-// add inside AuthService class (place anywhere among other methods)
+
+  async refreshTokens(token: string) {
+    try {
+      // 1. Verify refresh token
+      const payload = this.jwtService.verify(token, {
+        secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'replace_with_a_strong_secret',
+      });
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
+
+      if (!user || !user.refreshToken) {
+        throw new UnauthorizedException('Access Denied');
+      }
+
+      // 2. Compare hashed tokens
+      const refreshTokenMatches = await bcrypt.compare(token, user.refreshToken);
+      if (!refreshTokenMatches) {
+        throw new UnauthorizedException('Access Denied');
+      }
+
+      // 3. Generate new tokens
+      const payloadBase = {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      };
+
+      const accessToken = this.jwtService.sign(
+        { ...payloadBase, tf: true },
+        {
+          secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
+          expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
+        },
+      );
+
+      const newRefreshToken = this.jwtService.sign(
+        { ...payloadBase, tf: true },
+        {
+          secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'replace_with_a_strong_secret',
+          expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+        },
+      );
+
+      // 4. Update refresh token in DB
+      const hashedRefreshToken = await bcrypt.hash(newRefreshToken, parseInt(process.env.SALT_ROUND!));
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { refreshToken: hashedRefreshToken },
+      });
+
+      return {
+        accessToken,
+        refreshToken: newRefreshToken,
+      };
+    } catch (e) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  async logout(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { refreshToken: null },
+    });
+    return { message: 'Logged out successfully' };
+  }
+  // add inside AuthService class (place anywhere among other methods)
   async validateToken(token: string, require2FA = true) {
     try {
       // 1. Verify and decode token
@@ -185,12 +270,12 @@ export class AuthService {
 
       return safeUser;
     } catch (err) {
-      console.error("err------>",err);
+      console.error("err------>", err);
       return null;
     }
   }
 
-// change password
+  // change password
   async changePassword(email: string, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || !user.password) {
@@ -201,7 +286,7 @@ export class AuthService {
     if (!isMatch) {
       throw new BadRequestException('Old password is incorrect');
     }
-    const hashed = await bcrypt.hash(dto.newPassword, parseInt(process.env.SALT_ROUND!) );
+    const hashed = await bcrypt.hash(dto.newPassword, parseInt(process.env.SALT_ROUND!));
     await this.prisma.user.update({
       where: { email },
       data: { password: hashed },
@@ -219,7 +304,7 @@ export class AuthService {
     console.log("reset password code----->", code);
     const hashedCode = await hashOtpCode(code);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    await this.prisma.user.update({where:{email:dto.email},data: { passwordResetToken: hashedCode ,passwordResetExpires: expiresAt }});
+    await this.prisma.user.update({ where: { email: dto.email }, data: { passwordResetToken: hashedCode, passwordResetExpires: expiresAt } });
 
 
     await this.mailerService.sendMail({
@@ -279,7 +364,7 @@ export class AuthService {
     const hashed = await bcrypt.hash(dto.password, parseInt(process.env.SALT_ROUND!));
     await this.prisma.user.update({
       where: { email: dto.email },
-      data: { password: hashed,verified:false },
+      data: { password: hashed, verified: false },
     });
     return { message: 'Password reset successful' };
   }

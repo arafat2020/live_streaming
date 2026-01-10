@@ -25,6 +25,7 @@ model User {
   privacyAccepted     Boolean   @default(false)
   privacyAcceptedAt   DateTime?
   dateOfBirth         DateTime? // Optional: store actual DOB
+  refreshToken        String?   // Refresh token for session management
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
