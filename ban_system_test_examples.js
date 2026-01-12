@@ -132,13 +132,18 @@ const listBannedUsersExample = {
  * Expected Response (Permanent Ban):
  * {
  *   "statusCode": 401,
- *   "message": "Your account has been permanently banned for: [reason]. Please contact support for more information."
+ *   "message": "Your account has been permanently banned for: [reason]. Please contact support for more information.",
+ *   "banType": "PERMANENT",
+ *   "reason": "[reason]"
  * }
  *
  * Expected Response (Temporary Ban):
  * {
  *   "statusCode": 401,
- *   "message": "Your account has been temporarily banned for: [reason]. Ban expires at: 2026-01-20T00:00:00.000Z"
+ *   "message": "Your account has been temporarily banned for: [reason].",
+ *   "banType": "TEMPORARY",
+ *   "expiresAt": "2026-01-17T05:55:00.000Z",
+ *   "reason": "You are done"
  * }
  */
 const bannedUserLoginExample = {

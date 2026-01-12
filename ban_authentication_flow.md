@@ -15,7 +15,9 @@ When a user attempts to log in, the system:
 ```json
 {
   "statusCode": 401,
-  "message": "Your account has been permanently banned for: [reason]. Please contact support for more information."
+  "message": "Your account has been permanently banned for: [reason]. Please contact support for more information.",
+  "banType": "PERMANENT",
+  "reason": "[reason]"
 }
 ```
 
@@ -23,7 +25,10 @@ When a user attempts to log in, the system:
 ```json
 {
   "statusCode": 401,
-  "message": "Your account has been temporarily banned for: [reason]. Ban expires at: 2026-01-20T12:00:00.000Z"
+  "message": "Your account has been temporarily banned for: [reason].",
+  "banType": "TEMPORARY",
+  "expiresAt": "2026-01-20T12:00:00.000Z",
+  "reason": "[reason]"
 }
 ```
 

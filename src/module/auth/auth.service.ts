@@ -17,7 +17,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { UserRole, UserStatus } from '@prisma/client';
+import { UserRole, UserStatus, BanType } from '@prisma/client';
 import { generateOtpCode, hashOtpCode } from '../../utils/generateOtpCode';
 import { MailService } from '../mail/mail.service';
 //import { MailerService } from '@nestjs-modules/mailer';
@@ -105,14 +105,19 @@ export class AuthService {
         // User is still banned
         if (user.banExpiresAt) {
           // Temporary ban
-          throw new UnauthorizedException(
-            `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}. Ban expires at: ${user.banExpiresAt.toISOString()}`
-          );
+          throw new UnauthorizedException({
+            message: `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}.`,
+            banType: BanType.TEMPORARY,
+            expiresAt: user.banExpiresAt,
+            reason: user.banReason
+          });
         } else {
           // Permanent ban
-          throw new UnauthorizedException(
-            `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`
-          );
+          throw new UnauthorizedException({
+            message: `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`,
+            banType: BanType.PERMANENT,
+            reason: user.banReason
+          });
         }
       }
     }
@@ -230,13 +235,18 @@ export class AuthService {
         } else {
           // User is still banned
           if (user.banExpiresAt) {
-            throw new UnauthorizedException(
-              `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}. Ban expires at: ${user.banExpiresAt.toISOString()}`
-            );
+            throw new UnauthorizedException({
+              message: `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}.`,
+              banType: BanType.TEMPORARY,
+              expiresAt: user.banExpiresAt,
+              reason: user.banReason
+            });
           } else {
-            throw new UnauthorizedException(
-              `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`
-            );
+            throw new UnauthorizedException({
+              message: `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`,
+              banType: BanType.PERMANENT,
+              reason: user.banReason
+            });
           }
         }
       }
