@@ -88,6 +88,35 @@ export class AuthService {
       );
     }
 
+    // ✅ Check if user is banned
+    if (user.isBanned) {
+      // Check if temporary ban has expired
+      if (user.banExpiresAt && user.banExpiresAt < new Date()) {
+        // Auto-unban expired temporary bans
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            isBanned: false,
+            banExpiresAt: null,
+            banReason: null,
+          },
+        });
+      } else {
+        // User is still banned
+        if (user.banExpiresAt) {
+          // Temporary ban
+          throw new UnauthorizedException(
+            `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}. Ban expires at: ${user.banExpiresAt.toISOString()}`
+          );
+        } else {
+          // Permanent ban
+          throw new UnauthorizedException(
+            `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`
+          );
+        }
+      }
+    }
+
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials.');
@@ -185,6 +214,33 @@ export class AuthService {
         throw new UnauthorizedException('Access Denied');
       }
 
+      // 2.5. Check if user is banned
+      if (user.isBanned) {
+        // Check if temporary ban has expired
+        if (user.banExpiresAt && user.banExpiresAt < new Date()) {
+          // Auto-unban expired temporary bans
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              isBanned: false,
+              banExpiresAt: null,
+              banReason: null,
+            },
+          });
+        } else {
+          // User is still banned
+          if (user.banExpiresAt) {
+            throw new UnauthorizedException(
+              `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}. Ban expires at: ${user.banExpiresAt.toISOString()}`
+            );
+          } else {
+            throw new UnauthorizedException(
+              `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`
+            );
+          }
+        }
+      }
+
       // 3. Generate new tokens
       const payloadBase = {
         sub: user.id,
@@ -253,6 +309,9 @@ export class AuthService {
           email: true,
           role: true,
           status: true,
+          isBanned: true,
+          banExpiresAt: true,
+          banReason: true,
           password: true,
           twoFactorSecret: true,
           passwordResetToken: true,
@@ -265,8 +324,27 @@ export class AuthService {
       // 4. Ensure user is active
       if (user.status !== UserStatus.ACTIVE) return null;
 
+      // 5. Check if user is banned
+      if (user.isBanned) {
+        // Check if temporary ban has expired
+        if (user.banExpiresAt && user.banExpiresAt < new Date()) {
+          // Auto-unban expired temporary bans
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              isBanned: false,
+              banExpiresAt: null,
+              banReason: null,
+            },
+          });
+        } else {
+          // User is still banned - reject access
+          return null;
+        }
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, ...safeUser } = user;
+      const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, isBanned, banExpiresAt, banReason, ...safeUser } = user;
 
       return safeUser;
     } catch (err) {
