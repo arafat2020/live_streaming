@@ -71,7 +71,7 @@ export class ContentService {
     //  EXCLUDE content from channels where user is banned
     if (userId) {
       // Get all channel IDs where user is banned
-      const bannedChannels = await this.prisma.channelBan.findMany({
+      const bannedChannels = await this.prisma.banUser.findMany({
         where: { userId },
         select: { channelId: true },
       });

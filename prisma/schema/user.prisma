@@ -39,7 +39,7 @@ model User {
   chatMessage                ChatMessage[]
   participants               ChatParticipant[]
   liveComment                LiveComment[]
-  bans ChannelBan[] // Add this relation
+  unbanAppeals UnbanAppeal[]
   moderator Moderator[]
   banUser BanUser[]
 

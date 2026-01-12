@@ -2,8 +2,10 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { CreateModeratorDto } from './dto/create-moderator.dto';
 import { UpdateModeratorDto } from './dto/update-moderator.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { BanType } from '@prisma/client';
+import { BanType, AppealStatus } from '@prisma/client';
 import { ModeratorBanUserDto } from './dto/moderator-ban-user.dto';
+import { SubmitAppealDto } from './dto/submit-appeal.dto';
+import { HandleAppealDto } from './dto/handle-appeal.dto';
 
 
 @Injectable()
@@ -553,5 +555,120 @@ export class ModeratorService {
         banDetails: activeBan || null,
       };
     });
+  }
+
+  async submitAppeal(userId: string, dto: SubmitAppealDto) {
+    const { channelId, reason } = dto;
+
+    // 1. Check if user is actually banned
+    const banStatus = await this.checkUserBan(channelId, userId);
+    if (!banStatus.isBanned) {
+      throw new BadRequestException('You are not banned from this channel');
+    }
+
+    // 2. Check if there is already a pending appeal
+    const existingAppeal = await this.prisma.unbanAppeal.findFirst({
+      where: {
+        userId,
+        channelId,
+        status: AppealStatus.PENDING,
+      },
+    });
+
+    if (existingAppeal) {
+      throw new BadRequestException('You already have a pending appeal for this channel');
+    }
+
+    // 3. Create appeal
+    return this.prisma.unbanAppeal.create({
+      data: {
+        userId,
+        channelId,
+        reason,
+      },
+    });
+  }
+
+  async getAppeals(channelId: string, requesterId: string) {
+    // 1. Verify requester is moderator or owner
+    const isMod = await this.checkIsModerator(requesterId, channelId);
+    if (!isMod) {
+      throw new ForbiddenException('You do not have permission to view appeals for this channel');
+    }
+
+    const appeals = await this.prisma.unbanAppeal.findMany({
+      where: { channelId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            profileImage: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      message: 'Appeals retrieved successfully',
+      data: appeals,
+      count: appeals.length,
+    };
+  }
+
+  async handleAppeal(appealId: string, dto: HandleAppealDto, requesterId: string) {
+    const { status, moderatorNote } = dto;
+
+    // 1. Find appeal
+    const appeal = await this.prisma.unbanAppeal.findUnique({
+      where: { id: appealId },
+      include: { channel: true },
+    });
+
+    if (!appeal) {
+      throw new NotFoundException('Appeal not found');
+    }
+
+    // 2. Verify requester is moderator or owner of the channel
+    const isMod = await this.checkIsModerator(requesterId, appeal.channelId);
+    if (!isMod) {
+      throw new ForbiddenException('You do not have permission to handle appeals for this channel');
+    }
+
+    if (appeal.status !== AppealStatus.PENDING) {
+      throw new BadRequestException('Appeal has already been handled');
+    }
+
+    // 3. Update appeal
+    const updatedAppeal = await this.prisma.$transaction(async (tx) => {
+      const appealResult = await tx.unbanAppeal.update({
+        where: { id: appealId },
+        data: {
+          status,
+          moderatorNote,
+          handledBy: requesterId,
+        },
+      });
+
+      // 4. If approved, unban the user
+      if (status === AppealStatus.APPROVED) {
+        await tx.banUser.deleteMany({
+          where: {
+            channelId: appeal.channelId,
+            userId: appeal.userId,
+          },
+        });
+      }
+
+      return appealResult;
+    });
+
+    return {
+      message: `Appeal ${status.toLowerCase()} successfully`,
+      data: updatedAppeal,
+    };
   }
 }

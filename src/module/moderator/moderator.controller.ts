@@ -6,7 +6,9 @@ import { GetMe } from '../user/dto/request-with-user.interface';
 import sendResponse from '../utils/sendResponse';
 import { Request, Response } from 'express';
 import { ModeratorBanUserDto } from './dto/moderator-ban-user.dto';
-import { ApiOperation } from '@nestjs/swagger';
+import { SubmitAppealDto } from './dto/submit-appeal.dto';
+import { HandleAppealDto } from './dto/handle-appeal.dto';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/guards/roles.decorator';
@@ -164,6 +166,64 @@ export class ModeratorController {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Banned users retrieved successfully',
+      data,
+    });
+  }
+
+  @ApiOperation({ summary: 'Submit an unban appeal' })
+  @UseGuards(JwtAuthGuard)
+  @Post('appeal')
+  async submitAppeal(
+    @Req() req: GetMe,
+    @Body() dto: SubmitAppealDto,
+    @Res() res: Response
+  ) {
+    const userId = req.user.id;
+    const data = await this.moderatorService.submitAppeal(userId, dto);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.CREATED,
+      success: true,
+      message: 'Appeal submitted successfully',
+      data,
+    });
+  }
+
+  @ApiOperation({ summary: 'Get all appeals for a channel (Moderator only)' })
+  @UseGuards(JwtAuthGuard)
+  @Get('appeals/:channelId')
+  async getAppeals(
+    @Param('channelId') channelId: string,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+    const requesterId = req.user.id;
+    const data = await this.moderatorService.getAppeals(channelId, requesterId);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Appeals retrieved successfully',
+      data,
+    });
+  }
+
+  @ApiOperation({ summary: 'Handle an unban appeal (Moderator only)' })
+  @UseGuards(JwtAuthGuard)
+  @Patch('appeals/:appealId')
+  async handleAppeal(
+    @Param('appealId') appealId: string,
+    @Body() dto: HandleAppealDto,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+    const requesterId = req.user.id;
+    const data = await this.moderatorService.handleAppeal(appealId, dto, requesterId);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Appeal handled successfully',
       data,
     });
   }
