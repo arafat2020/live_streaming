@@ -1,0 +1,85 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ContentStatus, UserStatus } from '@prisma/client';
+
+@Injectable()
+export class AdminDashboardService {
+    constructor(private prisma: PrismaService) { }
+
+    async getStats() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const [
+            totalUsers,
+            totalContent,
+            totalViews,
+            newUsersToday,
+            newContentToday,
+            recentUsers,
+            recentContent,
+        ] = await Promise.all([
+            this.prisma.user.count(),
+            this.prisma.content.count(),
+            this.prisma.content.aggregate({
+                _sum: {
+                    views: true,
+                },
+            }),
+            this.prisma.user.count({
+                where: {
+                    createdAt: {
+                        gte: today,
+                    },
+                },
+            }),
+            this.prisma.content.count({
+                where: {
+                    createdAt: {
+                        gte: today,
+                    },
+                },
+            }),
+            this.prisma.user.findMany({
+                take: 5,
+                orderBy: {
+                    createdAt: 'desc',
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    profileImage: true,
+                    createdAt: true,
+                },
+            }),
+            this.prisma.content.findMany({
+                take: 5,
+                orderBy: {
+                    createdAt: 'desc',
+                },
+                include: {
+                    channel: {
+                        select: {
+                            name: true,
+                            handle: true,
+                        },
+                    },
+                },
+            }),
+        ]);
+
+        return {
+            overview: {
+                totalUsers,
+                totalContent,
+                totalViews: totalViews._sum.views || 0,
+                newUsersToday,
+                newContentToday,
+            },
+            recentUsers,
+            recentContent,
+        };
+    }
+}

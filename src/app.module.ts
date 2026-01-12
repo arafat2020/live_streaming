@@ -24,6 +24,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
 import { ModeratorModule } from './module/moderator/moderator.module';
 import { BanGuard } from './module/auth/guards/ban.guard';
+import { AdminDashboardModule } from './module/admin-dashboard/admin-dashboard.module';
 
 
 @Module({
@@ -67,7 +68,7 @@ import { BanGuard } from './module/auth/guards/ban.guard';
     StreamsModule,
     VideoModule,
     ModeratorModule,
-
+    AdminDashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService, {

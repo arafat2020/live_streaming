@@ -231,6 +231,96 @@ export class ContentService {
       message: 'Content deleted successfully',
     };
   }
+  async adminFindAll(query: QueryContentDto) {
+    const page = Math.max(query.page ?? 1, 1);
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const sortBy = query.sortBy;
+    const title = query.title;
+    const status = query.status;
+
+    const skip = (page - 1) * pageSize;
+
+    const orderBy = sortBy === ContentSortBy.MOST_VIEWED
+      ? { views: 'desc' as const }
+      : { createdAt: 'desc' as const };
+
+    const where: any = {};
+
+    if (title) {
+      where.title = {
+        contains: title,
+        mode: 'insensitive' as const,
+      };
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.content.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy,
+        include: {
+          channel: {
+            select: {
+              id: true,
+              name: true,
+              handle: true,
+              owner: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.content.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async toggleVisibility(id: string, isHidden: boolean) {
+    const content = await this.prisma.content.findUnique({ where: { id } });
+    if (!content) throw new NotFoundException('Content not found');
+
+    const newStatus = isHidden ? 'PRIVATE' : 'AVAILABLE';
+
+    return this.prisma.content.update({
+      where: { id },
+      data: { status: newStatus as any },
+    });
+  }
+
+  async forceEndStream(id: string) {
+    const content = await this.prisma.content.findUnique({ where: { id } });
+    if (!content) throw new NotFoundException('Content not found');
+
+    if (content.contentType !== 'LIVE_STREAM') {
+      throw new BadRequestException('Content is not a live stream');
+    }
+
+    return this.prisma.content.update({
+      where: { id },
+      data: { status: 'ENDED' as any },
+    });
+  }
+
   // optional: increment view count safely
   async incrementViews(id: string) {
     // Find the content with channel owner info
