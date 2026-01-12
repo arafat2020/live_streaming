@@ -42,5 +42,13 @@ model User {
   bans ChannelBan[] // Add this relation
   moderator Moderator[]
   banUser BanUser[]
+
+  // Platform-wide ban fields
+  isBanned      Boolean   @default(false)
+  banExpiresAt  DateTime?
+  banReason     String?
+  
+  platformBanLogs PlatformBanLog[]
+
   @@map("users")
 }

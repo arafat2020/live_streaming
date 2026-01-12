@@ -23,6 +23,7 @@ import { VideoModule } from './module/video/video.module';
 import { APP_GUARD } from '@nestjs/core';
 import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
 import { ModeratorModule } from './module/moderator/moderator.module';
+import { BanGuard } from './module/auth/guards/ban.guard';
 
 
 @Module({
@@ -49,29 +50,33 @@ import { ModeratorModule } from './module/moderator/moderator.module';
         },
       }),
     }),
-      PrismaModule,
-      UserModule,
-      AuthModule,
-      MailModule,
-      FollowModule,
-      ChannelModule,
-      ContentModule,
-      WatchHistoryModule,
-      UserNotificationPreferenceModule,
-      NotificationModule,
-      //ChatModule,
-      LiveCommentModule,
-      R2WorkerModule,
-      CloudflareModule,
-      StreamsModule,
-      VideoModule,
-      ModeratorModule,
+    PrismaModule,
+    UserModule,
+    AuthModule,
+    MailModule,
+    FollowModule,
+    ChannelModule,
+    ContentModule,
+    WatchHistoryModule,
+    UserNotificationPreferenceModule,
+    NotificationModule,
+    //ChatModule,
+    LiveCommentModule,
+    R2WorkerModule,
+    CloudflareModule,
+    StreamsModule,
+    VideoModule,
+    ModeratorModule,
 
   ],
   controllers: [AppController],
-  providers: [AppService,SeederService,    {
+  providers: [AppService, SeederService, {
+    provide: APP_GUARD,
+    useClass: TermsAcceptedGuard, // ✅ Applied globally
+  },
+    {
       provide: APP_GUARD,
-      useClass: TermsAcceptedGuard, // ✅ Applied globally
+      useClass: BanGuard, // ✅ Applied globally
     },],
 })
-export class AppModule {}
+export class AppModule { }
