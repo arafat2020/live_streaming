@@ -25,10 +25,12 @@ import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
 import { ModeratorModule } from './module/moderator/moderator.module';
 import { BanGuard } from './module/auth/guards/ban.guard';
 import { AdminDashboardModule } from './module/admin-dashboard/admin-dashboard.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,      // makes ConfigService available everywhere
       envFilePath: '.env', // optional, default is .env

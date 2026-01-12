@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { r2Client, R2_BUCKET, R2_PUBLIC_URL } from '../../config/r2.config';
 import * as fs from 'fs';
@@ -241,7 +241,7 @@ export class R2UploadService {
   async deleteFile(r2Key: string): Promise<void> {
     try {
       await r2Client.send(
-        new PutObjectCommand({
+        new DeleteObjectCommand({
           Bucket: R2_BUCKET,
           Key: r2Key,
         }),
@@ -255,11 +255,47 @@ export class R2UploadService {
   }
 
   /**
+   * Delete all objects with a specific prefix (folder cleanup)
+   */
+  async deletePrefix(prefix: string): Promise<void> {
+    try {
+      this.logger.log(`🗑️ Deleting all objects with prefix: ${prefix}`);
+
+      // List all objects with the prefix
+      const listCommand = new ListObjectsV2Command({
+        Bucket: R2_BUCKET,
+        Prefix: prefix,
+      });
+
+      const listResponse = await r2Client.send(listCommand);
+
+      if (!listResponse.Contents || listResponse.Contents.length === 0) {
+        this.logger.log(`ℹ️ No objects found with prefix: ${prefix}`);
+        return;
+      }
+
+      // Prepare batch delete
+      const deleteParams = {
+        Bucket: R2_BUCKET,
+        Delete: {
+          Objects: listResponse.Contents.map((obj) => ({ Key: obj.Key })),
+        },
+      };
+
+      await r2Client.send(new DeleteObjectsCommand(deleteParams));
+      this.logger.log(`✅ Deleted ${listResponse.Contents.length} objects with prefix: ${prefix}`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to delete prefix ${prefix}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Check if a file exists in R2
    */
   async fileExists(r2Key: string): Promise<boolean> {
     try {
-      const command = new PutObjectCommand({
+      const command = new HeadObjectCommand({
         Bucket: R2_BUCKET,
         Key: r2Key,
       });
@@ -267,13 +303,11 @@ export class R2UploadService {
       await r2Client.send(command);
       return true;
     } catch (error) {
-      if (error.name === 'NotFound') {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
         return false;
       }
       throw error;
     }
-
-
   }
 
   async uploadBuffer(
