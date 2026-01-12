@@ -14,7 +14,7 @@ import { WatchHistoryModule } from './module/watch-history/watch-history.module'
 import { UserNotificationPreferenceModule } from './module/user-notification-preference/user-notification-preference.module';
 import { NotificationModule } from './module/notification/notification.module';
 import { SeederService } from './seeder/seeder.service';
-//import { ChatModule } from './module/chat/chat.module';
+import { ChatModule } from './module/chat/chat.module';
 import { LiveCommentModule } from './module/live-comment/live-comment.module';
 import { R2WorkerModule } from './module/r2-worker/r2-worker.module';
 import { CloudflareModule } from './module/cloudflare/cloudflare.module';
@@ -60,7 +60,7 @@ import { BanGuard } from './module/auth/guards/ban.guard';
     WatchHistoryModule,
     UserNotificationPreferenceModule,
     NotificationModule,
-    //ChatModule,
+    ChatModule,
     LiveCommentModule,
     R2WorkerModule,
     CloudflareModule,

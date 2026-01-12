@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min, IsDateString } from 'class-validator';
 import { BanType } from '@prisma/client';
 
 export class BanUserDto {
@@ -9,6 +9,10 @@ export class BanUserDto {
     @IsInt()
     @Min(1)
     durationInDays?: number;
+
+    @IsOptional()
+    @IsDateString()
+    expiresAt?: string;
 
     @IsOptional()
     @IsString()

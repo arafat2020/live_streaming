@@ -68,11 +68,21 @@ export class SeederService implements OnApplicationBootstrap {
       },
     });
 
+    const baseHandle = superAdminEmail.split('@')[0];
+    let handle = baseHandle;
+    const isHandleTaken = await this.prisma.channel.findUnique({
+      where: { handle },
+    });
+
+    if (isHandleTaken) {
+      handle = `${baseHandle}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
     const channelPayload = {
       ownerId: user.id,
       name: user.firstName,
-      handle: user.email.split('@')[0],
-      description: 'Platform owner', // empty string instead of null
+      handle,
+      description: 'Platform owner',
       streamKey: this.generateStreamKey(),
     };
 
