@@ -30,10 +30,10 @@ export class ModeratorController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post()
-  async create(@Body() createModeratorDto: CreateModeratorDto) {
-
-    return this.moderatorService.create(createModeratorDto);
+  async create(@Body() createModeratorDto: CreateModeratorDto, @Req() req: GetMe) {
+    return this.moderatorService.create(createModeratorDto, req.user.id);
   }
 
   @Get()
@@ -47,6 +47,7 @@ export class ModeratorController {
   ) {
     return this.moderatorService.checkUserBan(channelId, userId);
   }
+  @UseGuards(JwtAuthGuard)
   @Get('channel/:channelId')
   findByChannel(@Param('channelId') channelId: string) {
     return this.moderatorService.findByChannel(channelId);
@@ -69,6 +70,26 @@ export class ModeratorController {
       success: true,
       message: 'Moderator status checked successfully',
       data: isModerator,
+    });
+  }
+
+  @ApiOperation({ summary: 'Search users to manage (only for channel moderators/owners)' })
+  @UseGuards(JwtAuthGuard)
+  @Get('search-users')
+  async searchUsers(
+    @Query('channelId') channelId: string,
+    @Query('q') query: string,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+    const userId = req.user.id;
+    const data = await this.moderatorService.searchUsersForModeration(channelId, query, userId);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Users retrieved successfully',
+      data,
     });
   }
 
@@ -108,10 +129,48 @@ export class ModeratorController {
   }
 
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.moderatorService.remove(id);
+  @ApiOperation({ summary: 'Unban a user from the channel' })
+  @UseGuards(JwtAuthGuard)
+  @Post('unban/:channelId/:userId')
+  async unbanUser(
+    @Param('channelId') channelId: string,
+    @Param('userId') userId: string,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+    const requesterId = req.user.id;
+    const data = await this.moderatorService.unbanUser(channelId, userId, requesterId);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'User unbanned successfully',
+      data,
+    });
   }
 
+  @ApiOperation({ summary: 'List all banned users in a channel' })
+  @UseGuards(JwtAuthGuard)
+  @Get('banned-list/:channelId')
+  async getBannedUsers(
+    @Param('channelId') channelId: string,
+    @Req() req: GetMe,
+    @Res() res: Response
+  ) {
+    const requesterId = req.user.id;
+    const data = await this.moderatorService.getBannedUsers(channelId, requesterId);
 
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Banned users retrieved successfully',
+      data,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  remove(@Param('id') id: string, @Req() req: GetMe) {
+    return this.moderatorService.remove(id, req.user.id);
+  }
 }

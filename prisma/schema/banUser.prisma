@@ -5,6 +5,8 @@ model BanUser {
   channelId String
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
+  reason    String?
+  bannedBy  String?    // Admin/Moderator who issued the ban
   expiresAt DateTime?
   banType   BanType  @default(PERMANENT)
 
