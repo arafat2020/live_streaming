@@ -26,4 +26,15 @@ export class AdminDashboardController {
             data,
         });
     }
+    @ApiOperation({ summary: 'Get storage usage analytics' })
+    @Get('storage')
+    async getStorageStats(@Res() res: Response) {
+        const data = await this.adminDashboardService.getStorageStats();
+        return sendResponse(res, {
+            statusCode: HttpStatus.OK,
+            success: true,
+            message: 'Storage analytics retrieved successfully',
+            data,
+        });
+    }
 }

@@ -48,6 +48,8 @@ model User {
   banExpiresAt  DateTime?
   banReason     String?
   
+  isShadowBanned Boolean @default(false)
+  
   platformBanLogs PlatformBanLog[]
 
   @@map("users")

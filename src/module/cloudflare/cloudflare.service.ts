@@ -23,7 +23,7 @@ export class CloudflareService {
   }
   async createLiveInput(userId: string, name?: string) {
 
-console.log(`Creating Live Input for :${userId}`);
+    console.log(`Creating Live Input for :${userId}`);
     const client = new Cloudflare({
       apiToken: this.token, // Use the validated token
     });
@@ -40,14 +40,14 @@ console.log(`Creating Live Input for :${userId}`);
 
     console.log("liveInput------------------>", liveInput);
 
-    console.log("accountId---------------->",this.accountId)
-    console.log("token---------------->",this.token)
+    console.log("accountId---------------->", this.accountId)
+    console.log("token---------------->", this.token)
     const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/live_inputs`;
-    console.log("url---------------------->",url);
+    console.log("url---------------------->", url);
     const payload = { meta: { name: name || `user_${userId}_live` } };
-    console.log("payload---------------------->",payload);
+    console.log("payload---------------------->", payload);
     const response = await axios.post(url, payload, { headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' } });
-    console.log("response---------------------->",response);
+    console.log("response---------------------->", response);
     return response.data.result;
   }
 
@@ -71,6 +71,15 @@ console.log(`Creating Live Input for :${userId}`);
     return response.data;
   }
 
+  async getLiveInputHealth(inputId: string) {
+    const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/live_inputs/${inputId}/health`;
+
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+
+    return response.data.result;
+  }
 }
 
 

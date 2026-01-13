@@ -81,4 +81,46 @@ export class AdminDashboardService {
             recentContent,
         };
     }
+
+    async getStorageStats() {
+        const storageByChannel = await this.prisma.content.groupBy({
+            by: ['channelId'],
+            _sum: {
+                fileSize: true,
+            },
+            orderBy: {
+                _sum: {
+                    fileSize: 'desc',
+                },
+            },
+            take: 10,
+        });
+
+        const channels = await this.prisma.channel.findMany({
+            where: {
+                id: {
+                    in: storageByChannel.map((s) => s.channelId).filter((id): id is string => id !== null),
+                },
+            },
+            select: {
+                id: true,
+                name: true,
+                handle: true,
+            },
+        });
+
+        const totalStorage = await this.prisma.content.aggregate({
+            _sum: {
+                fileSize: true,
+            },
+        });
+
+        return {
+            totalStorageBytes: totalStorage._sum.fileSize || 0,
+            topChannels: storageByChannel.map((s) => ({
+                ...channels.find((c) => c.id === s.channelId),
+                storageBytes: s._sum.fileSize || 0,
+            })),
+        };
+    }
 }

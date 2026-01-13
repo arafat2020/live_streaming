@@ -669,16 +669,7 @@ export class ModeratorService {
 
     // 3. Update appeal
     const updatedAppeal = await this.prisma.$transaction(async (tx) => {
-      const appealResult = await tx.unbanAppeal.update({
-        where: { id: appealId },
-        data: {
-          status,
-          moderatorNote,
-          handledBy: requesterId,
-        },
-      });
-
-      // 4. If approved, unban the user
+      // 4. If approved, unban the user and delete the appeal
       if (status === AppealStatus.APPROVED) {
         await tx.banUser.deleteMany({
           where: {
@@ -686,9 +677,25 @@ export class ModeratorService {
             userId: appeal.userId,
           },
         });
+
+        // Delete the appeal instead of updating it
+        await tx.unbanAppeal.delete({
+          where: { id: appealId },
+        });
+
+        // Return the appeal data as it was before deletion but with the new status
+        return { ...appeal, status, moderatorNote, handledBy: requesterId };
       }
 
-      return appealResult;
+      // If rejected, just update the status
+      return await tx.unbanAppeal.update({
+        where: { id: appealId },
+        data: {
+          status,
+          moderatorNote,
+          handledBy: requesterId,
+        },
+      });
     });
 
     return {
