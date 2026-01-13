@@ -150,7 +150,6 @@ export class WatchHistoryService {
               select: {
                 id: true,
                 firstName: true,
-                lastName: true,
                 profileImage: true,
               },
             },

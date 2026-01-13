@@ -106,7 +106,6 @@ export class ChannelService {
             id: true,
             email: true,
             firstName: true,
-            lastName: true,
             profileImage: true,
           },
         },
@@ -273,7 +272,6 @@ export class ChannelService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             status: true,
             profileImage: true,
           },
@@ -338,7 +336,6 @@ export class ChannelService {
             id: true,
             email: true,
             firstName: true,
-            lastName: true,
             status: true,
             profileImage: true,
           },
@@ -517,7 +514,6 @@ export class ChannelService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             status: true,
             profileImage: true,
           },
@@ -544,7 +540,6 @@ export class ChannelService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             status: true,
             profileImage: true,
           },
@@ -576,7 +571,6 @@ export class ChannelService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             status: true,
             profileImage: true,
           },

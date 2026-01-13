@@ -61,7 +61,6 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             email: true,
           },
         },
@@ -147,7 +146,6 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             email: true,
             profileImage: true,
           },
@@ -361,7 +359,6 @@ export class ModeratorService {
             select: {
               id: true,
               firstName: true,
-              lastName: true,
               email: true,
               profileImage: true,
             },
@@ -388,7 +385,6 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             email: true,
             profileImage: true,
           },
@@ -440,7 +436,6 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             email: true,
             profileImage: true,
           },
@@ -511,14 +506,12 @@ export class ModeratorService {
       where: {
         OR: [
           { firstName: { contains: query, mode: 'insensitive' as const } },
-          { lastName: { contains: query, mode: 'insensitive' as const } },
           { email: { contains: query, mode: 'insensitive' as const } },
         ],
       },
       select: {
         id: true,
         firstName: true,
-        lastName: true,
         email: true,
         profileImage: true,
         moderator: {
@@ -547,7 +540,6 @@ export class ModeratorService {
       return {
         id: user.id,
         firstName: user.firstName,
-        lastName: user.lastName,
         email: user.email,
         profileImage: user.profileImage,
         isModerator: user.moderator.length > 0,
@@ -603,7 +595,6 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
-            lastName: true,
             email: true,
             profileImage: true,
           },

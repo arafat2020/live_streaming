@@ -49,7 +49,6 @@ export class AdminDashboardService {
                     id: true,
                     email: true,
                     firstName: true,
-                    lastName: true,
                     profileImage: true,
                     createdAt: true,
                 },
