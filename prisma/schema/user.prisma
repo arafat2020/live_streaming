@@ -39,8 +39,16 @@ model User {
   chatMessage                ChatMessage[]
   participants               ChatParticipant[]
   liveComment                LiveComment[]
-  bans ChannelBan[] // Add this relation
+  unbanAppeals UnbanAppeal[]
   moderator Moderator[]
   banUser BanUser[]
+
+  // Platform-wide ban fields
+  isBanned      Boolean   @default(false)
+  banExpiresAt  DateTime?
+  banReason     String?
+  
+  platformBanLogs PlatformBanLog[]
+
   @@map("users")
 }

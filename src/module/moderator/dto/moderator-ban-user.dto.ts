@@ -26,4 +26,12 @@ export class ModeratorBanUserDto {
   @IsOptional()
   @IsDateString()
   expiresAt?: string;
+
+  @ApiPropertyOptional({
+    description: 'Reason for the ban',
+    example: 'Spamming in chat',
+  })
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private readonly logger = new Logger(SeederService.name);
 
@@ -30,16 +30,25 @@ export class SeederService implements OnApplicationBootstrap {
       return;
     }
 
-    const superAdmin = await this.prisma.user.findFirst({
-      where: { role: UserRole.ADMIN },
+    const superAdmin = await this.prisma.user.findUnique({
+      where: { email: superAdminEmail },
     });
 
+    const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
+
     if (superAdmin) {
-      this.logger.log('Admin already exists, skipping seeding.');
+      if (superAdmin.role !== UserRole.ADMIN) {
+        await this.prisma.user.update({
+          where: { id: superAdmin.id },
+          data: { role: UserRole.ADMIN },
+        });
+        this.logger.log(`Updated role for existing user ${superAdminEmail} to ADMIN`);
+      } else {
+        this.logger.log('Admin already exists with this email.');
+      }
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
 
     const user = await this.prisma.user.create({
       data: {
@@ -59,11 +68,21 @@ export class SeederService implements OnApplicationBootstrap {
       },
     });
 
+    const baseHandle = superAdminEmail.split('@')[0];
+    let handle = baseHandle;
+    const isHandleTaken = await this.prisma.channel.findUnique({
+      where: { handle },
+    });
+
+    if (isHandleTaken) {
+      handle = `${baseHandle}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
     const channelPayload = {
       ownerId: user.id,
       name: user.firstName,
-      handle: user.email.split('@')[0],
-      description: 'Platform owner', // empty string instead of null
+      handle,
+      description: 'Platform owner',
       streamKey: this.generateStreamKey(),
     };
 

@@ -14,7 +14,7 @@ import { WatchHistoryModule } from './module/watch-history/watch-history.module'
 import { UserNotificationPreferenceModule } from './module/user-notification-preference/user-notification-preference.module';
 import { NotificationModule } from './module/notification/notification.module';
 import { SeederService } from './seeder/seeder.service';
-//import { ChatModule } from './module/chat/chat.module';
+import { ChatModule } from './module/chat/chat.module';
 import { LiveCommentModule } from './module/live-comment/live-comment.module';
 import { R2WorkerModule } from './module/r2-worker/r2-worker.module';
 import { CloudflareModule } from './module/cloudflare/cloudflare.module';
@@ -23,10 +23,14 @@ import { VideoModule } from './module/video/video.module';
 import { APP_GUARD } from '@nestjs/core';
 import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
 import { ModeratorModule } from './module/moderator/moderator.module';
+import { BanGuard } from './module/auth/guards/ban.guard';
+import { AdminDashboardModule } from './module/admin-dashboard/admin-dashboard.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,      // makes ConfigService available everywhere
       envFilePath: '.env', // optional, default is .env
@@ -49,29 +53,33 @@ import { ModeratorModule } from './module/moderator/moderator.module';
         },
       }),
     }),
-      PrismaModule,
-      UserModule,
-      AuthModule,
-      MailModule,
-      FollowModule,
-      ChannelModule,
-      ContentModule,
-      WatchHistoryModule,
-      UserNotificationPreferenceModule,
-      NotificationModule,
-      //ChatModule,
-      LiveCommentModule,
-      R2WorkerModule,
-      CloudflareModule,
-      StreamsModule,
-      VideoModule,
-      ModeratorModule,
-
+    PrismaModule,
+    UserModule,
+    AuthModule,
+    MailModule,
+    FollowModule,
+    ChannelModule,
+    ContentModule,
+    WatchHistoryModule,
+    UserNotificationPreferenceModule,
+    NotificationModule,
+    ChatModule,
+    LiveCommentModule,
+    R2WorkerModule,
+    CloudflareModule,
+    StreamsModule,
+    VideoModule,
+    ModeratorModule,
+    AdminDashboardModule,
   ],
   controllers: [AppController],
-  providers: [AppService,SeederService,    {
+  providers: [AppService, SeederService, {
+    provide: APP_GUARD,
+    useClass: TermsAcceptedGuard, // ✅ Applied globally
+  },
+    {
       provide: APP_GUARD,
-      useClass: TermsAcceptedGuard, // ✅ Applied globally
+      useClass: BanGuard, // ✅ Applied globally
     },],
 })
-export class AppModule {}
+export class AppModule { }

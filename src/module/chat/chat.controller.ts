@@ -21,13 +21,13 @@ import { Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
 import { ChatGateway } from './chat.gateway'; // import gateway type
 
-//@ApiTags('chat')
-//@Controller('chat')
+@ApiTags('chat')
+@Controller('chat')
 export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly chatGateway: ChatGateway, // inject gateway
-  ) {}
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a chat room' })

@@ -29,7 +29,7 @@ import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
-import { PaginationDto } from './dto/pagination.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')

@@ -10,18 +10,18 @@ import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 @Injectable()
 export class WatchHistoryService {
   private readonly logger = new Logger(WatchHistoryService.name);
-  
+
   // Track active viewers per content (in-memory)
   private activeViewers = new Map<string, Set<string>>();
 
   constructor(
     private prisma: PrismaService,
     private liveGateway: LiveCommentGateway, // Inject WebSocket gateway
-  ) {}
+  ) { }
 
 
   // Increment view count for content NOW WITH WEBSOCKET BROADCAST
-  
+
   async incrementViews(contentId: string, userId?: string) {
     this.logger.log(`Incrementing view count for content ${contentId}`);
 
@@ -83,20 +83,20 @@ export class WatchHistoryService {
     if (!this.activeViewers.has(contentId)) {
       this.activeViewers.set(contentId, new Set());
     }
-    
+
     const viewers = this.activeViewers.get(contentId)!;
     viewers.add(userId);
-    
+
     const concurrentCount = viewers.size;
-    
+
     this.logger.log(`User ${userId} started watching ${contentId} (${concurrentCount} concurrent)`);
-    
+
     // Broadcast concurrent viewer count
     this.liveGateway.broadcastConcurrentViewers(contentId, concurrentCount);
-    
+
     // Increment total views (only once per user session)
     await this.incrementViews(contentId, userId);
-    
+
     return { concurrentViewers: concurrentCount };
   }
 
@@ -105,24 +105,24 @@ export class WatchHistoryService {
 
   async stopWatching(contentId: string, userId: string) {
     const viewers = this.activeViewers.get(contentId);
-    
+
     if (viewers) {
       viewers.delete(userId);
       const concurrentCount = viewers.size;
-      
+
       this.logger.log(`User ${userId} stopped watching ${contentId} (${concurrentCount} remaining)`);
-      
+
       // Broadcast updated concurrent viewer count
       this.liveGateway.broadcastConcurrentViewers(contentId, concurrentCount);
-      
+
       // Clean up if no viewers left
       if (concurrentCount === 0) {
         this.activeViewers.delete(contentId);
       }
-      
+
       return { concurrentViewers: concurrentCount };
     }
-    
+
     return { concurrentViewers: 0 };
   }
 
@@ -150,7 +150,6 @@ export class WatchHistoryService {
               select: {
                 id: true,
                 firstName: true,
-                lastName: true,
                 profileImage: true,
               },
             },
@@ -164,7 +163,7 @@ export class WatchHistoryService {
     }
 
     // Add concurrent viewer count for live streams
-    const concurrentViewers = content.contentType === 'LIVE_STREAM' 
+    const concurrentViewers = content.contentType === 'LIVE_STREAM'
       ? this.getActiveViewerCount(id)
       : 0;
 
@@ -211,15 +210,26 @@ export class WatchHistoryService {
     // Add concurrent viewer count for each live stream
     return contents.map(content => ({
       ...content,
-      concurrentViewers: content.contentType === 'LIVE_STREAM' 
+      concurrentViewers: content.contentType === 'LIVE_STREAM'
         ? this.getActiveViewerCount(content.id)
         : 0,
     }));
   }
 
 
-  // Get analytics for a specific content
+  // Get total watch time for a content in seconds
+  async getTotalWatchTime(contentId: string): Promise<number> {
+    const aggregate = await this.prisma.watchHistory.aggregate({
+      where: { contentId },
+      _sum: {
+        progressSeconds: true,
+      },
+    });
 
+    return aggregate._sum.progressSeconds || 0;
+  }
+
+  // Get analytics for a specific content
   async getContentAnalytics(contentId: string) {
     const content = await this.prisma.content.findUnique({
       where: { id: contentId },
@@ -237,30 +247,31 @@ export class WatchHistoryService {
     }
 
     const concurrentViewers = this.getActiveViewerCount(contentId);
+    const totalWatchTime = await this.getTotalWatchTime(contentId);
 
     return {
       contentId: content.id,
       title: content.title,
       totalViews: content.views,
       concurrentViewers,
+      totalWatchTime,
       contentType: content.contentType,
       createdAt: content.createdAt,
     };
   }
 
-
   // Cleanup: Remove inactive viewers (run periodically)
 
   cleanupInactiveViewers() {
     let cleaned = 0;
-    
+
     for (const [contentId, viewers] of this.activeViewers.entries()) {
       if (viewers.size === 0) {
         this.activeViewers.delete(contentId);
         cleaned++;
       }
     }
-    
+
     if (cleaned > 0) {
       this.logger.log(`Cleaned up ${cleaned} empty viewer sets`);
     }
