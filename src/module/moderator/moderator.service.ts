@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { CreateModeratorDto } from './dto/create-moderator.dto';
 import { UpdateModeratorDto } from './dto/update-moderator.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -6,11 +6,72 @@ import { BanType, AppealStatus } from '@prisma/client';
 import { ModeratorBanUserDto } from './dto/moderator-ban-user.dto';
 import { SubmitAppealDto } from './dto/submit-appeal.dto';
 import { HandleAppealDto } from './dto/handle-appeal.dto';
-
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class ModeratorService {
+  private readonly logger = new Logger(ModeratorService.name);
   constructor(private readonly prisma: PrismaService) { }
+
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupExpiredBans() {
+    this.logger.debug('Cleaning up expired bans...');
+    const result = await this.prisma.banUser.deleteMany({
+      where: {
+        banType: BanType.TEMPORARY,
+        expiresAt: {
+          lt: new Date(),
+        },
+      },
+    });
+    if (result.count > 0) {
+      this.logger.log(`Cleaned up ${result.count} expired bans`);
+    }
+  }
+
+
+
+
+  // ... existing methods ...
+
+  async getBannedUsers(channelId: string, requesterId: string) {
+    // 1. Verify requester is moderator or owner
+    const isMod = await this.checkIsModerator(requesterId, channelId);
+    if (!isMod) {
+      throw new ForbiddenException('You do not have permission to moderate this channel');
+    }
+
+    const bannedUsers = await this.prisma.banUser.findMany({
+      where: {
+        channelId,
+        OR: [
+          { banType: BanType.PERMANENT },
+          { expiresAt: { gt: new Date() } }
+        ]
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            email: true,
+            profileImage: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      message: 'Banned users retrieved successfully',
+      data: bannedUsers,
+      count: bannedUsers.length,
+    };
+  }
+
+  // ... rest of the file ...
+
 
 
   async create(createModeratorDto: CreateModeratorDto, requesterId: string) {
@@ -422,34 +483,7 @@ export class ModeratorService {
     };
   }
 
-  async getBannedUsers(channelId: string, requesterId: string) {
-    // 1. Verify requester is moderator or owner
-    const isMod = await this.checkIsModerator(requesterId, channelId);
-    if (!isMod) {
-      throw new ForbiddenException('You do not have permission to moderate this channel');
-    }
 
-    const bannedUsers = await this.prisma.banUser.findMany({
-      where: { channelId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            email: true,
-            profileImage: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return {
-      message: 'Banned users retrieved successfully',
-      data: bannedUsers,
-      count: bannedUsers.length,
-    };
-  }
 
   async checkUserBan(channelId: string, userId: string) {
     const ban = await this.prisma.banUser.findUnique({

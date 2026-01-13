@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Res, HttpStatus, NotFoundException, ForbiddenException, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Res, HttpStatus, NotFoundException, ForbiddenException, UseGuards, BadRequestException } from '@nestjs/common';
 import { ModeratorService } from './moderator.service';
 import { CreateModeratorDto } from './dto/create-moderator.dto';
 import { UpdateModeratorDto } from './dto/update-moderator.dto';
@@ -66,6 +66,10 @@ export class ModeratorController {
     @Query('channelId') channelId: string,
     @Res() res: Response,
   ) {
+    if (!userId || !channelId) {
+      throw new BadRequestException('User ID and Channel ID are required');
+    }
+
     const isModerator = await this.moderatorService.checkIsModerator(userId, channelId);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -84,8 +88,13 @@ export class ModeratorController {
     @Req() req: GetMe,
     @Res() res: Response
   ) {
+    if (!channelId) {
+      throw new BadRequestException('Channel ID is required');
+    }
+
     const userId = req.user.id;
-    const data = await this.moderatorService.searchUsersForModeration(channelId, query, userId);
+    const searchQuery = query || '';
+    const data = await this.moderatorService.searchUsersForModeration(channelId, searchQuery, userId);
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
