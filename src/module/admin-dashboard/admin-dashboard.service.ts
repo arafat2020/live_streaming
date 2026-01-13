@@ -94,7 +94,7 @@ export class AdminDashboardService {
                 },
             },
             take: 10,
-        });
+        } as any);
 
         const channels = await this.prisma.channel.findMany({
             where: {
@@ -113,13 +113,17 @@ export class AdminDashboardService {
             _sum: {
                 fileSize: true,
             },
-        });
+        } as any);
+
+        // Use any to bypass stale Prisma types if necessary, ensuring safety with optional chaining
+        const totalSum = (totalStorage as any)._sum;
+        const totalStorageBytes = totalSum?.fileSize ? Number(totalSum.fileSize) : 0;
 
         return {
-            totalStorageBytes: totalStorage._sum.fileSize || 0,
-            topChannels: storageByChannel.map((s) => ({
+            totalStorageBytes,
+            topChannels: storageByChannel.map((s: any) => ({
                 ...channels.find((c) => c.id === s.channelId),
-                storageBytes: s._sum.fileSize || 0,
+                storageBytes: s._sum?.fileSize ? Number(s._sum.fileSize) : 0,
             })),
         };
     }

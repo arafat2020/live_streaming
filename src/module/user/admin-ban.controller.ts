@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Delete, Patch } from '@nestjs/common';
 import { BanService } from './ban.service';
+import { UserService } from './user.service';
 import { BanUserDto } from './dto/ban-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,7 +15,10 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminBanController {
-    constructor(private readonly banService: BanService) { }
+    constructor(
+        private readonly banService: BanService,
+        private readonly userService: UserService,
+    ) { }
 
     @Get('search')
     @ApiOperation({ summary: 'Search users for banning with pagination' })
@@ -38,6 +42,14 @@ export class AdminBanController {
     @Post(':userId/unban')
     async unban(@Param('userId') userId: string) {
         return this.banService.unbanUser(userId);
+    }
+    @Patch(':userId/shadow-ban')
+    @ApiOperation({ summary: 'Toggle shadow-ban on a user' })
+    async toggleShadowBan(
+        @Param('userId') userId: string,
+        @Body('isShadowBanned') isShadowBanned: boolean,
+    ) {
+        return this.userService.toggleShadowBan(userId, isShadowBanned);
     }
 
     @Get('list')

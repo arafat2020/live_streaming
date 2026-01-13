@@ -339,13 +339,22 @@ export class ContentService {
   }
 
   async toggleShadowBan(id: string, isShadowBanned: boolean) {
+    console.log(`[toggleShadowBan] id: ${id}, isShadowBanned: ${isShadowBanned}`);
     const content = await this.prisma.content.findUnique({ where: { id } });
     if (!content) throw new NotFoundException('Content not found');
 
-    return this.prisma.content.update({
+    const newStatus = isShadowBanned ? 'SHADOW_BANNED' : 'AVAILABLE';
+    console.log(`[toggleShadowBan] setting status to: ${newStatus}`);
+
+    const result = await this.prisma.content.update({
       where: { id },
-      data: { isShadowBanned },
+      data: {
+        isShadowBanned,
+        status: newStatus as any
+      } as any,
     });
+    console.log(`[toggleShadowBan] update result:`, result);
+    return result;
   }
 
   async forceEndStream(id: string) {

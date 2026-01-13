@@ -52,6 +52,7 @@ enum ContentStatus {
   PRIVATE // Available but not publicly listed
   ARCHIVED // Old live stream recording
   ENDED
+  SHADOW_BANNED
 }
 
 enum NotificationType {
