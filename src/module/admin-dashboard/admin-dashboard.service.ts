@@ -81,4 +81,50 @@ export class AdminDashboardService {
             recentContent,
         };
     }
+
+    async getStorageStats() {
+        const storageByChannel = await this.prisma.content.groupBy({
+            by: ['channelId'],
+            _sum: {
+                fileSize: true,
+            },
+            orderBy: {
+                _sum: {
+                    fileSize: 'desc',
+                },
+            },
+            take: 10,
+        } as any);
+
+        const channels = await this.prisma.channel.findMany({
+            where: {
+                id: {
+                    in: storageByChannel.map((s) => s.channelId).filter((id): id is string => id !== null),
+                },
+            },
+            select: {
+                id: true,
+                name: true,
+                handle: true,
+            },
+        });
+
+        const totalStorage = await this.prisma.content.aggregate({
+            _sum: {
+                fileSize: true,
+            },
+        } as any);
+
+        // Use any to bypass stale Prisma types if necessary, ensuring safety with optional chaining
+        const totalSum = (totalStorage as any)._sum;
+        const totalStorageBytes = totalSum?.fileSize ? Number(totalSum.fileSize) : 0;
+
+        return {
+            totalStorageBytes,
+            topChannels: storageByChannel.map((s: any) => ({
+                ...channels.find((c) => c.id === s.channelId),
+                storageBytes: s._sum?.fileSize ? Number(s._sum.fileSize) : 0,
+            })),
+        };
+    }
 }

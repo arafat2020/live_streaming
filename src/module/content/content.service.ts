@@ -68,6 +68,39 @@ export class ContentService {
       where.status = { in: ['AVAILABLE', 'ENDED'] as any };
     }
 
+    // Shadow-ban filter: Exclude if content is shadow-banned OR channel owner is shadow-banned
+    // Exception: Owner and Admin can see it
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+
+      const isAdmin = user?.role === 'ADMIN';
+
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { isShadowBanned: false },
+            { channel: { ownerId: userId } },
+            ...(isAdmin ? [{ isShadowBanned: true }] : []),
+          ],
+        },
+        {
+          OR: [
+            { channel: { owner: { isShadowBanned: false } } },
+            { channel: { ownerId: userId } },
+            ...(isAdmin ? [{ channel: { owner: { isShadowBanned: true } } }] : []),
+          ],
+        },
+      ];
+    } else {
+      // Anonymous user: only non-shadow-banned content
+      where.isShadowBanned = false;
+      where.channel = { owner: { isShadowBanned: false } };
+    }
+
     //  EXCLUDE content from channels where user is banned
     if (userId) {
       // Get all channel IDs where user is banned
@@ -81,6 +114,7 @@ export class ContentService {
       // If user is banned from any channels, exclude their content
       if (bannedChannelIds.length > 0) {
         where.channelId = {
+          ...(where.channelId || {}),
           notIn: bannedChannelIds, // Exclude these channels
         };
       }
@@ -302,6 +336,25 @@ export class ContentService {
       where: { id },
       data: { status: newStatus as any },
     });
+  }
+
+  async toggleShadowBan(id: string, isShadowBanned: boolean) {
+    console.log(`[toggleShadowBan] id: ${id}, isShadowBanned: ${isShadowBanned}`);
+    const content = await this.prisma.content.findUnique({ where: { id } });
+    if (!content) throw new NotFoundException('Content not found');
+
+    const newStatus = isShadowBanned ? 'SHADOW_BANNED' : 'AVAILABLE';
+    console.log(`[toggleShadowBan] setting status to: ${newStatus}`);
+
+    const result = await this.prisma.content.update({
+      where: { id },
+      data: {
+        isShadowBanned,
+        status: newStatus as any
+      } as any,
+    });
+    console.log(`[toggleShadowBan] update result:`, result);
+    return result;
   }
 
   async forceEndStream(id: string) {

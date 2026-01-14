@@ -111,4 +111,20 @@ export class AdminContentController {
             data,
         });
     }
+
+    @ApiOperation({ summary: 'Admin: Toggle shadow-ban on content' })
+    @Patch(':id/shadow-ban')
+    async toggleShadowBan(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Body('isShadowBanned') isShadowBanned: boolean,
+        @Res() res: Response,
+    ) {
+        const data = await this.contentService.toggleShadowBan(id, isShadowBanned);
+        return sendResponse(res, {
+            statusCode: HttpStatus.OK,
+            success: true,
+            message: `Content shadow-ban status updated to ${isShadowBanned ? 'banned' : 'unbanned'}`,
+            data,
+        });
+    }
 }
