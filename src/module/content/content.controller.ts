@@ -41,9 +41,11 @@ export class ContentController {
   @ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
   @Get('live-broadcast')
   async liveOnRappioList(
+    @Req() req: GetMe,
     @Res() res: Response,
   ) {
-    const data = await this.contentService.liveOnRappioList();
+    const userId = req.user?.id;
+    const data = await this.contentService.liveOnRappioList(userId);
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -75,8 +77,13 @@ export class ContentController {
   }
   @ApiOperation({ summary: 'Get a single content item by its ID' })
   @Get(':id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    const data = await this.contentService.findOne(id);
+  async findOne(
+    @Req() req: GetMe,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response
+  ) {
+    const userId = req.user?.id;
+    const data = await this.contentService.findOne(id, userId);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,

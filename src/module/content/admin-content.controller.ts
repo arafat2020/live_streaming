@@ -116,9 +116,10 @@ export class AdminContentController {
     @Patch(':id/shadow-ban')
     async toggleShadowBan(
         @Param('id', ParseUUIDPipe) id: string,
-        @Body('isShadowBanned') isShadowBanned: boolean,
+        @Body() body: { isShadowBanned: boolean },
         @Res() res: Response,
     ) {
+        const { isShadowBanned } = body;
         const data = await this.contentService.toggleShadowBan(id, isShadowBanned);
         return sendResponse(res, {
             statusCode: HttpStatus.OK,
