@@ -82,16 +82,9 @@ export class ContentService {
         ...(where.AND || []),
         {
           OR: [
-            { isShadowBanned: false },
+            { isShadowBanned: false, channel: { owner: { isShadowBanned: false } } },
             { channel: { ownerId: userId } },
-            ...(isAdmin ? [{ isShadowBanned: true }] : []),
-          ],
-        },
-        {
-          OR: [
-            { channel: { owner: { isShadowBanned: false } } },
-            { channel: { ownerId: userId } },
-            ...(isAdmin ? [{ channel: { owner: { isShadowBanned: true } } }] : []),
+            ...(isAdmin ? [{ OR: [{ isShadowBanned: true }, { channel: { owner: { isShadowBanned: true } } }] }] : []),
           ],
         },
       ];
@@ -161,10 +154,36 @@ export class ContentService {
       },
     };
   }
-  async liveOnRappioList() {
-    // ENDED   AVAILABLE
+  async liveOnRappioList(userId?: string) {
+    const where: any = {
+      status: "AVAILABLE",
+      contentType: "LIVE_STREAM"
+    };
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+
+      const isAdmin = user?.role === 'ADMIN';
+
+      where.AND = [
+        {
+          OR: [
+            { isShadowBanned: false, channel: { owner: { isShadowBanned: false } } },
+            { channel: { ownerId: userId } },
+            ...(isAdmin ? [{ OR: [{ isShadowBanned: true }, { channel: { owner: { isShadowBanned: true } } }] }] : []),
+          ],
+        },
+      ];
+    } else {
+      where.isShadowBanned = false;
+      where.channel = { owner: { isShadowBanned: false } };
+    }
+
     const content = await this.prisma.content.findMany({
-      where: { status: "AVAILABLE", contentType: "LIVE_STREAM" },
+      where,
       include: {
         channel: {
           include: {
@@ -185,16 +204,51 @@ export class ContentService {
   }
 
 
-  async findOne(id: string) {
+  async findOne(id: string, userId?: string) {
     const content = await this.prisma.content.findUnique({
       where: { id },
       include: {
-        channel: true,
+        channel: {
+          include: {
+            owner: {
+              select: {
+                id: true,
+                role: true,
+                isShadowBanned: true,
+              }
+            }
+          }
+        },
         watchHistory: { orderBy: { createdAt: 'desc' }, take: 50 }, // example
       },
     });
 
     if (!content) throw new NotFoundException('Content not found');
+
+    // Shadow ban protection for direct access
+    const isShadowBanned = content.isShadowBanned || content.channel?.owner?.isShadowBanned;
+
+    if (isShadowBanned) {
+      let canSee = false;
+      if (userId) {
+        if (content.channel?.ownerId === userId) {
+          canSee = true;
+        } else {
+          const requestingUser = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { role: true }
+          });
+          if (requestingUser?.role === 'ADMIN') {
+            canSee = true;
+          }
+        }
+      }
+
+      if (!canSee) {
+        throw new NotFoundException('Content not found');
+      }
+    }
+
     await this.watchHistoryService.incrementViews(content?.id)
     return content;
   }
@@ -339,21 +393,22 @@ export class ContentService {
   }
 
   async toggleShadowBan(id: string, isShadowBanned: boolean) {
-    console.log(`[toggleShadowBan] id: ${id}, isShadowBanned: ${isShadowBanned}`);
+    const shadowBanValue = String(isShadowBanned) === 'true' || isShadowBanned === true;
+    console.log(`[toggleShadowBan] id: ${id}, isShadowBanned (raw): ${isShadowBanned}, shadowBanValue (resolved): ${shadowBanValue}`);
+
     const content = await this.prisma.content.findUnique({ where: { id } });
     if (!content) throw new NotFoundException('Content not found');
 
-    const newStatus = isShadowBanned ? 'SHADOW_BANNED' : 'AVAILABLE';
-    console.log(`[toggleShadowBan] setting status to: ${newStatus}`);
+    const newStatus = shadowBanValue ? 'SHADOW_BANNED' : 'AVAILABLE';
+    console.log(`[toggleShadowBan] setting isShadowBanned to ${shadowBanValue} and status to ${newStatus}`);
 
     const result = await this.prisma.content.update({
       where: { id },
       data: {
-        isShadowBanned,
+        isShadowBanned: shadowBanValue,
         status: newStatus as any
-      } as any,
+      },
     });
-    console.log(`[toggleShadowBan] update result:`, result);
     return result;
   }
 
