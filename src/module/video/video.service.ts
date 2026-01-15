@@ -112,6 +112,8 @@ export class VideoService {
     const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
 
     return new Promise((resolve, reject) => {
+      let tempThumbnailUrl: string | null = null; // Store thumbnail URL temporarily
+
       // ✅ Use file path instead of pipe:0
       const ffmpeg = spawn('ffmpeg', [
         '-y',
@@ -161,7 +163,7 @@ export class VideoService {
         }
       });
 
-      // ✅ Check for playlist with timeout
+      // ✅ Check for playlist generation (but don't resolve yet)
       const checker = setInterval(async () => {
         if (resolved) {
           clearInterval(checker);
@@ -174,28 +176,21 @@ export class VideoService {
 
             // Verify playlist has segments
             if (playlistContent.includes('.ts')) {
-              const url = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
-              // Generate Thumbnail
+              // Generate Thumbnail (but don't update content yet)
               try {
-                const thumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
+                tempThumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
                   finalInputPath,
                   r2Prefix,
                   lessonId,
                 );
-                await this.contentService.update(content.id, {
-                  playbackUrl: url,
-                  thumbnailUrl: thumbnailUrl
-                });
-                this.logger.log(`📸 Thumbnail generated: ${thumbnailUrl}`);
+                this.logger.log(`📸 Thumbnail generated: ${tempThumbnailUrl}`);
               } catch (thumbErr) {
                 this.logger.warn(`⚠️ Thumbnail generation failed: ${thumbErr.message}`);
-                await this.contentService.update(content.id, { playbackUrl: url });
               }
 
-              resolved = true;
+              // ✅ DON'T resolve here - wait for R2 upload to complete
+              this.logger.log(`✅ Playlist generated locally, waiting for R2 upload...`);
               clearInterval(checker);
-              this.logger.log(`✅ Playlist available: ${url}`);
-              resolve(url);
             }
           } catch (err) {
             this.logger.debug('Waiting for valid playlist...');
@@ -246,18 +241,23 @@ export class VideoService {
             watcher.stop();
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Update content status
+            // ✅ NOW update content status with playback URL (after R2 upload completes)
+            const finalUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
             await this.contentService.update(content.id, {
               status: 'AVAILABLE',
+              playbackUrl: finalUrl,
+              thumbnailUrl: tempThumbnailUrl || undefined,
             });
 
             this.logger.log(`✅ Video processing complete for ${lessonId}`);
+            this.logger.log(`📺 Playback URL: ${finalUrl}`);
 
             // Cleanup
             await this.cleanupLocalFiles(outputDir);
 
             if (!resolved) {
-              resolve(`${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`);
+              resolved = true;
+              resolve(finalUrl);
             }
 
           } catch (uploadError) {
