@@ -2,8 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException 
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { UpdateChannelDto } from './dto/update-channel.dto';
-import { BanType, Prisma } from '@prisma/client';
-import { BanUserDto } from './dto/ban-user.dto';
+import { BanType, UserRole, UserStatus } from '@prisma/client';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 
 @Injectable()
@@ -132,15 +131,15 @@ export class ChannelService {
       },
     });
 
-    //  Get additional statistics
-    const liveContentCount = await this.prisma.content.count({
+    // Get additional statistics
+    await this.prisma.content.count({
       where: {
         channelId: channel.id,
         contentType: 'LIVE_STREAM',
       },
     });
 
-    const vodContentCount = await this.prisma.content.count({
+    await this.prisma.content.count({
       where: {
         channelId: channel.id,
         contentType: 'VOD',
@@ -369,7 +368,7 @@ export class ChannelService {
     });
 
     //  Get content breakdown by type
-    const [liveStreamCount, vodCount] = await Promise.all([
+    await Promise.all([
       this.prisma.content.count({
         where: {
           channelId: channel.id,
@@ -497,12 +496,26 @@ export class ChannelService {
       followedChannelIds = follows.map(f => f.followingId);
     }
 
+    const exclusionFilter = {
+      owner: {
+        role: { not: UserRole.ADMIN },
+        isBanned: false,
+        isShadowBanned: false,
+        status: UserStatus.ACTIVE,
+      },
+    };
+
+    const notInFollowed = {
+      id: {
+        notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
+      },
+    };
+
     // STEP 2: Similar / Active channels
     const similarChannels = await this.prisma.channel.findMany({
       where: {
-        id: {
-          notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
-        },
+        ...notInFollowed,
+        ...exclusionFilter,
         content: {
           some: {
             status: 'AVAILABLE',
@@ -525,15 +538,14 @@ export class ChannelService {
           },
         },
       },
-      take: 30,
+      take: 20,
     });
 
-    // STEP 3: Popular channels (fallback)
+    // STEP 3: Popular channels (by followers)
     const popularChannels = await this.prisma.channel.findMany({
       where: {
-        id: {
-          notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
-        },
+        ...notInFollowed,
+        ...exclusionFilter,
       },
       include: {
         owner: {
@@ -547,6 +559,7 @@ export class ChannelService {
         _count: {
           select: {
             follow: true,
+            content: true,
           },
         },
       },
@@ -555,16 +568,15 @@ export class ChannelService {
           _count: 'desc',
         },
       },
-      take: 30,
+      take: 20,
     });
 
     // STEP 4: Live channel boost
     const liveChannels = await this.prisma.channel.findMany({
       where: {
         isLive: true,
-        id: {
-          notIn: followedChannelIds.length > 0 ? followedChannelIds : undefined,
-        },
+        ...notInFollowed,
+        ...exclusionFilter,
       },
       include: {
         owner: {
@@ -585,37 +597,117 @@ export class ChannelService {
       take: 15,
     });
 
-    // STEP 5: Merge + unique
+    // STEP 5: High-view channels
+    const highViewContent = await this.prisma.content.groupBy({
+      by: ['channelId'],
+      where: {
+        status: 'AVAILABLE',
+        channelId: { not: null },
+      },
+      _sum: {
+        views: true,
+      },
+      orderBy: {
+        _sum: {
+          views: 'desc',
+        },
+      },
+      take: 30,
+    });
+
+    const highViewChannelIds = highViewContent
+      .map(c => c.channelId)
+      .filter((id): id is string => !!id && !followedChannelIds.includes(id));
+
+    const highViewChannels = await this.prisma.channel.findMany({
+      where: {
+        id: { in: highViewChannelIds },
+        ...exclusionFilter,
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            status: true,
+            profileImage: true,
+          },
+        },
+        _count: {
+          select: {
+            follow: true,
+            content: true,
+          },
+        },
+      },
+      take: 20,
+    });
+
+    // STEP 6: Merge + unique
     const channelMap = new Map<string, any>();
 
-    [...similarChannels, ...popularChannels, ...liveChannels].forEach(channel => {
+    [...similarChannels, ...popularChannels, ...liveChannels, ...highViewChannels].forEach(channel => {
       if (!channelMap.has(channel.id)) {
         channelMap.set(channel.id, channel);
       }
     });
 
-    // STEP 6: Score system
+    const allCandidateIds = Array.from(channelMap.keys());
+
+    // STEP 7: Fetch total views for ALL candidates for accurate scoring
+    const candidateViews = await this.prisma.content.groupBy({
+      by: ['channelId'],
+      where: {
+        channelId: { in: allCandidateIds },
+        status: 'AVAILABLE',
+      },
+      _sum: {
+        views: true,
+      },
+    });
+
+    const viewsMap = new Map<string, number>(candidateViews.map(v => [v.channelId as string, v._sum.views || 0]));
+
+    // STEP 8: Score system
     const scoredChannels = Array.from(channelMap.values()).map(channel => {
+      const channelData = channel as {
+        id: string;
+        name: string;
+        handle: string;
+        logo: string | null;
+        description: string | null;
+        isLive: boolean | null;
+        owner: { id: string; firstName: string; status: string; profileImage: string | null };
+        _count: { follow: number; content: number };
+      };
+
+      const totalViews = viewsMap.get(channelData.id) || 0;
+      const followCount = channelData._count?.follow || 0;
+      const contentCount = channelData._count?.content || 0;
+      const isLive = channelData.isLive || false;
+
       const score =
-        (channel._count?.follow || 0) * 2 +
-        (channel._count?.content || 0) +
-        (channel.isLive ? 5 : 0);
+        followCount * 2 +
+        contentCount +
+        (isLive ? 10 : 0) +
+        Math.floor(totalViews / 50); // Every 50 views adds 1 point
 
       return {
-        id: channel.id,
-        name: channel.name,
-        handle: channel.handle,
-        logo: channel.logo,
-        description: channel.description,
-        isLive: channel.isLive,
-        owner: channel.owner,
-        followers: channel._count?.follow || 0,
-        contents: channel._count?.content || 0,
+        id: channelData.id,
+        name: channelData.name,
+        handle: channelData.handle,
+        logo: channelData.logo,
+        description: channelData.description,
+        isLive: !!isLive,
+        owner: channelData.owner,
+        followers: followCount,
+        contents: contentCount,
+        totalViews,
         score,
       };
     });
 
-    // STEP 7: Sort + limit
+    // STEP 9: Sort + limit
     scoredChannels.sort((a, b) => b.score - a.score);
 
     return scoredChannels.slice(0, limit);
