@@ -5,7 +5,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  MinLength,
   IsBoolean,
   Length,
 } from 'class-validator';
@@ -18,10 +17,9 @@ export class LoginDto {
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: 'admin123', description: 'User password (min 6 characters)', required: true, minLength: 6, })
+  @ApiProperty({ example: 'admin123', description: 'User password', required: true })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
   password: string;
 }
 
@@ -42,14 +40,13 @@ export class RegisterDto {
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: 'password123', description: 'User password (min 6 characters)', required: true, minLength: 6, })
+  @ApiProperty({ example: 'password123', description: 'User password', required: true })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
   password: string;
-  @ApiProperty({ example: 'password123', description: 'User password (min 6 characters)', required: true, minLength: 6, })
+  @ApiProperty({ example: 'password123', description: 'Confirm password', required: true })
   @IsString()
-  @MinLength(6, { message: 'Password must be at least 6 characters' })
+  @IsNotEmpty()
   confirmPassword: string;
   @ApiProperty({ example: '+8801712345678', description: 'Phone number (E.164 format) (optional)', required: false, })
   @IsOptional()
@@ -72,7 +69,7 @@ export class RegisterDto {
   is2FAEnabled?: boolean = false;
 }
 
-export class CreateAuthDto extends RegisterDto {}
+export class CreateAuthDto extends RegisterDto { }
 
 export class ChangePasswordDto {
   // @ApiProperty({ example: 'test@gmail.com', description: 'Your current email address', })
@@ -88,10 +85,10 @@ export class ChangePasswordDto {
 
   @ApiProperty({
     example: 'newSecurePass456',
-    description: 'Your new password (minimum 6 characters)',
+    description: 'Your new password',
   })
   @IsString({ message: 'New password must be a string.' })
-  @MinLength(6, { message: 'New password must be at least 6 characters long.' })
+  @IsNotEmpty({ message: 'New password is required.' })
   newPassword: string;
 
 }
@@ -133,10 +130,10 @@ export class ResetPasswordDto {
 
   @ApiProperty({
     example: 'newStrongPassword123',
-    description: 'New password with at least 6 characters',
+    description: 'New password',
   })
   @IsString()
-  @MinLength(6, { message: 'Password must be at least 6 characters' })
+  @IsNotEmpty()
   password: string;
 
   @ApiProperty({
@@ -144,6 +141,6 @@ export class ResetPasswordDto {
     description: 'Confirm the new password',
   })
   @IsString()
-  @MinLength(6, { message: 'Password must be at least 6 characters' })
+  @IsNotEmpty()
   confirmPassword: string;
 }
