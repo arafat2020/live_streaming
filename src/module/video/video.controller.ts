@@ -47,15 +47,22 @@ export class VideoController {
     const lessonId = uuidv4();
 
     // Use SAME processLargeVideo method
-    const playlistUrl = await this.videoService.processLargeVideo(
+    const { contentId, processingPromise } = await this.videoService.processLargeVideo(
       lessonId,
       dto,
       file.buffer,
     );
 
+    // Handle processing errors in background
+    processingPromise.catch((err) => {
+      this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
+    });
+
     return {
       success: true,
-      playlistUrl,
+      message: 'Video upload complete. Processing started in background.',
+      contentId,
+      playlistUrl: null, // Not available yet
     };
   }
 
@@ -189,7 +196,8 @@ export class VideoController {
 
     this.logger.log(`🎥 Starting video processing: ${lessonId}`);
 
-    const playlistUrl = await this.videoService.processLargeVideo(
+    // ✅ Start processing in background (Fire and Forget)
+    const { contentId, processingPromise } = await this.videoService.processLargeVideo(
       lessonId,
       {
         title: metadata.title,
@@ -200,13 +208,19 @@ export class VideoController {
       mergedFilePath, // Pass file path
     );
 
+    // Handle processing errors in background
+    processingPromise.catch((err) => {
+      this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
+    });
+
     await this.chunkService.cleanupSession(uploadId);
 
-    this.logger.log(`✅ Upload complete: ${playlistUrl}`);
+    this.logger.log(`✅ Upload complete. Processing started for content: ${contentId}`);
 
     return {
       success: true,
-      playlistUrl,
+      message: 'Video upload complete. Processing started in background.',
+      contentId,
       lessonId,
     };
   }
