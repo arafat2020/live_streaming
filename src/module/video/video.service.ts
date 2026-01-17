@@ -121,8 +121,9 @@ export class VideoService {
 
         // Video encoding
         '-c:v', 'libx264',
-        '-preset', 'medium',
-        '-crf', '23',
+        '-preset', 'veryfast', // 🚀 Optimized for speed
+        '-crf', '26',          // Slightly lower quality for speed (visually similar)
+        '-threads', '0',       // Use all CPU cores
         '-profile:v', 'main',
         '-level', '4.0',
         '-pix_fmt', 'yuv420p',
@@ -178,18 +179,21 @@ export class VideoService {
             if (playlistContent.includes('.ts')) {
               // Generate Thumbnail (but don't update content yet)
               try {
-                tempThumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
-                  finalInputPath,
-                  r2Prefix,
-                  lessonId,
-                );
-                this.logger.log(`📸 Thumbnail generated: ${tempThumbnailUrl}`);
+                // Only generate if we haven't already
+                if (!tempThumbnailUrl) {
+                  tempThumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
+                    finalInputPath,
+                    r2Prefix,
+                    lessonId,
+                  );
+                  this.logger.log(`📸 Thumbnail generated: ${tempThumbnailUrl}`);
+                }
               } catch (thumbErr) {
                 this.logger.warn(`⚠️ Thumbnail generation failed: ${thumbErr.message}`);
               }
 
               // ✅ DON'T resolve here - wait for R2 upload to complete
-              this.logger.log(`✅ Playlist generated locally, waiting for R2 upload...`);
+              // this.logger.log(`✅ Playlist generated locally, waiting for R2 upload...`);
               clearInterval(checker);
             }
           } catch (err) {
@@ -198,19 +202,19 @@ export class VideoService {
         }
       }, 2000);
 
-      // ✅ Timeout protection (5 minutes)
+      // ✅ Timeout protection (30 minutes)
       const timeout = setTimeout(() => {
         if (!resolved) {
           clearInterval(checker);
           watcher.stop();
           ffmpeg.kill('SIGKILL');
 
-          this.logger.error('⏱️ FFmpeg processing timeout (5 minutes)');
+          this.logger.error('⏱️ FFmpeg processing timeout (30 minutes)');
           this.logger.error(`Last FFmpeg output: ${ffmpegError.slice(-500)}`);
 
           reject(new Error('Video processing timeout'));
         }
-      }, 5 * 60 * 1000);
+      }, 30 * 60 * 1000); // Increased to 30 minutes
 
       ffmpeg.on('error', (error) => {
         clearInterval(checker);
