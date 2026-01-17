@@ -396,17 +396,40 @@ export class ContentService {
     const shadowBanValue = String(isShadowBanned) === 'true' || isShadowBanned === true;
     console.log(`[toggleShadowBan] id: ${id}, isShadowBanned (raw): ${isShadowBanned}, shadowBanValue (resolved): ${shadowBanValue}`);
 
-    const content = await this.prisma.content.findUnique({ where: { id } });
+    const content = await this.prisma.content.findUnique({
+      where: { id },
+      include: { channel: true }, // ✅ Include channel to check live status
+    });
+
     if (!content) throw new NotFoundException('Content not found');
 
-    const newStatus = shadowBanValue ? 'SHADOW_BANNED' : 'AVAILABLE';
+    let newStatus = content.status;
+
+    if (shadowBanValue) {
+      // 🔴 Banning: Always set to SHADOW_BANNED
+      newStatus = 'SHADOW_BANNED' as any;
+    } else {
+      // 🟢 Unbanning: Restore correct status
+      if (content.contentType === 'LIVE_STREAM') {
+        // Check if channel is actually live
+        if (content.channel?.isLive) {
+          newStatus = 'AVAILABLE' as any;
+        } else {
+          newStatus = 'ENDED' as any; // If channel is offline, stream is ENDED
+        }
+      } else {
+        // VOD is always available if unbanned
+        newStatus = 'AVAILABLE' as any;
+      }
+    }
+
     console.log(`[toggleShadowBan] setting isShadowBanned to ${shadowBanValue} and status to ${newStatus}`);
 
     const result = await this.prisma.content.update({
       where: { id },
       data: {
         isShadowBanned: shadowBanValue,
-        status: newStatus as any
+        status: newStatus,
       },
     });
     return result;
