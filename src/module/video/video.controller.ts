@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, UploadedFile, UseInterceptors, BadRequestException, Body, NotFoundException, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseInterceptors, BadRequestException, Body, UseGuards, Logger } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,14 +7,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { CreateVideoDto } from './dto/create-video.dto';
-import { ApiBody, ApiConsumes, ApiOperation } from '@nestjs/swagger';
+import { ApiConsumes, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 import { Roles } from '../auth/guards/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { VideoChunkService } from './video-chunk.service';
-import { CompleteChunkedUploadDto, InitChunkedUploadDto, UploadChunkDto } from './dto/update-video.dto';
 
 @Controller('video')
 export class VideoController {
@@ -126,7 +125,7 @@ export class VideoController {
   @UseInterceptors(
     FileInterceptor('chunk', {
       storage: memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: 100 * 1024 * 1024 },
     }),
   )
   async uploadChunk(

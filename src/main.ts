@@ -22,10 +22,24 @@ async function bootstrap() {
     }
   });
 
-  //app.setGlobalPrefix('api/v1');
+  // ✅ Increase payload limits for large video metadata/chunks
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
   app.enableCors({
-    origin: ['http://localhost:5173', 'https://rappio-tv.netlify.app', '*'],
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      const allowedOrigins = [
+        'http://localhost:5173',
+        'https://rappio-tv.netlify.app',
+        'https://rappio.tv'
+      ];
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.includes('localhost')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
@@ -66,4 +80,7 @@ async function bootstrap() {
 
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('❌ Error during bootstrap:', err);
+  process.exit(1);
+});
