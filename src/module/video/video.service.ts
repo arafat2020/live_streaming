@@ -60,7 +60,7 @@ export class VideoService {
     dto: CreateVideoDto,
     fileBuffer?: Buffer,
     inputPath?: string, // ✅ Allow passing a file path directly
-  ): Promise<string> {
+  ): Promise<{ contentId: string; processingPromise: Promise<string> }> {
     // ✅ VALIDATE INPUT
     if (!fileBuffer && !inputPath) {
       throw new BadRequestException('Either fileBuffer or inputPath must be provided');
@@ -111,7 +111,7 @@ export class VideoService {
 
     const watcher = this.r2UploadService.watchAndUpload(outputDir, r2Prefix);
 
-    return new Promise((resolve, reject) => {
+    const processingPromise = new Promise<string>((resolve, reject) => {
       let tempThumbnailUrl: string | null = null; // Store thumbnail URL temporarily
 
       // ✅ Use file path instead of pipe:0
@@ -295,6 +295,8 @@ export class VideoService {
         }
       });
     });
+
+    return { contentId: content.id, processingPromise };
   }
 
   /**
