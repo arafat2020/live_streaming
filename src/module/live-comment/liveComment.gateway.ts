@@ -36,15 +36,20 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     const contentId = this.socketToContent.get(client.id);
     const userId = this.socketToUser.get(client.id);
 
-    if (contentId && userId) {
-      this.logger.log(`Client ${client.id} disconnected from content ${contentId}`);
+    if (contentId) {
+      this.logger.log(`Client ${client.id} (User: ${userId || 'Anonymous'}) disconnected from content ${contentId}`);
 
       // Emit event so WatchHistoryService can update concurrent viewers
-      this.server.emit('viewer.left', { contentId, userId });
+      this.server.emit('viewer.left', { contentId, userId: userId || null });
+
+      // BROADCAST LIVE STATS IMMEDIATELY
+      this.broadcastLiveStats(contentId, { status: 'LIVE' });
     }
 
     this.socketToContent.delete(client.id);
-    this.socketToUser.delete(client.id);
+    if (userId) {
+      this.socketToUser.delete(client.id);
+    }
   }
 
 
@@ -75,7 +80,7 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
   @SubscribeMessage('start_watching')
   handleStartWatching(
-    @MessageBody() data: { contentId: string; userId: string },
+    @MessageBody() data: { contentId: string; userId?: string },
     @ConnectedSocket() client: Socket,
   ) {
     const { contentId, userId } = data;
@@ -84,12 +89,19 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
     // Track this connection
     this.socketToContent.set(client.id, contentId);
-    this.socketToUser.set(client.id, userId);
 
-    this.logger.log(`User ${userId} started watching ${contentId}`);
+    if (userId) {
+      this.socketToUser.set(client.id, userId);
+      this.logger.log(`User ${userId} started watching ${contentId}`);
+    } else {
+      this.logger.log(`Anonymous client ${client.id} started watching ${contentId}`);
+    }
 
     // Emit to backend to increment views
-    this.server.emit('viewer.joined', { contentId, userId });
+    this.server.emit('viewer.joined', { contentId, userId: userId || null });
+
+    // BROADCAST LIVE STATS IMMEDIATELY
+    this.broadcastLiveStats(contentId, { status: 'LIVE' });
 
     return { watching: contentId };
   }
@@ -99,7 +111,7 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
   @SubscribeMessage('stop_watching')
   handleStopWatching(
-    @MessageBody() data: { contentId: string; userId: string },
+    @MessageBody() data: { contentId: string; userId?: string },
     @ConnectedSocket() client: Socket,
   ) {
     const { contentId, userId } = data;
@@ -107,12 +119,17 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     client.leave(`content:${contentId}`);
 
     this.socketToContent.delete(client.id);
-    this.socketToUser.delete(client.id);
+    if (userId) {
+      this.socketToUser.delete(client.id);
+    }
 
-    this.logger.log(`User ${userId} stopped watching ${contentId}`);
+    this.logger.log(`User ${userId || 'Anonymous'} stopped watching ${contentId}`);
 
     // Emit to backend to update concurrent viewers
-    this.server.emit('viewer.left', { contentId, userId });
+    this.server.emit('viewer.left', { contentId, userId: userId || null });
+
+    // BROADCAST LIVE STATS IMMEDIATELY
+    this.broadcastLiveStats(contentId, { status: 'LIVE' });
 
     return { stopped: contentId };
   }

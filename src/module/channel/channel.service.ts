@@ -345,6 +345,21 @@ export class ChannelService {
             follow: true,
           },
         },
+        content: {
+          where: {
+            contentType: 'LIVE_STREAM',
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            title: true,
+            thumbnailUrl: true,
+            playbackUrl: true,
+            createdAt: true,
+            status: true,
+          },
+        },
       },
     });
 
@@ -383,11 +398,14 @@ export class ChannelService {
       }),
     ]);
 
-    // Destructure _count and restructure response
-    const { _count, ...channelData } = channel;
+    // Destructure _count and content, then restructure response
+    const { _count, content, ...channelData } = channel;
+
+    const latestStream = content?.length > 0 ? content[0] : null;
 
     return {
       ...channelData,
+      latestStream,
       statistics: {
         totalViews: totalViews._sum.views || 0,
         totalContent: _count.content,

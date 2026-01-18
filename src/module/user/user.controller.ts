@@ -32,13 +32,13 @@ import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(private readonly userService: UserService) { }
 
   @ApiOperation({ summary: 'Get all Users' })
   @Get()
-  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
-  async findAll(@Req() req: RequestWithUser,@Res() res: Response) {
-    const data= await this.userService.findAll();
+  @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
+  async findAll(@Req() req: RequestWithUser, @Res() res: Response) {
+    const data = await this.userService.findAll();
     return sendResponse(res, {
       statusCode: HttpStatus.CREATED,
       success: true,
@@ -47,11 +47,11 @@ export class UserController {
     });
   }
 
- @UseGuards(JwtAuthGuard)
- @Post('accept-terms')
+  @UseGuards(JwtAuthGuard)
+  @Post('accept-terms')
   @ApiOperation({ summary: 'Accept Terms of Service and Privacy Policy' })
-  async acceptTerms(@Req() req: GetMe,@Body() dto: AcceptTermsDto, @Res() res: Response) {
-    const data =await this.userService.acceptTermsAndConditions(req.user.id, dto);
+  async acceptTerms(@Req() req: GetMe, @Body() dto: AcceptTermsDto, @Res() res: Response) {
+    const data = await this.userService.acceptTermsAndConditions(req.user.id, dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -80,7 +80,7 @@ export class UserController {
 
 
   // STATIC route first
-  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+  @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
   @Get('get-me')
   @ApiOperation({
     summary: 'Retrieve the profile of the authenticated user.',
@@ -111,7 +111,7 @@ export class UserController {
     });
   }
   @ApiOperation({ summary: 'Allows only ADMIN to update a user’s role or status' })
-  @UseGuards(JwtAuthGuard, RolesGuard,TermsAcceptedGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
   @Roles(UserRole.ADMIN)
   @Patch('admin/:id')
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Res() res: Response) {
@@ -135,58 +135,59 @@ export class UserController {
   //     data,
   //   });
   // }
-@ApiOperation({ summary: 'Update profile with image' })
-@ApiConsumes('multipart/form-data')
-@ApiBody({
-  schema: {
-    type: 'object',
-    properties: {
-      file: {
-        type: 'string',
-        format: 'binary',
-        description: 'Profile image (JPG, PNG, WEBP - Max 5MB)',
-      },
-      email: {
-        type: 'string',
-        example: 'user@gmail.com',
-      },
-      firstName: {
-        type: 'string',
-        example: 'Sarah',
-      },
-      lastName: {
-        type: 'string',
-        example: 'Connor',
-      },
-      phone: {
-        type: 'string',
-        example: '0190000000',
+  @ApiOperation({ summary: 'Update profile with image' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Profile image (JPG, PNG, WEBP - Max 5MB)',
+        },
+        email: {
+          type: 'string',
+          example: 'user@gmail.com',
+        },
+        firstName: {
+          type: 'string',
+          example: 'Sarah',
+        },
+        phone: {
+          type: 'string',
+          example: '0190000000',
+        },
+        chatColor: {
+          type: 'string',
+          example: '#FF5733',
+          description: 'Chat username color (Hex code)',
+        },
       },
     },
-  },
-})
-  @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
-@Patch(':id')
-@UseInterceptors(FileInterceptor('file'))
-async uploadProfileImage(
-  @Param('id') id: string,
-  @UploadedFile() file: Express.Multer.File,
-  @Body() dto: UpdateMyProfileDto,
-  @Res() res: Response,
-) {
-  const data = await this.userService.myProfile(id, dto, file);
+  })
+  @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
+  @Patch(':id')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadProfileImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: UpdateMyProfileDto,
+    @Res() res: Response,
+  ) {
+    const data = await this.userService.myProfile(id, dto, file);
 
-  return sendResponse(res, {
-    statusCode: HttpStatus.OK,
-    success: true,
-    message: 'Profile updated successfully.',
-    data,
-  });
-}
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Profile updated successfully.',
+      data,
+    });
+  }
 
-@UseGuards(JwtAuthGuard,TermsAcceptedGuard)
-@Delete(':id')
-async remove(@Param('id') id: string, @Res() res: Response) {
+  @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Res() res: Response) {
     const data = await this.userService.remove(id);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -194,7 +195,7 @@ async remove(@Param('id') id: string, @Res() res: Response) {
       message: 'User deleted successfully.',
       data,
     })
-}
+  }
 
 
 }

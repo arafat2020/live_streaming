@@ -4,6 +4,7 @@ export const safeUserSelect = {
   firstName: true,
   phone: true,
   profileImage: true,
+  chatColor: true,
   role: true,
   status: true,
   lastLogin: true,
