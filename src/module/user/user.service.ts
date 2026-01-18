@@ -50,7 +50,6 @@ export class UserService {
       ...(dto.email && { email: dto.email }),
       ...(dto.phone && { phone: dto.phone }),
       ...(dto.firstName && { firstName: dto.firstName }),
-      ...(dto.lastName && { lastName: dto.lastName }),
 
     };
     if (Object.keys(updateData).length === 0) {
@@ -82,12 +81,27 @@ export class UserService {
       profileImageUrl = await this.uploadProfileImage(file, id);
     }
 
+    // Check if firstName is being updated
+    if (dto.firstName && dto.firstName !== user.firstName) {
+      // Check last update time
+      if (user.lastDisplayNameUpdate) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        if (user.lastDisplayNameUpdate > thirtyDaysAgo) {
+          throw new BadRequestException('You can only change your display name once every 30 days.');
+        }
+      }
+      // If allowed, we will update the timestamp
+    }
+
     const updateData = {
       ...(dto.email && { email: dto.email }),
       ...(dto.phone && { phone: dto.phone }),
       ...(dto.firstName && { firstName: dto.firstName }),
-      ...(dto.lastName && { lastName: dto.lastName }),
+      ...(dto.firstName && dto.firstName !== user.firstName && { lastDisplayNameUpdate: new Date() }), // Update timestamp if name changed
       ...(profileImageUrl && { profileImage: profileImageUrl }),
+      ...(dto.chatColor && { chatColor: dto.chatColor }),
     };
 
     if (Object.keys(updateData).length === 0) {

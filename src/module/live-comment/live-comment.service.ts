@@ -33,6 +33,7 @@ export class LiveCommentService {
             id: true,
             firstName: true,
             profileImage: true,
+            chatColor: true,
           }
         }
       },
@@ -84,6 +85,7 @@ export class LiveCommentService {
             id: true,
             firstName: true,
             profileImage: true,
+            chatColor: true,
           }
         }
       },
@@ -149,6 +151,7 @@ export class LiveCommentService {
             id: true,
             firstName: true,
             profileImage: true,
+            chatColor: true,
           }
         }
       },

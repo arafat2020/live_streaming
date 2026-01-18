@@ -6,11 +6,13 @@ model User {
   lastName             String?
   phone                String?
   profileImage         String?
+  chatColor            String?
   role                 UserRole           @default(USER)
   status               UserStatus         @default(ACTIVE)
   lastLogin            DateTime?
   subscription_status  SubscriptionStatus @default(FREE_TIER)
   verified             Boolean            @default(false)
+  lastDisplayNameUpdate DateTime?
   // --- Fields for RESET (TOTP) ---
   passwordResetToken   String? // store token code
   passwordResetExpires DateTime? // code live time
