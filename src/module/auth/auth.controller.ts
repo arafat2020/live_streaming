@@ -122,6 +122,8 @@ export class AuthController {
 
 
   @Post('reset-password')
+  @ApiOperation({ summary: 'Reset User Password' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully.' })
   async resetPassword(@Body() dto: ResetPasswordDto, @Res() res: Response) {
     const result = await this.authService.resetPassword(dto);
     return sendResponse(res, {
@@ -134,18 +136,22 @@ export class AuthController {
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Initiate Google OAuth2 Login' })
+  @ApiResponse({ status: 302, description: 'Redirects to Google.' })
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   async googleAuth(@Req() _req: any) { }
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Google OAuth2 Callback Handler' })
+  @ApiResponse({ status: 302, description: 'Redirects to frontend with tokens.' })
   async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
     const data = await this.authService.googleLogin(req);
-    return sendResponse(res, {
-      statusCode: HttpStatus.OK,
-      success: true,
-      message: 'Google Login successful',
-      data,
-    });
+
+    // Redirect back to frontend with tokens in the query string
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const redirectUrl = `${frontendUrl}/auth/success?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`;
+
+    return res.redirect(redirectUrl);
   }
 }
