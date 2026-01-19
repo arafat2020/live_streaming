@@ -39,10 +39,7 @@ export class AuthService {
             throw new ConflictException('User with this email already exists.');
         }
 
-        const existingUsername = await this.prisma.user.findUnique({ where: { username: dto.username } });
-        if (existingUsername) {
-            throw new ConflictException('Username is already taken.');
-        }
+
 
         if (dto.password !== dto.confirmPassword) {
             throw new BadRequestException('Password not match.');
@@ -50,7 +47,6 @@ export class AuthService {
         const hashedPassword = await bcrypt.hash(dto.password, parseInt(process.env.SALT_ROUND!));
         const payload = {
             email: dto.email,
-            username: dto.username,
             password: hashedPassword,
             firstName: dto.firstName,
             lastName: dto.lastName ?? null,
@@ -67,7 +63,7 @@ export class AuthService {
             const channelPayload = {
                 ownerId: user.id,
                 name: user.firstName,
-                handle: user.username!, // Use unique username as handle
+                handle: user.email.split('@')[0], // Use email prefix as handle
                 description: null,
                 streamKey: this.generateStreamKey(),
             };
@@ -478,20 +474,9 @@ export class AuthService {
         });
 
         if (!user) {
-            // Generate unique username from email
-            const baseUsername = req.user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-            let username = baseUsername;
-            let count = 1;
-
-            while (await this.prisma.user.findUnique({ where: { username } })) {
-                username = `${baseUsername}${count}`;
-                count++;
-            }
-
             user = await this.prisma.user.create({
                 data: {
                     email: req.user.email,
-                    username: username,
                     firstName: req.user.firstName,
                     lastName: req.user.lastName,
                     profileImage: req.user.picture,
@@ -505,7 +490,7 @@ export class AuthService {
             const channelPayload = {
                 ownerId: user.id,
                 name: user.firstName,
-                handle: user.username!,
+                handle: user.email.split('@')[0], // Use email prefix as handle
                 description: null,
                 streamKey: this.generateStreamKey(),
             };
