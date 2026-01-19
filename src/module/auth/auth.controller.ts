@@ -6,6 +6,8 @@ import {
   HttpStatus,
   Req,
   Patch,
+  UseGuards,
+  Get,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
@@ -19,6 +21,8 @@ import {
 import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import sendResponse from 'src/utils/sendResponse';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('auth')
 export class AuthController {
@@ -79,8 +83,9 @@ export class AuthController {
 
   // change password
   @Patch('change-password')
-  async changePassword(@Body() dto: ChangePasswordDto, @Req() req: Request, @Res() res: Response) {
-    const result = await this.authService.changePassword("test@gmail.com", dto);
+  @UseGuards(JwtAuthGuard)
+  async changePassword(@Body() dto: ChangePasswordDto, @Req() req: any, @Res() res: Response) {
+    const result = await this.authService.changePassword(req.user.email, dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -124,6 +129,23 @@ export class AuthController {
       success: true,
       message: 'Password reset successful',
       data: result,
+    });
+  }
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async googleAuth(@Req() _req: any) { }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
+    const data = await this.authService.googleLogin(req);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Google Login successful',
+      data,
     });
   }
 }
