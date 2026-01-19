@@ -6,6 +6,8 @@ import {
   HttpStatus,
   Req,
   Patch,
+  UseGuards,
+  Get,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import {
@@ -19,6 +21,8 @@ import {
 import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import sendResponse from 'src/utils/sendResponse';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('auth')
 export class AuthController {
@@ -79,8 +83,9 @@ export class AuthController {
 
   // change password
   @Patch('change-password')
-  async changePassword(@Body() dto: ChangePasswordDto, @Req() req: Request, @Res() res: Response) {
-    const result = await this.authService.changePassword("test@gmail.com", dto);
+  @UseGuards(JwtAuthGuard)
+  async changePassword(@Body() dto: ChangePasswordDto, @Req() req: any, @Res() res: Response) {
+    const result = await this.authService.changePassword(req.user.email, dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -117,6 +122,8 @@ export class AuthController {
 
 
   @Post('reset-password')
+  @ApiOperation({ summary: 'Reset User Password' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully.' })
   async resetPassword(@Body() dto: ResetPasswordDto, @Res() res: Response) {
     const result = await this.authService.resetPassword(dto);
     return sendResponse(res, {
@@ -125,5 +132,26 @@ export class AuthController {
       message: 'Password reset successful',
       data: result,
     });
+  }
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Initiate Google OAuth2 Login' })
+  @ApiResponse({ status: 302, description: 'Redirects to Google.' })
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async googleAuth(@Req() _req: any) { }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Google OAuth2 Callback Handler' })
+  @ApiResponse({ status: 302, description: 'Redirects to frontend with tokens.' })
+  async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
+    const data = await this.authService.googleLogin(req);
+
+    // Redirect back to frontend with tokens in the query string
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const redirectUrl = `${frontendUrl}/auth/success?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`;
+
+    return res.redirect(redirectUrl);
   }
 }
