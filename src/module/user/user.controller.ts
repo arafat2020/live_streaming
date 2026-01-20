@@ -9,10 +9,10 @@ import {
   UseGuards,
   HttpStatus,
   Delete,
-  BadRequestException,
   UploadedFile,
   UseInterceptors,
   Post,
+  Query,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,7 +22,7 @@ import { GetMe, RequestWithUser } from './dto/request-with-user.interface';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request, Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { Roles } from '../auth/guards/roles.decorator';
@@ -33,6 +33,28 @@ import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) { }
+
+  @Get('check-availability')
+  @ApiOperation({ summary: 'Check username availability' })
+  async checkUsernameAvailability(@Query('username') username: string, @Res() res: Response) {
+    if (!username || username.length < 3) {
+      return sendResponse(res, {
+        statusCode: HttpStatus.BAD_REQUEST,
+        success: false,
+        message: 'Username must be at least 3 characters long',
+        data: { available: false },
+      });
+    }
+
+    const isAvailable = await this.userService.checkUsernameAvailability(username);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: isAvailable ? 'Username is available' : 'Username is already taken',
+      data: { available: isAvailable },
+    });
+  }
 
   @ApiOperation({ summary: 'Get all Users' })
   @Get()
@@ -149,6 +171,10 @@ export class UserController {
         email: {
           type: 'string',
           example: 'user@gmail.com',
+        },
+        username: {
+          type: 'string',
+          example: 'johndoe',
         },
         firstName: {
           type: 'string',

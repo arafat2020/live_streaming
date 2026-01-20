@@ -1,11 +1,9 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -140,11 +138,11 @@ export class ChannelManagementController {
     description: 'Channels retrieved successfully',
   })
   async getRecommendedChannels(
-    @Req() req: GetMe,
+    @Req() req: { user?: { id?: string } },
     @Query() dto: GetRecommendedChannelsDto,
     @Res() res: Response,
   ) {
-    const userId = (req as any).user?.id || null;
+    const userId = req.user?.id ?? null;
     const result = await this.channelService.getRecommendedChannels(
       userId,
       dto.limit,
@@ -204,13 +202,14 @@ export class ChannelManagementController {
     });
   }
 
-  @ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })
-  // @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
-  @Get(':id')
+  @ApiOperation({ summary: 'Get channel by username' })
+  @Get('by-username/:username')
   @HttpCode(200)
-  async getChannelById(@Param('id') id: string, @Res() res: Response) {
-
-    const data = await this.channelService.getChannelById(id);
+  async getChannelByUsername(
+    @Param('username') username: string,
+    @Res() res: Response,
+  ) {
+    const data = await this.channelService.getChannelByUsername(username);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -218,6 +217,7 @@ export class ChannelManagementController {
       data,
     });
   }
+
   // Controller
   @Get('/by-content/:contentId')
   @ApiOperation({
@@ -246,6 +246,20 @@ export class ChannelManagementController {
       message: 'Content retrieved successfully.',
       data: data, // ✅ Return contents array
 
+    });
+  }
+
+  @ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })
+  // @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+  @Get(':id')
+  @HttpCode(200)
+  async getChannelById(@Param('id') id: string, @Res() res: Response) {
+    const data = await this.channelService.getChannelById(id);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Channel retrieved successfully.',
+      data,
     });
   }
 }

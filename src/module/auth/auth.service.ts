@@ -153,7 +153,7 @@ export class AuthService {
         // Username is now required and validated at DTO level
         const username = dto.username;
 
-        if (dto.password !== dto.confirmPassword) {
+        if (dto.confirmPassword && dto.password !== dto.confirmPassword) {
             throw new BadRequestException('Password not match.');
         }
         const hashedPassword = await bcrypt.hash(dto.password, parseInt(process.env.SALT_ROUND!));
@@ -161,10 +161,11 @@ export class AuthService {
             email: dto.email,
             username: username,
             password: hashedPassword,
-            firstName: dto.firstName,
+            firstName: dto.firstName ?? username,
             lastName: dto.lastName ?? null,
             phone: dto.phone ?? null,
             profileImage: dto.profileImage ?? null,
+            dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
             role: UserRole.CREATOR,
             is2FAEnabled: dto.is2FAEnabled ?? false,
             twoFactorSecret: null,
@@ -175,7 +176,7 @@ export class AuthService {
             const user = await this.prisma.user.create({ data: payload });
             const channelPayload = {
                 ownerId: user.id,
-                name: user.firstName,
+                name: user.username ?? user.firstName,
                 handle: user.username!, // Use unique username as handle
                 description: null,
                 streamKey: this.generateStreamKey(),
@@ -183,11 +184,22 @@ export class AuthService {
 
             await this.prisma.channel.create({ data: channelPayload });
             // sanitize sensitive fields before returning
-            const { password, twoFactorSecret, passwordResetToken, passwordResetExpires, ...safeUser } = user;
+            const {
+                password: _password,
+                twoFactorSecret: _twoFactorSecret,
+                passwordResetToken: _passwordResetToken,
+                passwordResetExpires: _passwordResetExpires,
+                ...safeUser
+            } = user;
+            void _password;
+            void _twoFactorSecret;
+            void _passwordResetToken;
+            void _passwordResetExpires;
             return safeUser;
         } catch (err) {
+            void err;
             //console.error("err------>",err);
-            throw new InternalServerErrorException('Failed to create user.', err);
+            throw new InternalServerErrorException('Failed to create user.');
         }
     }
 
@@ -303,13 +315,18 @@ export class AuthService {
 
         // Sanitize user object before returning
         const {
-            password,
-            twoFactorSecret,
-            passwordResetToken,
-            passwordResetExpires,
-            refreshToken: _,
+            password: _password,
+            twoFactorSecret: _twoFactorSecret,
+            passwordResetToken: _passwordResetToken,
+            passwordResetExpires: _passwordResetExpires,
+            refreshToken: _refreshToken,
             ...safeUser
         } = user;
+        void _password;
+        void _twoFactorSecret;
+        void _passwordResetToken;
+        void _passwordResetExpires;
+        void _refreshToken;
 
         return {
             accessToken,

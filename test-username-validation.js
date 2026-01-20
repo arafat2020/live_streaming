@@ -1,7 +1,7 @@
 // Simple test script to verify unique username validation
 const axios = require('axios');
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'http://localhost:8000';
 
 async function testUniqueUsername() {
   console.log('Testing unique username validation...\n');

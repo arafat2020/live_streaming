@@ -2,7 +2,8 @@ import {
   IsOptional,
   IsString,
   IsEmail,
-  IsNotEmpty,
+  Length,
+  Matches,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -11,6 +12,15 @@ export class UpdateMyProfileDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiProperty({ example: 'johndoe', description: 'Unique username (Optional)', required: false })
+  @IsString()
+  @IsOptional()
+  @Length(3, 20)
+  @Matches(/^[a-zA-Z0-9_]+$/, {
+    message: 'Username can only contain letters, numbers, and underscores',
+  })
+  username?: string;
 
   @ApiProperty({ example: 'Sarah', description: 'Full name of the User' })
   @IsString()

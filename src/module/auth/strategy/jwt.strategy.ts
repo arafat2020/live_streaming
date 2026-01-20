@@ -3,6 +3,11 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import { jwtConstants } from '../../../common/jwt.constants';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { safeUserSelect } from '../../user/dto/safeUserSelect';
+
+type JwtPayload = {
+  sub: string;
+};
 
 
 @Injectable()
@@ -16,18 +21,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   // payload is what you signed inside AuthService (sub, email, role)
-  async validate(payload: any) {
+  async validate(payload: JwtPayload) {
     // Optionally validate that user still exists / is active
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      include: {
+      select: {
+        ...safeUserSelect,
         channel: true,
-        //follow: true,
-        //watchHistory: true,
-        //userNotificationPreference: true,
-        //notification: true,
-        //chatMessage: true,
-        //participants: true,
       },
     });
     if (!user) {
@@ -62,21 +62,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
     }
 
-    // Remove sensitive fields before returning to req.user
-    // (Prisma returned the password and secrets if present)
-    // we can add more keys here to exclude as needed
-    const {
-      password: _password,
-      twoFactorSecret: _twoFactorSecret,
-      passwordResetToken: _passwordResetToken,
-      passwordResetExpires: _passwordResetExpires,
-      isBanned: _isBanned,
-      banExpiresAt: _banExpiresAt,
-      banReason: _banReason,
-      ...safeUser
-    } = user;
-
-    // safeUser is now attached to req.user
-    return safeUser;
+    // already selected safe fields only
+    return user;
   }
 }

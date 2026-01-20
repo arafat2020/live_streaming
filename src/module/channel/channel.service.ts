@@ -234,10 +234,12 @@ export class ChannelService {
       select: { owner: { select: { status: true } } },
     });
 
-    // Key must exist AND the owner must be ACTIVE (not suspended)
-    return !!channel && channel.owner.status === 'ACTIVE';
-  }
+    if (!channel) {
+      return false;
+    }
 
+    return channel.owner.status === 'ACTIVE';
+  }
 
   async getChannels(dto: GetChannelsDto) {
     const { search, page = 1, limit = 10 } = dto;
@@ -271,6 +273,7 @@ export class ChannelService {
           select: {
             id: true,
             firstName: true,
+            username: true,
             status: true,
             profileImage: true,
           },
@@ -324,7 +327,6 @@ export class ChannelService {
     };
   }
 
-
   async getChannelById(channelId: string) {
     // Get channel with all details and counts
     const channel = await this.prisma.channel.findUnique({
@@ -335,6 +337,7 @@ export class ChannelService {
             id: true,
             email: true,
             firstName: true,
+            username: true,
             status: true,
             profileImage: true,
           },
@@ -414,6 +417,37 @@ export class ChannelService {
         // vodCount,
       },
     };
+  }
+
+  async getChannelByUsername(usernameOrHandle: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { username: usernameOrHandle },
+      select: { id: true },
+    });
+
+    if (user) {
+      const channel = await this.prisma.channel.findUnique({
+        where: { ownerId: user.id },
+        select: { id: true },
+      });
+
+      if (!channel) {
+        throw new NotFoundException('Channel not found.');
+      }
+
+      return this.getChannelById(channel.id);
+    }
+
+    const channelByHandle = await this.prisma.channel.findUnique({
+      where: { handle: usernameOrHandle },
+      select: { id: true },
+    });
+
+    if (!channelByHandle) {
+      throw new NotFoundException('Channel not found.');
+    }
+
+    return this.getChannelById(channelByHandle.id);
   }
 
   async getContentByChannelId(channelId: string, page: number = 1, limit: number = 10) {

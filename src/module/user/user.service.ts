@@ -24,6 +24,18 @@ export class UserService {
 
   ) { }
 
+  async checkUsernameAvailability(username: string): Promise<boolean> {
+    if (!username || username.length < 3) {
+      return false;
+    }
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { username },
+    });
+
+    return !existingUser;
+  }
+
   async findAll() {
     const users = await this.prisma.user.findMany({
       select: {
@@ -59,6 +71,9 @@ export class UserService {
     return this.prisma.user.update({
       where: { id },
       data: updateData,
+      select: {
+        ...safeUserSelect,
+      },
     });
   }
 
@@ -72,6 +87,9 @@ export class UserService {
       throw new NotFoundException(`User with id ${id} not found`);
     }
 
+    const usernameChanged = !!dto.username && dto.username !== user.username;
+    const firstNameChanged = !!dto.firstName && dto.firstName !== user.firstName;
+
     let profileImageUrl: string | undefined;
 
     // 👉 Upload file if provided
@@ -79,6 +97,25 @@ export class UserService {
       // example: upload to R2 / S3
       //profileImageUrl = await this.uploadProfileImage(file, id);
       profileImageUrl = await this.uploadProfileImage(file, id);
+    }
+
+    if (usernameChanged) {
+      if (user.lastDisplayNameUpdate) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        if (user.lastDisplayNameUpdate > thirtyDaysAgo) {
+          throw new BadRequestException(
+            'You can only change your username once every 30 days.',
+          );
+        }
+      }
+
+      const existingUser = await this.prisma.user.findUnique({
+        where: { username: dto.username },
+      });
+      if (existingUser && existingUser.id !== id) {
+        throw new BadRequestException('Username is already taken');
+      }
     }
 
     // Check if firstName is being updated
@@ -98,8 +135,9 @@ export class UserService {
     const updateData = {
       ...(dto.email && { email: dto.email }),
       ...(dto.phone && { phone: dto.phone }),
+      ...(dto.username && { username: dto.username }),
       ...(dto.firstName && { firstName: dto.firstName }),
-      ...(dto.firstName && dto.firstName !== user.firstName && { lastDisplayNameUpdate: new Date() }), // Update timestamp if name changed
+      ...((usernameChanged || firstNameChanged) && { lastDisplayNameUpdate: new Date() }),
       ...(profileImageUrl && { profileImage: profileImageUrl }),
       ...(dto.chatColor && { chatColor: dto.chatColor }),
     };
@@ -108,9 +146,29 @@ export class UserService {
       throw new BadRequestException('No valid fields provided for update');
     }
 
-    return this.prisma.user.update({
-      where: { id },
-      data: updateData,
+    return this.prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { id },
+        data: updateData,
+        select: {
+          ...safeUserSelect,
+        },
+      });
+
+      if (usernameChanged) {
+        const channel = await tx.channel.findUnique({ where: { ownerId: id } });
+        if (channel) {
+          await tx.channel.update({
+            where: { id: channel.id },
+            data: {
+              handle: dto.username,
+              name: dto.username,
+            },
+          });
+        }
+      }
+
+      return updatedUser;
     });
   }
 
