@@ -9,7 +9,7 @@ import {
   Length,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-
+import { IsUsernameUnique } from './unique-username.decorator';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@gmail.com', description: 'User email address for login', required: true, })
@@ -30,11 +30,12 @@ export class RegisterDto {
   @IsNotEmpty()
   firstName: string;
 
-  @ApiProperty({ example: 'johndoe', description: 'Unique username (optional)', required: false })
+  @ApiProperty({ example: 'johndoe', description: 'Unique username (required)', required: true })
   @IsString()
-  @IsOptional()
+  @IsNotEmpty()
   @Length(3, 20)
-  username?: string;
+  @IsUsernameUnique()
+  username: string;
 
   @ApiProperty({ example: 'doe', description: 'Last name of the user', required: false, })
   @IsString()

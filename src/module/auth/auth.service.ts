@@ -150,23 +150,8 @@ export class AuthService {
             throw new ConflictException('User with this email already exists.');
         }
 
-        // Auto-generate username from firstName if not provided
-        let username = dto.username;
-        if (!username) {
-            const baseUsername = dto.firstName.toLowerCase().replace(/[^a-z0-9]/g, '');
-            username = baseUsername;
-            let count = 1;
-            while (await this.prisma.user.findUnique({ where: { username } })) {
-                username = `${baseUsername}${count}`;
-                count++;
-            }
-        } else {
-            // If username provided, check if it's already taken
-            const existingUsername = await this.prisma.user.findUnique({ where: { username } });
-            if (existingUsername) {
-                throw new ConflictException('Username is already taken.');
-            }
-        }
+        // Username is now required and validated at DTO level
+        const username = dto.username;
 
         if (dto.password !== dto.confirmPassword) {
             throw new BadRequestException('Password not match.');
