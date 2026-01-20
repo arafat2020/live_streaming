@@ -22,14 +22,125 @@ import { generateOtpCode, hashOtpCode } from '../../utils/generateOtpCode';
 import { MailService } from '../mail/mail.service';
 //import { MailerService } from '@nestjs-modules/mailer';
 import { v4 as uuidv4 } from 'uuid';
+import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
+    private googleClient: OAuth2Client;
+
     constructor(
         private prisma: PrismaService,
         private jwtService: JwtService,
         private mailerService: MailService,
-    ) { }
+    ) {
+        this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    }
+
+    async googleLoginWithIdToken(idToken: string) {
+        try {
+            const ticket = await this.googleClient.verifyIdToken({
+                idToken,
+                audience: process.env.GOOGLE_CLIENT_ID,
+            });
+
+            const googlePayload = ticket.getPayload();
+            if (!googlePayload) {
+                throw new BadRequestException('Invalid google token');
+            }
+
+            const { email, given_name, family_name, picture, sub: googleId } = googlePayload;
+
+            if (!email) {
+                throw new BadRequestException('Email not provided by Google');
+            }
+
+            let user = await this.prisma.user.findUnique({
+                where: { email },
+            });
+
+            if (!user) {
+                // Generate unique username from email
+                const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+                let username = baseUsername;
+                let count = 1;
+
+                while (await this.prisma.user.findUnique({ where: { username } })) {
+                    username = `${baseUsername}${count}`;
+                    count++;
+                }
+
+                user = await this.prisma.user.create({
+                    data: {
+                        email,
+                        username: username,
+                        firstName: given_name || 'Google User',
+                        lastName: family_name || '',
+                        profileImage: picture,
+                        googleId,
+                        role: UserRole.CREATOR,
+                        status: UserStatus.ACTIVE,
+                    },
+                });
+
+                // Create channel for new user
+                const channelPayload = {
+                    ownerId: user.id,
+                    name: user.firstName,
+                    handle: user.username!,
+                    description: null,
+                    streamKey: this.generateStreamKey(),
+                };
+                await this.prisma.channel.create({ data: channelPayload });
+            } else if (!user.googleId) {
+                // Link existing user with Google account if not linked
+                user = await this.prisma.user.update({
+                    where: { id: user.id },
+                    data: { googleId },
+                });
+            }
+
+            // Generate tokens
+            const payloadBase = {
+                sub: user.id,
+                email: user.email,
+                role: user.role,
+            };
+
+            const accessToken = this.jwtService.sign(
+                { ...payloadBase, tf: true },
+                {
+                    secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
+                    expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
+                },
+            );
+
+            const refreshToken = this.jwtService.sign(
+                { ...payloadBase, tf: true },
+                {
+                    secret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'replace_with_a_strong_secret',
+                    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+                },
+            );
+
+            const hashedRefreshToken = await bcrypt.hash(refreshToken, parseInt(process.env.SALT_ROUND!));
+            await this.prisma.user.update({
+                where: { id: user.id },
+                data: { refreshToken: hashedRefreshToken, lastLogin: new Date() },
+            });
+
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { password, refreshToken: _, twoFactorSecret, passwordResetToken, passwordResetExpires, ...rest } = user;
+
+            return {
+                user: rest,
+                accessToken,
+                refreshToken,
+            };
+        } catch (error) {
+            console.error('Google login error:', error);
+            throw new UnauthorizedException('Google authentication failed');
+        }
+    }
     private generateStreamKey(): string {
         return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
     }
