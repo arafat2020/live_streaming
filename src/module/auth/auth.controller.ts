@@ -154,4 +154,17 @@ export class AuthController {
 
     return res.redirect(redirectUrl);
   }
+
+  @Post('google-login')
+  @ApiOperation({ summary: 'Google Login with ID Token' })
+  @ApiResponse({ status: 200, description: 'User LoggedIn successfully.' })
+  async googleLogin(@Body('idToken') idToken: string, @Res() res: Response) {
+    const data = await this.authService.googleLoginWithIdToken(idToken);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'User LoggedIn successfully.',
+      data,
+    });
+  }
 }
