@@ -30,6 +30,12 @@ export class RegisterDto {
   @IsNotEmpty()
   firstName: string;
 
+  @ApiProperty({ example: 'johndoe', description: 'Unique username (optional)', required: false })
+  @IsString()
+  @IsOptional()
+  @Length(3, 20)
+  username?: string;
+
   @ApiProperty({ example: 'doe', description: 'Last name of the user', required: false, })
   @IsString()
   @IsOptional()
