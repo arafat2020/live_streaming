@@ -4,10 +4,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { BanType, UserRole, UserStatus } from '@prisma/client';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
+import { WatchHistoryService } from '../watch-history/watch-history.service';
 
 @Injectable()
 export class ChannelService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private watchHistoryService: WatchHistoryService,
+  ) { }
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }
@@ -721,28 +725,40 @@ export class ChannelService {
     const viewsMap = new Map<string, number>(candidateViews.map(v => [v.channelId as string, v._sum.views || 0]));
 
     // STEP 8: Score system
-    const scoredChannels = Array.from(channelMap.values()).map(channel => {
-      const channelData = channel as {
-        id: string;
-        name: string;
-        handle: string;
-        logo: string | null;
-        description: string | null;
-        isLive: boolean | null;
-        owner: { id: string; firstName: string; status: string; profileImage: string | null };
-        _count: { follow: number; content: number };
-      };
+    const mappedChannels = await Promise.all(Array.from(channelMap.values()).map(async (channel) => {
+      const channelData = channel as any;
 
       const totalViews = viewsMap.get(channelData.id) || 0;
       const followCount = channelData._count?.follow || 0;
       const contentCount = channelData._count?.content || 0;
       const isLive = channelData.isLive || false;
 
+      let category = channelData.category || null;
+      let currentViewers = 0;
+
+      if (isLive) {
+        // Fetch latest live stream for this channel
+        const liveStream = await this.prisma.content.findFirst({
+          where: {
+            channelId: channelData.id,
+            contentType: 'LIVE_STREAM',
+            status: 'AVAILABLE',
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, category: true },
+        });
+
+        if (liveStream) {
+          category = liveStream.category || category;
+          currentViewers = this.watchHistoryService.getActiveViewerCount(liveStream.id);
+        }
+      }
+
       const score =
         followCount * 2 +
         contentCount +
         (isLive ? 10 : 0) +
-        Math.floor(totalViews / 50); // Every 50 views adds 1 point
+        Math.floor(totalViews / 50);
 
       return {
         id: channelData.id,
@@ -751,18 +767,20 @@ export class ChannelService {
         logo: channelData.logo,
         description: channelData.description,
         isLive: !!isLive,
+        category,
+        currentViewers,
         owner: channelData.owner,
         followers: followCount,
         contents: contentCount,
         totalViews,
         score,
       };
-    });
+    }));
 
     // STEP 9: Sort + limit
-    scoredChannels.sort((a, b) => b.score - a.score);
+    mappedChannels.sort((a, b) => b.score - a.score);
 
-    return scoredChannels.slice(0, limit);
+    return mappedChannels.slice(0, limit);
   }
 
 
