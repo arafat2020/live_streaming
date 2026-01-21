@@ -8,7 +8,8 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { forwardRef, Inject, Logger } from '@nestjs/common';
+import { WatchHistoryService } from '../watch-history/watch-history.service';
 
 @WebSocketGateway({
   namespace: '/ws/live',
@@ -23,6 +24,11 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
   // Track socket to content mapping
   private socketToContent = new Map<string, string>();
   private socketToUser = new Map<string, string>();
+
+  constructor(
+    @Inject(forwardRef(() => WatchHistoryService))
+    private watchHistoryService: WatchHistoryService,
+  ) { }
 
   // Handle client connection
   handleConnection(client: Socket) {
@@ -40,6 +46,7 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
       this.logger.log(`Client ${client.id} (User: ${userId || 'Anonymous'}) disconnected from content ${contentId}`);
 
       // Emit event so WatchHistoryService can update concurrent viewers
+      this.watchHistoryService.stopWatching(contentId, userId || client.id);
       this.server.emit('viewer.left', { contentId, userId: userId || null });
 
       // BROADCAST LIVE STATS IMMEDIATELY
@@ -89,15 +96,12 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
     // Track this connection
     this.socketToContent.set(client.id, contentId);
-
     if (userId) {
       this.socketToUser.set(client.id, userId);
-      this.logger.log(`User ${userId} started watching ${contentId}`);
-    } else {
-      this.logger.log(`Anonymous client ${client.id} started watching ${contentId}`);
     }
 
     // Emit to backend to increment views
+    this.watchHistoryService.startWatching(contentId, userId || client.id);
     this.server.emit('viewer.joined', { contentId, userId: userId || null });
 
     // BROADCAST LIVE STATS IMMEDIATELY
@@ -126,6 +130,7 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     this.logger.log(`User ${userId || 'Anonymous'} stopped watching ${contentId}`);
 
     // Emit to backend to update concurrent viewers
+    this.watchHistoryService.stopWatching(contentId, userId || client.id);
     this.server.emit('viewer.left', { contentId, userId: userId || null });
 
     // BROADCAST LIVE STATS IMMEDIATELY

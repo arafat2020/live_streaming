@@ -2,7 +2,8 @@ import {
   IsOptional,
   IsString,
   IsEmail,
-  IsNotEmpty,
+  Length,
+  Matches,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -12,11 +13,16 @@ export class UpdateMyProfileDto {
   @IsEmail()
   email?: string;
 
-  @ApiProperty({ example: 'Sarah', description: 'Full name of the User' })
-  @IsString()
+  @ApiProperty({ example: 'johndoe', description: 'Unique username (Optional)', required: false })
   @IsString()
   @IsOptional()
-  firstName?: string;
+  @Length(3, 20)
+  @Matches(/^[a-zA-Z0-9_]+$/, {
+    message: 'Username can only contain letters, numbers, and underscores',
+  })
+  username?: string;
+
+  // Note: firstName is no longer directly editable as it always syncs with username
 
 
 

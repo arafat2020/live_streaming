@@ -28,6 +28,14 @@ export class CreateVideoDto {
   @IsString()
   streamKey: string;
 
+  @ApiPropertyOptional({
+    example: 'Gaming',
+    description: 'Video category',
+  })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
   // @ApiPropertyOptional({
   //   enum: ContentType,
   //   example: ContentType.VOD,

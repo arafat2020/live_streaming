@@ -19,4 +19,19 @@ export class UpdateChannelDto {
   @IsString()
   @MaxLength(50)
   handle?: string;
+
+  @ApiPropertyOptional({ example: 'GAMING', description: 'Default category for the next live stream' })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @ApiPropertyOptional({ example: 'My Awesome Stream', description: 'Title for the next live stream' })
+  @IsOptional()
+  @IsString()
+  pendingTitle?: string;
+
+  @ApiPropertyOptional({ example: 'Join me for some fun!', description: 'Description for the next live stream' })
+  @IsOptional()
+  @IsString()
+  pendingDescription?: string;
 }

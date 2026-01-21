@@ -29,6 +29,7 @@ export class ContentService {
         isPremium: dto.isPremium ?? false,
         // r2ObjectKey এর বদলে r2Prefix ব্যবহার করুন (Align with Schema)
         r2Prefix: dto.r2Prefix,
+        category: dto.category,
         channel: { connect: { id: dto.channelId } },
       },
     });
@@ -272,7 +273,10 @@ export class ContentService {
 
     const updated = await this.prisma.content.update({
       where: { id },
-      data,
+      data: {
+        ...data,
+        category: dto.category,
+      },
     });
 
     return updated;

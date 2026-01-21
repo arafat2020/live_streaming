@@ -7,6 +7,7 @@ model Content {
   contentType     ContentType?   // VOD || LIVE_STREAM
   status          ContentStatus @default(PROCESSING)  // PROCESSING AVAILABLE FAILED PRIVATE ARCHIVED ENDED
   durationSeconds Int?
+  category        String?
   
   // Playback & Storage Refactor
   playbackUrl     String?       // https://pub-xxx.r2.dev/videos/lessonId/index.m3u8

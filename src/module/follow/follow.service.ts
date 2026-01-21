@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryFollowDto } from './dto/query-follow.dto';
+import { WatchHistoryService } from '../watch-history/watch-history.service';
 
 @Injectable()
 export class FollowService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private watchHistoryService: WatchHistoryService,
+  ) { }
 
   async followChannel(userId: string, channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
@@ -121,6 +125,22 @@ export class FollowService {
                   follow: true,
                 },
               },
+
+              // Get latest active live stream to get category and contentId (for viewers)
+              content: {
+                where: {
+                  contentType: 'LIVE_STREAM',
+                  status: 'AVAILABLE',
+                },
+                orderBy: {
+                  createdAt: 'desc',
+                },
+                take: 1,
+                select: {
+                  id: true,
+                  category: true,
+                },
+              },
             },
           },
         },
@@ -135,18 +155,26 @@ export class FollowService {
     ]);
 
     // Flatten and restructure response
-    const data = follows.map((item) => {
-      const { _count, ...channelData } = item.following;
+    const data = await Promise.all(follows.map((item: any) => {
+      const { _count, content, ...channelData } = item.following;
+      const liveStream = content && content.length > 0 ? content[0] : null;
+      
+      let currentViewers = 0;
+      if (channelData.isLive && liveStream) {
+        currentViewers = this.watchHistoryService.getActiveViewerCount(liveStream.id);
+      }
 
       return {
         followedAt: item.createdAt,
         channel: {
           ...channelData,
-          followerCount: _count.follow,
+          followerCount: _count?.follow || 0,
+          category: liveStream?.category || null,
+          currentViewers,
         },
         owner: item.following.owner,
       };
-    });
+    }));
 
     return {
       data,

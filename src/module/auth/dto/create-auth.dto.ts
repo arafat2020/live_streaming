@@ -1,6 +1,7 @@
 import { UserRole } from '@prisma/client';
 import {
   IsEmail,
+  IsDateString,
   IsEnum,
   IsNotEmpty,
   IsOptional,
@@ -9,7 +10,7 @@ import {
   Length,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-
+import { IsUsernameUnique } from './unique-username.decorator';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@gmail.com', description: 'User email address for login', required: true, })
@@ -25,15 +26,16 @@ export class LoginDto {
 
 export class RegisterDto {
 
-  @ApiProperty({ example: 'john', description: 'First name of the user', required: true, })
+  @ApiProperty({ example: 'john', description: 'First name of the user', required: false, })
   @IsString()
-  @IsNotEmpty()
-  firstName: string;
+  @IsOptional()
+  firstName?: string;
 
-  @ApiProperty({ example: 'johndoe', description: 'Unique username', required: true })
+  @ApiProperty({ example: 'johndoe', description: 'Unique username (required)', required: true })
   @IsString()
   @IsNotEmpty()
   @Length(3, 20)
+  @IsUsernameUnique()
   username: string;
 
   @ApiProperty({ example: 'doe', description: 'Last name of the user', required: false, })
@@ -46,14 +48,19 @@ export class RegisterDto {
   @IsNotEmpty()
   email: string;
 
+  @ApiProperty({ example: '2000-01-31', description: 'User date of birth (YYYY-MM-DD)', required: true })
+  @IsDateString()
+  @IsNotEmpty()
+  dateOfBirth: string;
+
   @ApiProperty({ example: 'password123', description: 'User password', required: true })
   @IsString()
   @IsNotEmpty()
   password: string;
-  @ApiProperty({ example: 'password123', description: 'Confirm password', required: true })
+  @ApiProperty({ example: 'password123', description: 'Confirm password', required: false })
   @IsString()
-  @IsNotEmpty()
-  confirmPassword: string;
+  @IsOptional()
+  confirmPassword?: string;
   @ApiProperty({ example: '+8801712345678', description: 'Phone number (E.164 format) (optional)', required: false, })
   @IsOptional()
   //@IsPhoneNumber(null)

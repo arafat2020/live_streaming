@@ -106,6 +106,7 @@ export class VideoService {
       channelId: channel.id,
       contentType: 'VOD' as any,
       status: 'PROCESSING' as any,
+      category: dto.category,
       r2Prefix,
     });
 
@@ -429,10 +430,12 @@ export class VideoService {
 
       // Create content record for this live stream
       const content = await this.contentService.create({
-        title: `${channel.name} - Live Stream`,
+        title: channel.pendingTitle || `${channel.name} - Live Stream`,
+        description: channel.pendingDescription || undefined,
         channelId: channel.id,
         contentType: 'LIVE_STREAM' as any,
         status: 'AVAILABLE' as any,
+        category: channel.category || undefined,
         r2Prefix,
         playbackUrl,
       });

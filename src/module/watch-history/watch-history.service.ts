@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateWatchHistoryDto } from './dto/create-watch-history.dto';
 import { UpdateWatchHistoryDto } from './dto/update-watch-history.dto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,6 +16,7 @@ export class WatchHistoryService {
 
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => LiveCommentGateway))
     private liveGateway: LiveCommentGateway, // Inject WebSocket gateway
   ) { }
 
@@ -78,24 +79,24 @@ export class WatchHistoryService {
 
   // Track when user starts watching (for concurrent viewer count)
 
-  async startWatching(contentId: string, userId: string) {
+  async startWatching(contentId: string, viewerId: string) {
     // Add user to active viewers
     if (!this.activeViewers.has(contentId)) {
       this.activeViewers.set(contentId, new Set());
     }
 
     const viewers = this.activeViewers.get(contentId)!;
-    viewers.add(userId);
+    viewers.add(viewerId);
 
     const concurrentCount = viewers.size;
 
-    this.logger.log(`User ${userId} started watching ${contentId} (${concurrentCount} concurrent)`);
+    this.logger.log(`Viewer ${viewerId} started watching ${contentId} (${concurrentCount} concurrent)`);
 
     // Broadcast concurrent viewer count
     this.liveGateway.broadcastConcurrentViewers(contentId, concurrentCount);
 
     // Increment total views (only once per user session)
-    await this.incrementViews(contentId, userId);
+    await this.incrementViews(contentId, viewerId);
 
     return { concurrentViewers: concurrentCount };
   }
@@ -103,14 +104,14 @@ export class WatchHistoryService {
 
   // Track when user stops watching
 
-  async stopWatching(contentId: string, userId: string) {
+  async stopWatching(contentId: string, viewerId: string) {
     const viewers = this.activeViewers.get(contentId);
 
     if (viewers) {
-      viewers.delete(userId);
+      viewers.delete(viewerId);
       const concurrentCount = viewers.size;
 
-      this.logger.log(`User ${userId} stopped watching ${contentId} (${concurrentCount} remaining)`);
+      this.logger.log(`Viewer ${viewerId} stopped watching ${contentId} (${concurrentCount} remaining)`);
 
       // Broadcast updated concurrent viewer count
       this.liveGateway.broadcastConcurrentViewers(contentId, concurrentCount);

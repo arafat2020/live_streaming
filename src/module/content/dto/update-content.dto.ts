@@ -27,6 +27,14 @@ export class UpdateContentDto {
   @IsString()
   description?: string;
 
+  @ApiPropertyOptional({
+    description: 'Category of the content',
+    example: 'Gaming',
+  })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
 //   @ApiPropertyOptional({
 //     description: 'Content type',
 //     enum: ContentType,

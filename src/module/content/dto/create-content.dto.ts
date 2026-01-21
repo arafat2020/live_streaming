@@ -50,6 +50,11 @@ export class CreateContentDto {
   @IsString()
   r2Prefix?: string;
 
+  @ApiPropertyOptional({ example: 'Gaming' })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
   @ApiProperty({ example: 'b768bfdc-2d0f-4fac-1234-abcdef' })
   @IsString()
   @IsUUID() // চ্যানেল আইডি সাধারণত UUID হয়

@@ -1,11 +1,9 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -42,7 +40,7 @@ export class ChannelManagementController {
 
   @ApiOperation({ summary: 'Get real-time stats for my live stream' })
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-live-stats')
   async getMyLiveStats(@Req() req: GetMe, @Res() res: Response) {
     const userId = req.user.id;
@@ -76,7 +74,7 @@ export class ChannelManagementController {
 
   @ApiOperation({ summary: 'Get all content for the logged-in creator channel' })
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-content')
   async getMyContent(
     @Req() req: GetMe,
@@ -140,11 +138,11 @@ export class ChannelManagementController {
     description: 'Channels retrieved successfully',
   })
   async getRecommendedChannels(
-    @Req() req: GetMe,
+    @Req() req: { user?: { id?: string } },
     @Query() dto: GetRecommendedChannelsDto,
     @Res() res: Response,
   ) {
-    const userId = (req as any).user?.id || null;
+    const userId = req.user?.id ?? null;
     const result = await this.channelService.getRecommendedChannels(
       userId,
       dto.limit,
@@ -160,7 +158,7 @@ export class ChannelManagementController {
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
   @ApiOperation({ summary: 'My Chennel. Retrieves the private channel details Calculate total views across all channel content' })
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-chennel')
   async getPrivateChannel(@Req() req: GetMe, @Res() res: Response) {
     const userId = req.user.id;
@@ -175,7 +173,7 @@ export class ChannelManagementController {
 
   /**PATCH /creator/channel - Updates channel metadata (name, description, handle).*/
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Patch()
   async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto, @Res() res: Response) {
     const userId = req.user.id;
@@ -190,7 +188,7 @@ export class ChannelManagementController {
 
   /**POST /creator/channel/key/rotate - Generates a new stream key.*/
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Post('key/rotate')
   @HttpCode(200)
   async rotateStreamKey(@Req() req: GetMe, @Res() res: Response) {
@@ -204,13 +202,14 @@ export class ChannelManagementController {
     });
   }
 
-  @ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })
-  // @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
-  @Get(':id')
+  @ApiOperation({ summary: 'Get channel by username' })
+  @Get('by-username/:username')
   @HttpCode(200)
-  async getChannelById(@Param('id') id: string, @Res() res: Response) {
-
-    const data = await this.channelService.getChannelById(id);
+  async getChannelByUsername(
+    @Param('username') username: string,
+    @Res() res: Response,
+  ) {
+    const data = await this.channelService.getChannelByUsername(username);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -218,6 +217,7 @@ export class ChannelManagementController {
       data,
     });
   }
+
   // Controller
   @Get('/by-content/:contentId')
   @ApiOperation({
@@ -246,6 +246,20 @@ export class ChannelManagementController {
       message: 'Content retrieved successfully.',
       data: data, // ✅ Return contents array
 
+    });
+  }
+
+  @ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })
+  // @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
+  @Get(':id')
+  @HttpCode(200)
+  async getChannelById(@Param('id') id: string, @Res() res: Response) {
+    const data = await this.channelService.getChannelById(id);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Channel retrieved successfully.',
+      data,
     });
   }
 }

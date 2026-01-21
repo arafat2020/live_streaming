@@ -80,6 +80,7 @@ export class VideoController {
     @Body('title') title: string,
     @Body('streamKey') streamKey: string,
     @Body('description') description?: string,
+    @Body('category') category?: string,
   ) {
     // Log to debug
     this.logger.log(`📊 Received params:`);
@@ -113,6 +114,7 @@ export class VideoController {
       totalChunks,
       title: title || 'Untitled Video',
       description: description || '',
+      category: category || undefined,
       streamKey,
     });
 
@@ -202,6 +204,7 @@ export class VideoController {
       {
         title: metadata.title,
         description: metadata.description,
+        category: metadata.category,
         streamKey: metadata.streamKey,
       },
       undefined, // No buffer
