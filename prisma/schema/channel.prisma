@@ -9,6 +9,9 @@ model Channel {
   streamKey        String   @unique // Unique key for OBS authentication (Crucial for Live Streaming)
   lastHandleUpdate DateTime @default(now()) // For enforcing the 30-day change limit on handle changes
   isLive       Boolean?  
+  category     String?
+  pendingTitle String?
+  pendingDescription String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

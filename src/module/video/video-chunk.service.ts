@@ -9,6 +9,7 @@ interface UploadSession {
   totalChunks: number;
   title?: string;
   description?: string;
+  category?: string;
   streamKey: string;
   createdAt: Date;
   chunks: number[];

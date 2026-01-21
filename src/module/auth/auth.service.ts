@@ -23,6 +23,7 @@ import { MailService } from '../mail/mail.service';
 //import { MailerService } from '@nestjs-modules/mailer';
 import { v4 as uuidv4 } from 'uuid';
 import { OAuth2Client } from 'google-auth-library';
+import { generateUniqueUsername } from '../../utils/generateUsername';
 
 @Injectable()
 export class AuthService {
@@ -59,21 +60,14 @@ export class AuthService {
             });
 
             if (!user) {
-                // Generate unique username from email
-                const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-                let username = baseUsername;
-                let count = 1;
-
-                while (await this.prisma.user.findUnique({ where: { username } })) {
-                    username = `${baseUsername}${count}`;
-                    count++;
-                }
+                // Generate unique username from email using utility function
+                const username = await generateUniqueUsername(email, this.prisma);
 
                 user = await this.prisma.user.create({
                     data: {
                         email,
                         username: username,
-                        firstName: given_name || 'Google User',
+                        firstName: username, // Always set firstName to username
                         lastName: family_name || '',
                         profileImage: picture,
                         googleId,
@@ -85,11 +79,11 @@ export class AuthService {
                 // Create channel for new user
                 const channelPayload = {
                     ownerId: user.id,
-                    name: user.firstName,
+                    name: user.username, // Use username (which is now same as firstName)
                     handle: user.username!,
                     description: null,
                     streamKey: this.generateStreamKey(),
-                };
+                } as any; // Type assertion to bypass strict typing
                 await this.prisma.channel.create({ data: channelPayload });
             } else if (!user.googleId) {
                 // Link existing user with Google account if not linked
@@ -161,12 +155,11 @@ export class AuthService {
             email: dto.email,
             username: username,
             password: hashedPassword,
-            firstName: dto.firstName ?? username,
+            firstName: username, // Always set firstName to username
             lastName: dto.lastName ?? null,
             phone: dto.phone ?? null,
             profileImage: dto.profileImage ?? null,
             dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
-            role: UserRole.CREATOR,
             is2FAEnabled: dto.is2FAEnabled ?? false,
             twoFactorSecret: null,
             passwordResetToken: null,
@@ -176,11 +169,11 @@ export class AuthService {
             const user = await this.prisma.user.create({ data: payload });
             const channelPayload = {
                 ownerId: user.id,
-                name: user.username ?? user.firstName,
+                name: user.username, // Use username (which is now same as firstName)
                 handle: user.username!, // Use unique username as handle
                 description: null,
                 streamKey: this.generateStreamKey(),
-            };
+            } as any; // Type assertion to bypass strict typing
 
             await this.prisma.channel.create({ data: channelPayload });
             // sanitize sensitive fields before returning
@@ -604,21 +597,14 @@ export class AuthService {
         });
 
         if (!user) {
-            // Generate unique username from email
-            const baseUsername = req.user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-            let username = baseUsername;
-            let count = 1;
-
-            while (await this.prisma.user.findUnique({ where: { username } })) {
-                username = `${baseUsername}${count}`;
-                count++;
-            }
+            // Generate unique username from email using utility function
+            const username = await generateUniqueUsername(req.user.email, this.prisma);
 
             user = await this.prisma.user.create({
                 data: {
                     email: req.user.email,
                     username: username,
-                    firstName: req.user.firstName,
+                    firstName: username, // Always set firstName to username
                     lastName: req.user.lastName,
                     profileImage: req.user.picture,
                     googleId: req.user.googleId,
@@ -630,11 +616,11 @@ export class AuthService {
             // Create channel for new user
             const channelPayload = {
                 ownerId: user.id,
-                name: user.firstName,
+                name: user.username, // Use username (which is now same as firstName)
                 handle: user.username!,
                 description: null,
                 streamKey: this.generateStreamKey(),
-            };
+            } as any; // Type assertion to bypass strict typing
             await this.prisma.channel.create({ data: channelPayload });
         } else if (!user.googleId) {
             // Link existing user with Google account if not linked

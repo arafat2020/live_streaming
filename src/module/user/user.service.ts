@@ -36,6 +36,13 @@ export class UserService {
     return !existingUser;
   }
 
+  async findByUsername(username: string) {
+    return this.prisma.user.findUnique({
+      where: { username },
+      select: { ...safeUserSelect },
+    });
+  }
+
   async findAll() {
     const users = await this.prisma.user.findMany({
       select: {
@@ -88,7 +95,6 @@ export class UserService {
     }
 
     const usernameChanged = !!dto.username && dto.username !== user.username;
-    const firstNameChanged = !!dto.firstName && dto.firstName !== user.firstName;
 
     let profileImageUrl: string | undefined;
 
@@ -118,26 +124,15 @@ export class UserService {
       }
     }
 
-    // Check if firstName is being updated
-    if (dto.firstName && dto.firstName !== user.firstName) {
-      // Check last update time
-      if (user.lastDisplayNameUpdate) {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        if (user.lastDisplayNameUpdate > thirtyDaysAgo) {
-          throw new BadRequestException('You can only change your display name once every 30 days.');
-        }
-      }
-      // If allowed, we will update the timestamp
-    }
-
     const updateData = {
       ...(dto.email && { email: dto.email }),
       ...(dto.phone && { phone: dto.phone }),
-      ...(dto.username && { username: dto.username }),
-      ...(dto.firstName && { firstName: dto.firstName }),
-      ...((usernameChanged || firstNameChanged) && { lastDisplayNameUpdate: new Date() }),
+      ...(dto.username && {
+        username: dto.username,
+        firstName: dto.username // Always sync firstName with username
+      }),
+      // Note: We don't allow direct firstName updates anymore since it should always match username
+      ...((usernameChanged) && { lastDisplayNameUpdate: new Date() }),
       ...(profileImageUrl && { profileImage: profileImageUrl }),
       ...(dto.chatColor && { chatColor: dto.chatColor }),
     };
@@ -162,7 +157,7 @@ export class UserService {
             where: { id: channel.id },
             data: {
               handle: dto.username,
-              name: dto.username,
+              name: dto.username, // Use username (which is now same as firstName)
             },
           });
         }

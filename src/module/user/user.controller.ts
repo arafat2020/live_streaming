@@ -48,11 +48,23 @@ export class UserController {
 
     const isAvailable = await this.userService.checkUsernameAvailability(username);
 
+    // Get user data to include category
+    let userData: any = { available: isAvailable };
+    if (!isAvailable) {
+      const existingUser = await this.userService.findByUsername(username);
+      if (existingUser) {
+        userData = {
+          available: false,
+          user: existingUser
+        };
+      }
+    }
+
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
       message: isAvailable ? 'Username is available' : 'Username is already taken',
-      data: { available: isAvailable },
+      data: userData,
     });
   }
 

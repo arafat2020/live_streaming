@@ -22,11 +22,7 @@ export class UpdateMyProfileDto {
   })
   username?: string;
 
-  @ApiProperty({ example: 'Sarah', description: 'Full name of the User' })
-  @IsString()
-  @IsString()
-  @IsOptional()
-  firstName?: string;
+  // Note: firstName is no longer directly editable as it always syncs with username
 
 
 

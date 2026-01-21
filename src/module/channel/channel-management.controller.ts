@@ -40,7 +40,7 @@ export class ChannelManagementController {
 
   @ApiOperation({ summary: 'Get real-time stats for my live stream' })
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-live-stats')
   async getMyLiveStats(@Req() req: GetMe, @Res() res: Response) {
     const userId = req.user.id;
@@ -74,7 +74,7 @@ export class ChannelManagementController {
 
   @ApiOperation({ summary: 'Get all content for the logged-in creator channel' })
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-content')
   async getMyContent(
     @Req() req: GetMe,
@@ -158,7 +158,7 @@ export class ChannelManagementController {
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
   @ApiOperation({ summary: 'My Chennel. Retrieves the private channel details Calculate total views across all channel content' })
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-chennel')
   async getPrivateChannel(@Req() req: GetMe, @Res() res: Response) {
     const userId = req.user.id;
@@ -173,7 +173,7 @@ export class ChannelManagementController {
 
   /**PATCH /creator/channel - Updates channel metadata (name, description, handle).*/
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Patch()
   async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto, @Res() res: Response) {
     const userId = req.user.id;
@@ -188,7 +188,7 @@ export class ChannelManagementController {
 
   /**POST /creator/channel/key/rotate - Generates a new stream key.*/
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-  @Roles('CREATOR', 'ADMIN')
+  @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Post('key/rotate')
   @HttpCode(200)
   async rotateStreamKey(@Req() req: GetMe, @Res() res: Response) {

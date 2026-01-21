@@ -65,3 +65,16 @@ enum BanType {
   PERMANENT
   TEMPORARY
 }
+
+// User profile category for content type
+enum UserCategory {
+  JUST_CHATTING
+  IRL
+  GAMING
+  MUSIC
+  EDUCATION
+  SPORTS
+  GAMBLING
+  TECH
+  OTHERS
+}

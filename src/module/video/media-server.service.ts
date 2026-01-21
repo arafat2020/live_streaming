@@ -228,7 +228,8 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    * ✅ OPTIMIZED FOR LOW LATENCY
    */
   private startFFmpegTranscoding(streamKey: string, liveDir: string): ChildProcess {
-    const rtmpHost = process.env.RTMP_HOST;
+    // Use 127.0.0.1 for internal connection within the same container
+    const rtmpHost = '127.0.0.1';
     const rtmpUrl = `rtmp://${rtmpHost}:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
 
     this.logger.log(`🎬 FFmpeg connecting to: ${rtmpUrl}`);
@@ -273,6 +274,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     ffmpeg.on('error', (error) => {
       this.logger.error(`❌ FFmpeg error for ${streamKey}: ${error.message}`);
+      if (error.message.includes('ENOENT')) {
+          this.logger.error('CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.');
+      }
     });
 
     ffmpeg.on('close', (code) => {
