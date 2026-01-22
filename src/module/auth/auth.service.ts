@@ -9,6 +9,7 @@ import {
 import {
     ChangePasswordDto,
     LoginDto,
+    UsernameLoginDto,
     RegisterDto,
     RequestResetCodeDto,
     ResetPasswordDto,
@@ -198,6 +199,15 @@ export class AuthService {
 
     async login(dto: LoginDto) {
         const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+        return this.processUserLogin(user, dto.password);
+    }
+
+    async loginWithUsername(dto: UsernameLoginDto) {
+        const user = await this.prisma.user.findUnique({ where: { username: dto.username } });
+        return this.processUserLogin(user, dto.password);
+    }
+
+    private async processUserLogin(user: any, passwordToCheck: string) {
 
         if (!user) {
             throw new UnauthorizedException('Invalid credentials.');
@@ -247,7 +257,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials.');
         }
 
-        const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+        const isPasswordValid = await bcrypt.compare(passwordToCheck, user.password);
         if (!isPasswordValid) {
             throw new UnauthorizedException('Invalid credentials.');
         }
