@@ -24,6 +24,19 @@ export class LoginDto {
   password: string;
 }
 
+export class UsernameLoginDto {
+  @ApiProperty({ example: 'johndoe', description: 'Username for login', required: true, })
+  @IsString()
+  @IsNotEmpty()
+  username: string;
+
+  @ApiProperty({ example: 'admin123', description: 'User password', required: true })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+
+
 export class RegisterDto {
 
   @ApiProperty({ example: 'john', description: 'First name of the user', required: false, })

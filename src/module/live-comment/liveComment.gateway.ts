@@ -171,10 +171,7 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
   broadcastLiveStats(contentId: string, stats: any) {
     if (!this.server) return;
 
-    // In namespaced gateways, this.server is the Namespace, which has 'adapter' directly
-    const adapter = (this.server as any).adapter || (this.server.sockets as any)?.adapter;
-    const room = adapter?.rooms?.get(`content:${contentId}`);
-    const viewerCount = room ? room.size : 0;
+    const viewerCount = this.watchHistoryService.getActiveViewerCount(contentId);
 
     this.server.to(`content:${contentId}`).emit('live_stats_update', {
       contentId,

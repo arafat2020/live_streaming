@@ -86,6 +86,7 @@ export class WatchHistoryService {
     }
 
     const viewers = this.activeViewers.get(contentId)!;
+    const isNewToSession = !viewers.has(viewerId);
     viewers.add(viewerId);
 
     const concurrentCount = viewers.size;
@@ -95,8 +96,10 @@ export class WatchHistoryService {
     // Broadcast concurrent viewer count
     this.liveGateway.broadcastConcurrentViewers(contentId, concurrentCount);
 
-    // Increment total views (only once per user session)
-    await this.incrementViews(contentId, viewerId);
+    // Increment total views ONLY if this is a new viewer in this session
+    if (isNewToSession) {
+      await this.incrementViews(contentId, viewerId);
+    }
 
     return { concurrentViewers: concurrentCount };
   }

@@ -13,6 +13,7 @@ import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
   LoginDto,
+  UsernameLoginDto,
   RegisterDto,
   RequestResetCodeDto,
   ResetPasswordDto,
@@ -55,6 +56,21 @@ export class AuthController {
       data,
     });
   }
+
+  @Post('login-username')
+  @ApiOperation({ summary: 'Login User with Username' })
+  @ApiResponse({ status: 200, description: 'LoggedIn User successfully.' })
+  @ApiBody({ type: UsernameLoginDto })
+  async loginWithUsername(@Body() dto: UsernameLoginDto, @Res() res: Response) {
+    const data = await this.authService.loginWithUsername(dto);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'User LoggedIn successfully.',
+      data,
+    });
+  }
+
 
   @Post('refresh')
   @ApiOperation({ summary: 'Refresh Access Token' })
