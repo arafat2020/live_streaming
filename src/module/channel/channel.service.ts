@@ -5,6 +5,7 @@ import { UpdateChannelDto } from './dto/update-channel.dto';
 import { BanType, UserRole, UserStatus } from '@prisma/client';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
+import { safeChannelSelect } from './dto/safeChannelSelect';
 
 @Injectable()
 export class ChannelService {
@@ -266,13 +267,7 @@ export class ChannelService {
     const channels = await this.prisma.channel.findMany({
       where,
       select: {
-        id: true,
-        name: true,
-        handle: true,
-        description: true,
-        streamKey: true,
-        logo: true,
-        isLive: true,
+        ...safeChannelSelect,
         owner: {
           select: {
             id: true,
@@ -287,8 +282,6 @@ export class ChannelService {
             content: true,
           },
         },
-        createdAt: true,
-        updatedAt: true,
       },
       skip,
       take: limit,
@@ -335,7 +328,8 @@ export class ChannelService {
     // Get channel with all details and counts
     const channel = await this.prisma.channel.findUnique({
       where: { id: channelId },
-      include: {
+      select: {
+        ...safeChannelSelect,
         owner: {
           select: {
             id: true,
@@ -578,7 +572,8 @@ export class ChannelService {
           },
         },
       },
-      include: {
+      select: {
+        ...safeChannelSelect,
         owner: {
           select: {
             id: true,
@@ -603,7 +598,8 @@ export class ChannelService {
         ...notInFollowed,
         ...exclusionFilter,
       },
-      include: {
+      select: {
+        ...safeChannelSelect,
         owner: {
           select: {
             id: true,
@@ -634,7 +630,8 @@ export class ChannelService {
         ...notInFollowed,
         ...exclusionFilter,
       },
-      include: {
+      select: {
+        ...safeChannelSelect,
         owner: {
           select: {
             id: true,
@@ -680,7 +677,8 @@ export class ChannelService {
         id: { in: highViewChannelIds },
         ...exclusionFilter,
       },
-      include: {
+      select: {
+        ...safeChannelSelect,
         owner: {
           select: {
             id: true,

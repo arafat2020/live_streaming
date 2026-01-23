@@ -258,6 +258,7 @@ export class UserService {
         privacyAcceptedAt: new Date(),
         dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
       },
+      select: { ...safeUserSelect },
     });
 
     return { message: 'Terms accepted successfully', user };

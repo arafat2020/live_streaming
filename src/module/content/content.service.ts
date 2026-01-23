@@ -8,6 +8,7 @@ import { CreateContentDto } from './dto/create-content.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryContentDto, ContentSortBy } from './dto/query-content.dto';
+import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
 
 @Injectable()
@@ -223,7 +224,8 @@ export class ContentService {
       where: { id },
       include: {
         channel: {
-          include: {
+          select: {
+            ...safeChannelSelect,
             owner: {
               select: {
                 id: true,
