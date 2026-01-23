@@ -93,7 +93,7 @@ export class VideoService {
     dto: CreateVideoDto,
     fileBuffer?: Buffer,
     inputPath?: string, // ✅ Allow passing a file path directly
-  ): Promise<{ contentId: string; processingPromise: Promise<string> }> {
+  ): Promise<{ contentId: string; processingPromise: Promise<{ playbackUrl: string; thumbnailUrl: string }> }> {
     // ✅ VALIDATE INPUT
     if (!fileBuffer && !inputPath) {
       throw new BadRequestException('Either fileBuffer or inputPath must be provided');
@@ -128,6 +128,21 @@ export class VideoService {
     }
 
     this.logger.log(`📊 Input file size: ${(fileStats.size / 1024 / 1024).toFixed(2)} MB`);
+
+    // Generate thumbnail from the original input video BEFORE processing
+    let thumbnailUrl = '';
+    try {
+      this.logger.log(`📸 Generating thumbnail from original video: ${lessonId}...`);
+      thumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
+        finalInputPath,
+        r2Prefix,
+        lessonId
+      );
+      this.logger.log(`✅ Thumbnail generated: ${thumbnailUrl}`);
+    } catch (thumbErr) {
+      this.logger.error(`❌ Thumbnail generation failed: ${thumbErr.message}`);
+      // Continue without thumbnail - not critical
+    }
 
     // FFmpeg generation for VOD
     const processingPromise = (async () => {
@@ -171,18 +186,18 @@ export class VideoService {
           ffmpegError += data.toString();
         });
 
-        return new Promise<string>((resolve, reject) => {
+        return new Promise<{ playbackUrl: string; thumbnailUrl: string }>((resolve, reject) => {
           ffmpeg.on('close', async (code) => {
             if (code === 0) {
               this.logger.log(`✅ Transcoding done: ${lessonId}`);
 
               // Upload result to R2
-              const publicUrl = await this.uploadToR2(outputDir, r2Prefix);
+              const playbackUrl = await this.uploadToR2(outputDir, r2Prefix);
 
               // Cleanup local files
               this.cleanupLocalFiles(outputDir);
 
-              resolve(publicUrl);
+              resolve({ playbackUrl, thumbnailUrl });
             } else {
               this.logger.error(`❌ FFmpeg failed for ${lessonId} with code ${code}`);
               this.logger.error(`FFmpeg stderr: ${ffmpegError.slice(-500)}`); // Last 500 chars
@@ -500,13 +515,14 @@ export class VideoService {
   /**
    * Update content status after successful processing
    */
-  async updateContentAfterProcessing(contentId: string, playbackUrl: string): Promise<void> {
+  async updateContentAfterProcessing(contentId: string, playbackUrl: string, thumbnailUrl?: string): Promise<void> {
     try {
       await this.contentService.update(contentId, {
         status: ContentStatus.AVAILABLE,
         playbackUrl,
+        ...(thumbnailUrl && { thumbnailUrl }),
       });
-      this.logger.log(`✅ Content ${contentId} updated to AVAILABLE with playback URL`);
+      this.logger.log(`✅ Content ${contentId} updated to AVAILABLE with playback URL${thumbnailUrl ? ' and thumbnail' : ''}`);
     } catch (error) {
       this.logger.error(`❌ Failed to update content ${contentId}: ${error.message}`);
     }

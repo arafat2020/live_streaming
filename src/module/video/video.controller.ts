@@ -55,9 +55,9 @@ export class VideoController {
 
     // Handle processing completion in background
     processingPromise
-      .then(async (playbackUrl) => {
+      .then(async (result) => {
         this.logger.log(`✅ Processing complete for ${lessonId}. Updating content status...`);
-        await this.videoService.updateContentAfterProcessing(contentId, playbackUrl);
+        await this.videoService.updateContentAfterProcessing(contentId, result.playbackUrl, result.thumbnailUrl);
       })
       .catch((err) => {
         this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
@@ -218,10 +218,10 @@ export class VideoController {
 
     // Handle processing completion in background
     processingPromise
-      .then(async (playbackUrl) => {
+      .then(async (result) => {
         this.logger.log(`✅ Processing complete for ${lessonId}. Updating content status...`);
-        // Update content to AVAILABLE with playback URL
-        await this.videoService.updateContentAfterProcessing(contentId, playbackUrl);
+        // Update content to AVAILABLE with playback URL and thumbnail
+        await this.videoService.updateContentAfterProcessing(contentId, result.playbackUrl, result.thumbnailUrl);
       })
       .catch((err) => {
         this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);

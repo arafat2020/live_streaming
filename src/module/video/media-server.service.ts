@@ -319,7 +319,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Step 7: Clean up a single stream session
    */
-  private cleanupSession(streamKey: string) {
+  private async cleanupSession(streamKey: string) {
     const session = this.activeSessions.get(streamKey);
 
     if (!session) {
@@ -381,11 +381,11 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Step 8: Clean up all active sessions (on server shutdown)
    */
-  private cleanupAllSessions() {
+  private async cleanupAllSessions() {
     this.logger.log('🧹 Cleaning up all active streams...');
 
     for (const [streamKey] of this.activeSessions) {
-      this.cleanupSession(streamKey);
+      await this.cleanupSession(streamKey);
     }
 
     if (this.nms) {
