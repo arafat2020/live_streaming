@@ -142,8 +142,15 @@ export class ContentService {
       this.prisma.content.count({ where }),
     ]);
 
+    const dataWithViewers = data.map(content => ({
+      ...content,
+      concurrentViewers: content.contentType === 'LIVE_STREAM'
+        ? this.watchHistoryService.getActiveViewerCount(content.id)
+        : 0,
+    }));
+
     return {
-      data,
+      data: dataWithViewers,
       meta: {
         total,
         page,
@@ -201,7 +208,13 @@ export class ContentService {
     });
 
     if (!content) throw new NotFoundException('Content not found');
-    return content;
+
+    return content.map(item => ({
+      ...item,
+      concurrentViewers: item.contentType === 'LIVE_STREAM'
+        ? this.watchHistoryService.getActiveViewerCount(item.id)
+        : 0,
+    }));
   }
 
 
@@ -250,8 +263,14 @@ export class ContentService {
       }
     }
 
-    await this.watchHistoryService.incrementViews(content?.id)
-    return content;
+    const concurrentViewers = content.contentType === 'LIVE_STREAM'
+      ? this.watchHistoryService.getActiveViewerCount(id)
+      : 0;
+
+    return {
+      ...content,
+      concurrentViewers,
+    };
   }
 
   async update(id: string, dto: UpdateContentDto) {
@@ -454,21 +473,7 @@ export class ContentService {
   }
 
   // optional: increment view count safely
-  async incrementViews(id: string) {
-    // Find the content with channel owner info
-    const content = await this.prisma.content.findUnique({
-      where: { id },
-    });
-
-    // Check if content exists
-    if (!content) {
-      throw new NotFoundException('Content not found');
-    }
-    const updated = await this.prisma.content.update({
-      where: { id },
-      data: { views: { increment: 1 } },
-      select: { id: true, views: true },
-    });
-    return updated;
+  async incrementViews(id: string, userId?: string, ipAddress?: string) {
+    return this.watchHistoryService.incrementViews(id, userId, ipAddress);
   }
 }

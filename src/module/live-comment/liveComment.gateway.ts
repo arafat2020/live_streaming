@@ -101,7 +101,8 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     }
 
     // Emit to backend to increment views
-    this.watchHistoryService.startWatching(contentId, userId || client.id);
+    const ipAddress = client.handshake.address;
+    this.watchHistoryService.startWatching(contentId, userId || client.id, userId, ipAddress);
     this.server.emit('viewer.joined', { contentId, userId: userId || null });
 
     // BROADCAST LIVE STATS IMMEDIATELY
@@ -171,10 +172,7 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
   broadcastLiveStats(contentId: string, stats: any) {
     if (!this.server) return;
 
-    // In namespaced gateways, this.server is the Namespace, which has 'adapter' directly
-    const adapter = (this.server as any).adapter || (this.server.sockets as any)?.adapter;
-    const room = adapter?.rooms?.get(`content:${contentId}`);
-    const viewerCount = room ? room.size : 0;
+    const viewerCount = this.watchHistoryService.getActiveViewerCount(contentId);
 
     this.server.to(`content:${contentId}`).emit('live_stats_update', {
       contentId,

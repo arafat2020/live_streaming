@@ -28,7 +28,6 @@ export class UserNotificationPreferenceController {
   @Post(':userId')
   @ApiOperation({ summary: 'Create user notification preferences for a specific user' })
   async create(@Param('userId') userId: string, @Body() dto: CreateUserNotificationPreferenceDto,@Res() res: Response) {
-    //console.log("dto------->",dto);
     const data =await  this.userNotificationPreferenceService.create(userId, dto);
     return sendResponse(res, {
       statusCode: HttpStatus.CREATED,
