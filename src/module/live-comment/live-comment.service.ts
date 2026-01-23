@@ -39,11 +39,7 @@ export class LiveCommentService {
           }
         }
       },
-<<<<<<< HEAD
-      orderBy: { createdAt: 'desc' }, // Get newest first for pagination
-=======
       orderBy: { createdAt: 'desc' },
->>>>>>> e6fd8015449e5ab2185cdf26710b8d8c8da0c16f
       skip,
       take: limit,
     });
