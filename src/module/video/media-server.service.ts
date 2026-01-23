@@ -28,9 +28,10 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     private readonly thumbnailService: ThumbnailService,
   ) { }
 
-  onModuleInit() {
+  async onModuleInit() {
     this.initializeMediaServer();
     this.startStatsBroadcast();
+    await this.videoService.resetStaleStreams();
   }
 
   onModuleDestroy() {
@@ -130,40 +131,34 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // Step 3.1: Validate stream key
-      const isValid = await this.videoService.validateStreamKey(streamKey);
+      // Step 3.1: Initialize stream and get a safe Content ID
+      const { contentId, channel } = await this.videoService.initializeLiveStream(streamKey);
 
-      if (!isValid) {
-        this.logger.warn(`❌ Invalid streamKey: ${streamKey}`);
-        this.rejectStream(id);
-        return;
-      }
+      this.logger.log(`🔴 Stream starting for ${channel.name} (Content: ${contentId})`);
 
-      this.logger.log(`🔴 Stream starting: ${streamKey} (ID: ${id})`);
-
-      // Step 3.2: Create directory for this stream
-      const liveDir = this.createStreamDirectory(streamKey);
+      // Step 3.2: Create directory for this stream using contentId (Secure)
+      const liveDir = this.createStreamDirectory(contentId);
 
       // Step 3.3: Start FFmpeg transcoding
       const ffmpegProcess = this.startFFmpegTranscoding(streamKey, liveDir);
 
-      // Step 3.4: Start R2 upload watcher
-      const { watcher, contentId } = await this.videoService.handleLiveStream(streamKey, liveDir);
+      // Step 3.4: Start R2 upload watcher and notify frontend
+      const { watcher } = await this.videoService.handleLiveStream(contentId, liveDir);
 
       // Step 3.5: Store session information
       this.activeSessions.set(streamKey, {
         streamKey,
+        contentId, // Store contentId for safe URL lookups
         ffmpegProcess,
         watcher,
         liveDir,
         startTime: new Date(),
-        contentId,
       });
 
-      this.logger.log(`✅ Stream ${streamKey} started (Total active: ${this.activeSessions.size})`);
+      this.logger.log(`✅ Stream is now live (Content ID: ${contentId})`);
 
       // Step 3.6: Generate thumbnail asynchronously from the first local segment
-      const r2Prefix = `videos/${streamKey}`;
+      const r2Prefix = `live/${contentId}`;
       const firstSegmentPath = path.join(liveDir, '000.ts');
 
       this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
@@ -211,8 +206,8 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Step 4: Create directory for stream segments
    */
-  private createStreamDirectory(streamKey: string): string {
-    const liveDir = path.resolve(process.cwd(), 'media', 'live', streamKey);
+  private createStreamDirectory(contentId: string): string {
+    const liveDir = path.resolve(process.cwd(), 'media', 'live', contentId);
 
     if (!fs.existsSync(liveDir)) {
       fs.mkdirSync(liveDir, { recursive: true });
@@ -274,13 +269,19 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     ffmpeg.on('error', (error) => {
       this.logger.error(`❌ FFmpeg error for ${streamKey}: ${error.message}`);
       if (error.message.includes('ENOENT')) {
-          this.logger.error('CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.');
+        this.logger.error('CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.');
       }
     });
 
     ffmpeg.on('close', (code) => {
       if (code !== 0 && code !== null) {
         this.logger.warn(`⚠️ FFmpeg exited with code ${code} for ${streamKey}`);
+
+        // Trigger the cleanup if the session is still marked as active
+        if (this.activeSessions.has(streamKey)) {
+          this.logger.error(`🚨 Fatal: FFmpeg crashed for ${streamKey}. Stopping session.`);
+          this.handleStreamStop({ streamName: streamKey });
+        }
       } else {
         this.logger.log(`✅ FFmpeg process for ${streamKey} closed normally`);
       }
@@ -327,10 +328,28 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // Stop FFmpeg process
+      // Stop FFmpeg process first to stop writing to the manifest
       if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
         session.ffmpegProcess.kill('SIGTERM');
         this.logger.debug(`⚰️ Killed FFmpeg for ${streamKey}`);
+        // Small delay to allow FFmpeg to flush
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Finalize the manifest locally so the watcher picks it up
+      const playlistPath = path.join(session.liveDir, 'index.m3u8');
+      if (fs.existsSync(playlistPath)) {
+        try {
+          const content = fs.readFileSync(playlistPath, 'utf-8');
+          if (!content.includes('#EXT-X-ENDLIST')) {
+            fs.appendFileSync(playlistPath, '\n#EXT-X-ENDLIST\n');
+            this.logger.log(`🏁 Finalized manifest for ${streamKey}`);
+            // Give the watcher one more cycle to upload the finalized manifest
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (err) {
+          this.logger.error(`Failed to finalize manifest: ${err.message}`);
+        }
       }
 
       // Stop R2 upload watcher
@@ -362,11 +381,11 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Step 8: Clean up all active sessions (on server shutdown)
    */
-  private cleanupAllSessions() {
+  private async cleanupAllSessions() {
     this.logger.log('🧹 Cleaning up all active streams...');
 
     for (const [streamKey] of this.activeSessions) {
-      this.cleanupSession(streamKey);
+      await this.cleanupSession(streamKey);
     }
 
     if (this.nms) {
@@ -391,11 +410,14 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Public API: Get stream playback URL
+   * Public API: Get safe stream playback URL
    */
   getStreamUrl(streamKey: string): string {
+    const session = this.activeSessions.get(streamKey);
+    if (!session) return '';
+
     const publicUrl = process.env.PUBLIC_URL || process.env.HTTP_BASE_URL;
-    return `${publicUrl}/media/live/${streamKey}/index.m3u8`;
+    return `${publicUrl}/media/live/${session.contentId}/index.m3u8`;
   }
 
   /**

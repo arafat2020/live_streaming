@@ -34,7 +34,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 100,
+      limit: 1000,
     }]),
     ConfigModule.forRoot({
       isGlobal: true,      // makes ConfigService available everywhere

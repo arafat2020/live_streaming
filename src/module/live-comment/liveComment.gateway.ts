@@ -213,12 +213,22 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     });
   }
 
-  streamEnded() {
-    this.logger.log('Broadcasting stream.ended event');
+  streamEnded(contentId?: string) {
+    this.logger.log(`Broadcasting stream.ended event${contentId ? ` for ${contentId}` : ''}`);
 
-    this.server.emit('stream.ended', {
+    const payload = {
       status: 'ENDED',
-    });
+      contentId: contentId || null,
+    };
+
+    // Global emit for general notifications
+    this.server.emit('stream.ended', payload);
+
+    // Targeted emit for users in the specific content room
+    if (contentId) {
+      this.server.to(`content:${contentId}`).emit('stream.ended', payload);
+      this.server.to(`video:${contentId}`).emit('stream.ended', payload);
+    }
   }
 
 
