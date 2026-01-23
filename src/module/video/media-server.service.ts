@@ -328,10 +328,28 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // Stop FFmpeg process
+      // Stop FFmpeg process first to stop writing to the manifest
       if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
         session.ffmpegProcess.kill('SIGTERM');
         this.logger.debug(`⚰️ Killed FFmpeg for ${streamKey}`);
+        // Small delay to allow FFmpeg to flush
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Finalize the manifest locally so the watcher picks it up
+      const playlistPath = path.join(session.liveDir, 'index.m3u8');
+      if (fs.existsSync(playlistPath)) {
+        try {
+          const content = fs.readFileSync(playlistPath, 'utf-8');
+          if (!content.includes('#EXT-X-ENDLIST')) {
+            fs.appendFileSync(playlistPath, '\n#EXT-X-ENDLIST\n');
+            this.logger.log(`🏁 Finalized manifest for ${streamKey}`);
+            // Give the watcher one more cycle to upload the finalized manifest
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (err) {
+          this.logger.error(`Failed to finalize manifest: ${err.message}`);
+        }
       }
 
       // Stop R2 upload watcher
