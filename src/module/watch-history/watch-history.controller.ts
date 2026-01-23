@@ -12,6 +12,8 @@ import {
   ParseUUIDPipe,
   HttpCode,
   ParseIntPipe,
+  Ip,
+  Req,
 } from '@nestjs/common';
 import { WatchHistoryService } from './watch-history.service';
 import { CreateWatchHistoryDto } from './dto/create-watch-history.dto';
@@ -23,11 +25,11 @@ import { QueryWatchHistoryDto } from './dto/query-watch-history.dto';
 
 @Controller('watch-history')
 export class WatchHistoryController {
-  constructor(private readonly service: WatchHistoryService) {}
+  constructor(private readonly service: WatchHistoryService) { }
 
-    
-   // Increment view count
-   
+
+  // Increment view count
+
   @ApiOperation({
     summary: 'Track a view (increment view count)',
     description: 'Increments the view counter for a content by 1. No authentication required.',
@@ -37,8 +39,11 @@ export class WatchHistoryController {
   async trackView(
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
+    @Ip() ip: string,
+    @Req() req: any,
   ) {
-    const data = await this.service.incrementViews(id);
+    const userId = req.user?.id;
+    const data = await this.service.incrementViews(id, userId, ip);
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -48,9 +53,9 @@ export class WatchHistoryController {
     });
   }
 
-  
-   // Get single content with view count
-   
+
+  // Get single content with view count
+
   @ApiOperation({
     summary: 'Get content by ID',
     description: 'Returns content details including view count',
@@ -70,9 +75,9 @@ export class WatchHistoryController {
     });
   }
 
-  
-   // Get top viewed content
-   
+
+  // Get top viewed content
+
   @ApiOperation({
     summary: 'Get most viewed content',
     description: 'Returns list of content ordered by view count (highest first)',

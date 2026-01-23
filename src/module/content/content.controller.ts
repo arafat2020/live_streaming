@@ -13,6 +13,7 @@ import {
   Res,
   Req,
   UseGuards,
+  Ip,
 } from '@nestjs/common';
 import { ContentService } from './content.service';
 import { CreateContentDto } from './dto/create-content.dto';
@@ -124,8 +125,12 @@ export class ContentController {
   @ApiOperation({ summary: 'Increment view count for a content item (idempotent endpoint for tracking views)' })
   @Post(':id/views')
   @HttpCode(200)
-  incrementViews(@Param('id', ParseUUIDPipe) id: string) {
-    return this.contentService.incrementViews(id);
+  incrementViews(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Ip() ip: string,
+    @Req() req: GetMe,
+  ) {
+    return this.contentService.incrementViews(id, req.user?.id, ip);
   }
 
 }
