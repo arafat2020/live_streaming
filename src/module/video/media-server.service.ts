@@ -28,9 +28,10 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     private readonly thumbnailService: ThumbnailService,
   ) { }
 
-  onModuleInit() {
+  async onModuleInit() {
     this.initializeMediaServer();
     this.startStatsBroadcast();
+    await this.videoService.resetStaleStreams();
   }
 
   onModuleDestroy() {
@@ -274,13 +275,19 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     ffmpeg.on('error', (error) => {
       this.logger.error(`❌ FFmpeg error for ${streamKey}: ${error.message}`);
       if (error.message.includes('ENOENT')) {
-          this.logger.error('CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.');
+        this.logger.error('CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.');
       }
     });
 
     ffmpeg.on('close', (code) => {
       if (code !== 0 && code !== null) {
         this.logger.warn(`⚠️ FFmpeg exited with code ${code} for ${streamKey}`);
+
+        // Trigger the cleanup if the session is still marked as active
+        if (this.activeSessions.has(streamKey)) {
+          this.logger.error(`🚨 Fatal: FFmpeg crashed for ${streamKey}. Stopping session.`);
+          this.handleStreamStop({ streamName: streamKey });
+        }
       } else {
         this.logger.log(`✅ FFmpeg process for ${streamKey} closed normally`);
       }

@@ -501,7 +501,7 @@ export class VideoService {
       }
 
       // Notify via WebSocket
-      this.liveGateway.streamEnded();
+      this.liveGateway.streamEnded(content?.id);
 
       this.logger.log(` Stream ${streamKey} ended successfully`);
 
@@ -581,6 +581,35 @@ export class VideoService {
       }
     } catch (error) {
       this.logger.error(`❌ Failed to update live thumbnail: ${error.message}`);
+    }
+  }
+  /**
+   * Emergency reset for stale streams (e.g. after server crash)
+   * This is called on system startup to ensure no 'zombie' live sessions exist.
+   */
+  async resetStaleStreams(): Promise<void> {
+    try {
+      this.logger.log('🕵️ Checking for stale live streams...');
+
+      // 1. Mark all channels as offline
+      const resetChannels = await this.prisma.channel.updateMany({
+        where: { isLive: true },
+        data: { isLive: false }
+      });
+
+      // 2. Mark all ongoing live contents as ended
+      const resetContent = await this.prisma.content.updateMany({
+        where: { status: 'LIVE_STREAM' as any },
+        data: { status: 'ENDED' as any }
+      });
+
+      if (resetChannels.count > 0 || resetContent.count > 0) {
+        this.logger.warn(`🧹 Cleaned up ${resetChannels.count} stale channels and ${resetContent.count} stale content records.`);
+      } else {
+        this.logger.log('✅ No stale streams found.');
+      }
+    } catch (error) {
+      this.logger.error(`❌ Error during stale stream reset: ${error.message}`);
     }
   }
 }
