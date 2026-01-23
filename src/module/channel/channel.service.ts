@@ -6,6 +6,7 @@ import { BanType, UserRole, UserStatus } from '@prisma/client';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
 import { safeChannelSelect } from './dto/safeChannelSelect';
+import { publicUserSelect } from '../user/dto/publicUserSelect';
 
 @Injectable()
 export class ChannelService {
@@ -269,13 +270,7 @@ export class ChannelService {
       select: {
         ...safeChannelSelect,
         owner: {
-          select: {
-            id: true,
-            firstName: true,
-            username: true,
-            status: true,
-            profileImage: true,
-          },
+          select: publicUserSelect,
         },
         _count: {
           select: {
@@ -331,14 +326,7 @@ export class ChannelService {
       select: {
         ...safeChannelSelect,
         owner: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            username: true,
-            status: true,
-            profileImage: true,
-          },
+          select: publicUserSelect,
         },
         _count: {
           select: {
@@ -575,12 +563,7 @@ export class ChannelService {
       select: {
         ...safeChannelSelect,
         owner: {
-          select: {
-            id: true,
-            firstName: true,
-            status: true,
-            profileImage: true,
-          },
+          select: publicUserSelect,
         },
         _count: {
           select: {
@@ -601,12 +584,7 @@ export class ChannelService {
       select: {
         ...safeChannelSelect,
         owner: {
-          select: {
-            id: true,
-            firstName: true,
-            status: true,
-            profileImage: true,
-          },
+          select: publicUserSelect,
         },
         _count: {
           select: {
@@ -633,12 +611,7 @@ export class ChannelService {
       select: {
         ...safeChannelSelect,
         owner: {
-          select: {
-            id: true,
-            firstName: true,
-            status: true,
-            profileImage: true,
-          },
+          select: publicUserSelect,
         },
         _count: {
           select: {
@@ -680,12 +653,7 @@ export class ChannelService {
       select: {
         ...safeChannelSelect,
         owner: {
-          select: {
-            id: true,
-            firstName: true,
-            status: true,
-            profileImage: true,
-          },
+          select: publicUserSelect,
         },
         _count: {
           select: {

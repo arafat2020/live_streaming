@@ -4,6 +4,7 @@ import { LiveCommentGateway } from './liveComment.gateway';
 import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
 import { UpdateLiveCommentDto } from './dto/update-live-comment.dto';
 import { ModeratorService } from '../moderator/moderator.service';
+import { publicUserSelect } from '../user/dto/publicUserSelect';
 
 @Injectable()
 export class LiveCommentService {
@@ -29,14 +30,7 @@ export class LiveCommentService {
       where: { videoId },
       include: {
         user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            username: true,
-            profileImage: true,
-            chatColor: true,
-          }
+          select: publicUserSelect
         }
       },
       orderBy: { createdAt: 'desc' },
@@ -83,14 +77,7 @@ export class LiveCommentService {
       data: { userId, ...dto },
       include: {
         user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            username: true,
-            profileImage: true,
-            chatColor: true,
-          }
+          select: publicUserSelect
         }
       },
     });
@@ -151,14 +138,7 @@ export class LiveCommentService {
       data: dto,
       include: {
         user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            username: true,
-            profileImage: true,
-            chatColor: true,
-          }
+          select: publicUserSelect
         }
       },
     });

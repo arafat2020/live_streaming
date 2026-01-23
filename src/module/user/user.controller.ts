@@ -48,17 +48,7 @@ export class UserController {
 
     const isAvailable = await this.userService.checkUsernameAvailability(username);
 
-    // Get user data to include category
-    let userData: any = { available: isAvailable };
-    if (!isAvailable) {
-      const existingUser = await this.userService.findByUsername(username);
-      if (existingUser) {
-        userData = {
-          available: false,
-          user: existingUser
-        };
-      }
-    }
+    const userData = { available: isAvailable };
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -70,7 +60,8 @@ export class UserController {
 
   @ApiOperation({ summary: 'Get all Users' })
   @Get()
-  @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
+  @Roles(UserRole.ADMIN)
   async findAll(@Req() req: RequestWithUser, @Res() res: Response) {
     const data = await this.userService.findAll();
     return sendResponse(res, {

@@ -8,6 +8,7 @@ import { UpdateChatDto } from './dto/update-chat.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChatGateway } from './chat.gateway';
 import { safeUserSelect } from '../user/dto/safeUserSelect';
+import { publicUserSelect } from '../user/dto/publicUserSelect';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 
 @Injectable()
@@ -32,12 +33,12 @@ export class ChatService {
         include: {
           participants: {
             include: {
-              user: { select: safeUserSelect }
+              user: { select: publicUserSelect }
             }
           },
           chatMessage: {
             include: {
-              user: { select: safeUserSelect }
+              user: { select: publicUserSelect }
             }
           },
           channel: { select: safeChannelSelect },
@@ -110,7 +111,12 @@ export class ChatService {
     try {
       return await this.prisma.chatParticipant.create({
         data: { roomId, userId },
-        include: { user: true },
+        select: {
+          id: true,
+          roomId: true,
+          userId: true,
+          user: { select: publicUserSelect },
+        },
       });
     } catch (error) {
       console.error(error);
@@ -144,14 +150,7 @@ export class ChatService {
         data: { roomId, userId, content },
         include: {
           user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              username: true,
-              profileImage: true,
-              chatColor: true,
-            }
+            select: publicUserSelect
           }
         },
       });
@@ -168,14 +167,7 @@ export class ChatService {
         where: { roomId },
         include: {
           user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              username: true,
-              profileImage: true,
-              chatColor: true,
-            }
+            select: publicUserSelect
           }
         },
         orderBy: { createdAt: 'desc' },

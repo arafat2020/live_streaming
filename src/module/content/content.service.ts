@@ -9,6 +9,7 @@ import { UpdateContentDto } from './dto/update-content.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryContentDto, ContentSortBy } from './dto/query-content.dto';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
+import { publicUserSelect } from '../user/dto/publicUserSelect';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
 
 @Injectable()
@@ -130,11 +131,7 @@ export class ContentService {
               logo: true,
               isLive: true,
               owner: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  profileImage: true,
-                },
+                select: publicUserSelect,
               },
             },
           },
@@ -228,7 +225,7 @@ export class ContentService {
             ...safeChannelSelect,
             owner: {
               select: {
-                id: true,
+                ...publicUserSelect,
                 role: true,
                 isShadowBanned: true,
               }
