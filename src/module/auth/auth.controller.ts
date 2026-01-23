@@ -7,12 +7,11 @@ import {
   Req,
   Patch,
   UseGuards,
-  Get,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
-  LoginDto,
   UsernameLoginDto,
   RegisterDto,
   RequestResetCodeDto,
@@ -23,12 +22,12 @@ import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import sendResponse from 'src/utils/sendResponse';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { AuthGuard } from '@nestjs/passport';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
   @ApiOperation({ summary: 'Register User' })
   @ApiResponse({ status: 201, description: 'Registered User successfully.' })
@@ -43,26 +42,21 @@ export class AuthController {
     });
   }
 
-  @Post('login')
-  @ApiOperation({ summary: 'Login User' })
-  @ApiResponse({ status: 201, description: 'LoggedIn User successfully.' })
-  @ApiBody({ type: LoginDto })
-  async login(@Body() dto: LoginDto, @Res() res: Response) {
-    const data = await this.authService.login(dto);
-    return sendResponse(res, {
-      statusCode: HttpStatus.OK,
-      success: true,
-      message: 'User LoggedIn successfully.',
-      data,
-    });
-  }
-
   @Post('login-username')
   @ApiOperation({ summary: 'Login User with Username' })
   @ApiResponse({ status: 200, description: 'LoggedIn User successfully.' })
   @ApiBody({ type: UsernameLoginDto })
-  async loginWithUsername(@Body() dto: UsernameLoginDto, @Res() res: Response) {
-    const data = await this.authService.loginWithUsername(dto);
+  async loginWithUsername(
+    @Body() dto: UsernameLoginDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const ip =
+      (req.headers['x-forwarded-for'] as string) ||
+      req.ip ||
+      req.socket.remoteAddress ||
+      'unknown';
+    const data = await this.authService.loginWithUsername(dto, ip);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -71,11 +65,13 @@ export class AuthController {
     });
   }
 
-
   @Post('refresh')
   @ApiOperation({ summary: 'Refresh Access Token' })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully.' })
-  async refresh(@Body('refreshToken') refreshToken: string, @Res() res: Response) {
+  async refresh(
+    @Body('refreshToken') refreshToken: string,
+    @Res() res: Response,
+  ) {
     const data = await this.authService.refreshTokens(refreshToken);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -100,8 +96,12 @@ export class AuthController {
   // change password
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
-  async changePassword(@Body() dto: ChangePasswordDto, @Req() req: any, @Res() res: Response) {
-    const result = await this.authService.changePassword(req.user.email, dto);
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const result = await this.authService.changePassword(req?.user?.email, dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -111,8 +111,12 @@ export class AuthController {
   }
 
   // forget and reset password
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('request-reset-code')
-  async requestResetCode(@Body() dto: RequestResetCodeDto, @Res() res: Response) {
+  async requestResetCode(
+    @Body() dto: RequestResetCodeDto,
+    @Res() res: Response,
+  ) {
     const result = await this.authService.requestResetCode(dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -122,7 +126,7 @@ export class AuthController {
     });
   }
 
-
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('verify-reset-code')
   async verifyResetCode(@Body() dto: VerifyResetCodeDto, @Res() res: Response) {
     const result = await this.authService.verifyResetCode(dto);
@@ -134,9 +138,7 @@ export class AuthController {
     });
   }
 
-
-
-
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('reset-password')
   @ApiOperation({ summary: 'Reset User Password' })
   @ApiResponse({ status: 200, description: 'Password reset successfully.' })
@@ -148,27 +150,6 @@ export class AuthController {
       message: 'Password reset successful',
       data: result,
     });
-  }
-
-  @Get('google')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Initiate Google OAuth2 Login' })
-  @ApiResponse({ status: 302, description: 'Redirects to Google.' })
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
-  async googleAuth(@Req() _req: any) { }
-
-  @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth2 Callback Handler' })
-  @ApiResponse({ status: 302, description: 'Redirects to frontend with tokens.' })
-  async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
-    const data = await this.authService.googleLogin(req);
-
-    // Redirect back to frontend with tokens in the query string
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const redirectUrl = `${frontendUrl}/auth/success?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`;
-
-    return res.redirect(redirectUrl);
   }
 
   @Post('google-login')

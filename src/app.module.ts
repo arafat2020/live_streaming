@@ -26,11 +26,16 @@ import { ModeratorModule } from './module/moderator/moderator.module';
 import { BanGuard } from './module/auth/guards/ban.guard';
 import { AdminDashboardModule } from './module/admin-dashboard/admin-dashboard.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]),
     ConfigModule.forRoot({
       isGlobal: true,      // makes ConfigService available everywhere
       envFilePath: '.env', // optional, default is .env
@@ -80,6 +85,11 @@ import { ScheduleModule } from '@nestjs/schedule';
     {
       provide: APP_GUARD,
       useClass: BanGuard, // ✅ Applied globally
-    },],
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard, // ✅ Applied globally
+    },
+  ],
 })
 export class AppModule { }

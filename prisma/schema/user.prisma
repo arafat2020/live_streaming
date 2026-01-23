@@ -1,35 +1,35 @@
 model User {
-  id                   String             @id @default(uuid())
-  email                String             @unique
-  username             String?            @unique
-  password             String?
-  googleId             String?            @unique
-  firstName            String
-  lastName             String?
-  phone                String?
-  profileImage         String?
-  chatColor            String?
-  role                 UserRole           @default(USER)
-  status               UserStatus         @default(ACTIVE)
-  lastLogin            DateTime?
-  subscription_status  SubscriptionStatus @default(FREE_TIER)
-  verified             Boolean            @default(false)
+  id                    String             @id @default(uuid())
+  email                 String             @unique
+  username              String?            @unique
+  password              String?
+  googleId              String?            @unique
+  firstName             String
+  lastName              String?
+  phone                 String?
+  profileImage          String?
+  chatColor             String?
+  role                  UserRole           @default(USER)
+  status                UserStatus         @default(ACTIVE)
+  lastLogin             DateTime?
+  subscription_status   SubscriptionStatus @default(FREE_TIER)
+  verified              Boolean            @default(false)
   lastDisplayNameUpdate DateTime?
   // --- Fields for RESET (TOTP) ---
-  passwordResetToken   String? // store token code
-  passwordResetExpires DateTime? // code live time
+  passwordResetToken    String? // store token code
+  passwordResetExpires  DateTime? // code live time
   // --- Fields for 2FA (TOTP) ---
-  is2FAEnabled         Boolean            @default(false)
-  twoFactorSecret      String? // The secret key used by the Authenticator app
+  is2FAEnabled          Boolean            @default(false)
+  twoFactorSecret       String? // The secret key used by the Authenticator app
 
   // Age and Terms confirmation
-  ageConfirmed        Boolean   @default(false)
-  termsAccepted       Boolean   @default(false)
-  termsAcceptedAt     DateTime?
-  privacyAccepted     Boolean   @default(false)
-  privacyAcceptedAt   DateTime?
-  dateOfBirth         DateTime? // Optional: store actual DOB
-  refreshToken        String?   // Refresh token for session management
+  ageConfirmed      Boolean   @default(false)
+  termsAccepted     Boolean   @default(false)
+  termsAcceptedAt   DateTime?
+  privacyAccepted   Boolean   @default(false)
+  privacyAcceptedAt DateTime?
+  dateOfBirth       DateTime? // Optional: store actual DOB
+  refreshToken      String? // Refresh token for session management
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -43,18 +43,23 @@ model User {
   chatMessage                ChatMessage[]
   participants               ChatParticipant[]
   liveComment                LiveComment[]
-  unbanAppeals UnbanAppeal[]
-  moderator Moderator[]
-  banUser BanUser[]
+  unbanAppeals               UnbanAppeal[]
+  moderator                  Moderator[]
+  banUser                    BanUser[]
 
   // Platform-wide ban fields
-  isBanned      Boolean   @default(false)
-  banExpiresAt  DateTime?
-  banReason     String?
-  
+  isBanned     Boolean   @default(false)
+  banExpiresAt DateTime?
+  banReason    String?
+
   isShadowBanned Boolean @default(false)
-  
+
+  // Bruteforce protection
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   platformBanLogs PlatformBanLog[]
+  authLogs        AuthLog[]
 
   @@map("users")
 }
