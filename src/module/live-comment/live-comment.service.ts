@@ -32,12 +32,14 @@ export class LiveCommentService {
           select: {
             id: true,
             firstName: true,
+            lastName: true,
+            username: true,
             profileImage: true,
             chatColor: true,
           }
         }
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' }, // Get newest first for pagination
       skip,
       take: limit,
     });
@@ -84,6 +86,8 @@ export class LiveCommentService {
           select: {
             id: true,
             firstName: true,
+            lastName: true,
+            username: true,
             profileImage: true,
             chatColor: true,
           }
@@ -150,6 +154,8 @@ export class LiveCommentService {
           select: {
             id: true,
             firstName: true,
+            lastName: true,
+            username: true,
             profileImage: true,
             chatColor: true,
           }

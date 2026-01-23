@@ -13,7 +13,7 @@ export class ChatService {
   constructor(
     private prisma: PrismaService,
     private gateway: ChatGateway,
-  ) {}
+  ) { }
 
   async create(createChatDto: CreateChatDto) {
     try {
@@ -124,7 +124,18 @@ export class ChatService {
     try {
       return await this.prisma.chatMessage.create({
         data: { roomId, userId, content },
-        include: { user: true },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              username: true,
+              profileImage: true,
+              chatColor: true,
+            }
+          }
+        },
       });
     } catch (error) {
       console.error(error);
@@ -135,11 +146,24 @@ export class ChatService {
   async getMessages(roomId: string) {
     if (!roomId) throw new BadRequestException('roomId is required');
     try {
-      return await this.prisma.chatMessage.findMany({
+      const messages = await this.prisma.chatMessage.findMany({
         where: { roomId },
-        include: { user: true },
-        orderBy: { createdAt: 'asc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              username: true,
+              profileImage: true,
+              chatColor: true,
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50, // Added a reasonable limit since it was missing
       });
+      return messages;
     } catch (error) {
       console.error(error);
       throw new BadRequestException('Failed to fetch messages');
