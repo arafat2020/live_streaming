@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
     Injectable,
     UnauthorizedException,
@@ -8,7 +11,6 @@ import {
 } from '@nestjs/common';
 import {
     ChangePasswordDto,
-    LoginDto,
     UsernameLoginDto,
     RegisterDto,
     RequestResetCodeDto,
@@ -18,7 +20,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { UserRole, UserStatus, BanType } from '@prisma/client';
+import { UserRole, UserStatus, BanType, AuthLogStatus } from '@prisma/client';
 import { generateOtpCode, hashOtpCode } from '../../utils/generateOtpCode';
 import { MailService } from '../mail/mail.service';
 //import { MailerService } from '@nestjs-modules/mailer';
@@ -50,7 +52,7 @@ export class AuthService {
                 throw new BadRequestException('Invalid google token');
             }
 
-            const { email, given_name, family_name, picture, sub: googleId } = googlePayload;
+            const { email, family_name, picture, sub: googleId } = googlePayload;
 
             if (!email) {
                 throw new BadRequestException('Email not provided by Google');
@@ -146,7 +148,14 @@ export class AuthService {
         }
 
         // Username is now required and validated at DTO level
-        const username = dto.username;
+        const normalizedUsername = dto.username.toLowerCase();
+
+        const existingUsername = await this.prisma.user.findUnique({ where: { username: normalizedUsername } });
+        if (existingUsername) {
+            throw new ConflictException('Username is already taken.');
+        }
+
+        const username = normalizedUsername;
 
         if (dto.confirmPassword && dto.password !== dto.confirmPassword) {
             throw new BadRequestException('Password not match.');
@@ -197,29 +206,92 @@ export class AuthService {
         }
     }
 
-    async login(dto: LoginDto) {
-        const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-        return this.processUserLogin(user, dto.password);
+    async loginWithUsername(dto: UsernameLoginDto, ip: string) {
+        const normalizedUsername = dto.username.toLowerCase();
+        const user = await this.prisma.user.findUnique({ where: { username: normalizedUsername } });
+        return this.processUserLogin(user, dto.password, dto.username, ip);
     }
 
-    async loginWithUsername(dto: UsernameLoginDto) {
-        const user = await this.prisma.user.findUnique({ where: { username: dto.username } });
-        return this.processUserLogin(user, dto.password);
-    }
+    private async processUserLogin(user: any, passwordToCheck: string, attemptedUsername: string, ip: string) {
+        // Check for IP-wide abuse (e.g. 20 failures from this IP in 15 mins)
+        const checkTime = new Date(Date.now() - 15 * 60 * 1000);
+        const recentIpFailures = await this.prisma.authLog.count({
+            where: {
+                ip,
+                status: { in: [AuthLogStatus.FAILED, AuthLogStatus.LOCKED] },
+                createdAt: { gte: checkTime }
+            }
+        });
 
-    private async processUserLogin(user: any, passwordToCheck: string) {
+        if (recentIpFailures >= 20) {
+            throw new UnauthorizedException('Too many failed attempts from this IP address. Please try again in 15 minutes.');
+        }
+
+        // Generic failure handler
+        const failLogin = async (userId: string | null, reason: string, locked: boolean = false) => {
+            // Log failed attempt
+            await this.prisma.authLog.create({
+                data: {
+                    userId,
+                    username: attemptedUsername,
+                    ip,
+                    status: locked ? AuthLogStatus.LOCKED : AuthLogStatus.FAILED,
+                    reason,
+                }
+            });
+
+            if (userId) {
+                const updatedAttempts = (user?.failedLoginAttempts || 0) + 1;
+                const lockUpdate: any = { failedLoginAttempts: updatedAttempts };
+
+                if (updatedAttempts >= 5) {
+                    const lockTime = new Date();
+                    lockTime.setHours(lockTime.getHours() + 12);
+                    lockUpdate.lockedUntil = lockTime;
+                }
+
+                await this.prisma.user.update({
+                    where: { id: userId },
+                    data: lockUpdate
+                });
+            }
+
+            throw new UnauthorizedException('Invalid credentials.');
+        };
 
         if (!user) {
+            // Don't leak user existence
+            await this.prisma.authLog.create({
+                data: {
+                    username: attemptedUsername,
+                    ip,
+                    status: AuthLogStatus.FAILED,
+                    reason: 'User not found',
+                }
+            });
             throw new UnauthorizedException('Invalid credentials.');
         }
 
-        if (user.status !== UserStatus.ACTIVE) {
-            throw new UnauthorizedException(
-                'Your account is currently inactive.'
-            );
+        // Check if account is locked
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+            const hoursRemaining = Math.ceil((user.lockedUntil.getTime() - Date.now()) / (1000 * 60 * 60));
+            await this.prisma.authLog.create({
+                data: {
+                    userId: user.id,
+                    username: attemptedUsername,
+                    ip,
+                    status: AuthLogStatus.LOCKED,
+                    reason: `Account locked. ${hoursRemaining} hours remaining.`,
+                }
+            });
+            throw new UnauthorizedException(`Account locked due to too many failed attempts. Try again in ${hoursRemaining} hours.`);
         }
 
-        // ✅ Check if user is banned
+        if (user.status !== UserStatus.ACTIVE) {
+            throw new UnauthorizedException('Your account is currently inactive.');
+        }
+
+        // Check ban status (existing logic)
         if (user.isBanned) {
             // Check if temporary ban has expired
             if (user.banExpiresAt && user.banExpiresAt < new Date()) {
@@ -234,38 +306,53 @@ export class AuthService {
                 });
             } else {
                 // User is still banned
+                const banReason = user.banReason || 'Rule violation';
                 if (user.banExpiresAt) {
-                    // Temporary ban
                     throw new UnauthorizedException({
-                        message: `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}.`,
+                        message: `Your account has been temporarily banned for: ${banReason}.`,
                         banType: BanType.TEMPORARY,
                         expiresAt: user.banExpiresAt,
-                        reason: user.banReason
+                        reason: banReason
                     });
                 } else {
-                    // Permanent ban
                     throw new UnauthorizedException({
-                        message: `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`,
+                        message: `Your account has been permanently banned for: ${banReason}.`,
                         banType: BanType.PERMANENT,
-                        reason: user.banReason
+                        reason: banReason
                     });
                 }
             }
         }
 
         if (!user.password) {
-            throw new UnauthorizedException('Invalid credentials.');
+            await failLogin(user.id, 'No password set on account (Social login only?)');
+            return;
         }
 
         const isPasswordValid = await bcrypt.compare(passwordToCheck, user.password);
         if (!isPasswordValid) {
-            throw new UnauthorizedException('Invalid credentials.');
+            await failLogin(user.id, 'Incorrect password');
+            return;
         }
 
-        // Update lastLogin AFTER successful authentication
+        // Success - Reset counters and set lastLogin
         await this.prisma.user.update({
             where: { id: user.id },
-            data: { lastLogin: new Date() },
+            data: {
+                lastLogin: new Date(),
+                failedLoginAttempts: 0,
+                lockedUntil: null
+            },
+        });
+
+        // Log success
+        await this.prisma.authLog.create({
+            data: {
+                userId: user.id,
+                username: user.username,
+                ip,
+                status: AuthLogStatus.SUCCESS,
+            }
         });
 
         // Prepare common payload fields 
@@ -337,6 +424,7 @@ export class AuthService {
             user: safeUser,
         };
     }
+
 
     async refreshTokens(token: string) {
         try {
@@ -426,6 +514,7 @@ export class AuthService {
                 refreshToken: newRefreshToken,
             };
         } catch (e) {
+            console.log(e);
             throw new UnauthorizedException('Invalid refresh token');
         }
     }

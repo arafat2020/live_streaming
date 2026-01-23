@@ -1,0 +1,22 @@
+enum AuthLogStatus {
+    SUCCESS
+    FAILED
+    LOCKED
+}
+
+model AuthLog {
+    id        String        @id @default(uuid())
+    userId    String?
+    user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+    username  String
+    ip        String
+    status    AuthLogStatus
+    reason    String?
+    userAgent String?
+    createdAt DateTime      @default(now())
+
+    @@index([userId])
+    @@index([username])
+    @@index([ip])
+    @@map("auth_logs")
+}
