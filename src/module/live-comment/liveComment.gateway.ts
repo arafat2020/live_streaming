@@ -101,7 +101,8 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     }
 
     // Emit to backend to increment views
-    this.watchHistoryService.startWatching(contentId, userId || client.id);
+    const ipAddress = client.handshake.address;
+    this.watchHistoryService.startWatching(contentId, userId || client.id, userId, ipAddress);
     this.server.emit('viewer.joined', { contentId, userId: userId || null });
 
     // BROADCAST LIVE STATS IMMEDIATELY

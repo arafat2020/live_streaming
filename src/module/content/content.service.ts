@@ -473,21 +473,7 @@ export class ContentService {
   }
 
   // optional: increment view count safely
-  async incrementViews(id: string) {
-    // Find the content with channel owner info
-    const content = await this.prisma.content.findUnique({
-      where: { id },
-    });
-
-    // Check if content exists
-    if (!content) {
-      throw new NotFoundException('Content not found');
-    }
-    const updated = await this.prisma.content.update({
-      where: { id },
-      data: { views: { increment: 1 } },
-      select: { id: true, views: true },
-    });
-    return updated;
+  async incrementViews(id: string, userId?: string, ipAddress?: string) {
+    return this.watchHistoryService.incrementViews(id, userId, ipAddress);
   }
 }

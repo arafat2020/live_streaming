@@ -1,10 +1,5 @@
 import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { CreateWatchHistoryDto } from './dto/create-watch-history.dto';
-import { UpdateWatchHistoryDto } from './dto/update-watch-history.dto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { QueryWatchHistoryDto } from './dto/query-watch-history.dto';
-import { Prisma } from '@prisma/client';
-import { ContentService } from '../content/content.service';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 
 @Injectable()
@@ -13,6 +8,10 @@ export class WatchHistoryService {
 
   // Track active viewers per content (in-memory)
   private activeViewers = new Map<string, Set<string>>();
+
+  // Cache to prevent duplicate view count increments (ContentId -> Map<ViewerIdentity, ExpiryTime>)
+  private recentViewers = new Map<string, Map<string, number>>();
+  private readonly RECENT_VIEW_TTL = 30 * 60 * 1000; // 30 minutes
 
   constructor(
     private prisma: PrismaService,
@@ -23,7 +22,40 @@ export class WatchHistoryService {
 
   // Increment view count for content NOW WITH WEBSOCKET BROADCAST
 
-  async incrementViews(contentId: string, userId?: string) {
+  async incrementViews(contentId: string, userId?: string, ipAddress?: string) {
+    const now = Date.now();
+    // Unique key for in-memory cache (performance layer)
+    const viewerKey = userId ? `u:${userId}` : `ip:${ipAddress || 'unknown'}`;
+
+    // 1. In-memory deduplication check (Fast bypass)
+    if (!this.recentViewers.has(contentId)) {
+      this.recentViewers.set(contentId, new Map());
+    }
+    const contentRecentViewers = this.recentViewers.get(contentId)!;
+    const lastViewTime = contentRecentViewers.get(viewerKey);
+
+    if (lastViewTime && now - lastViewTime < this.RECENT_VIEW_TTL) {
+      this.logger.debug(`Skipping view (In-Memory) for ${contentId} (recent view from ${viewerKey})`);
+      return { success: true, duplicated: true };
+    }
+
+    // 2. Persistent Database check (Authority layer)
+    const existingTrack = await (this.prisma as any).viewTrack.findFirst({
+      where: {
+        contentId,
+        OR: userId
+          ? [{ userId }]
+          : [{ ipAddress, userId: null }]
+      }
+    });
+
+    if (existingTrack) {
+      // Update in-memory cache to avoid repeated DB calls for this duplicated view
+      contentRecentViewers.set(viewerKey, now);
+      this.logger.debug(`Skipping view (Database) for ${contentId} (persistent view from ${viewerKey})`);
+      return { success: true, duplicated: true };
+    }
+
     this.logger.log(`Incrementing view count for content ${contentId}`);
 
     // Check if content exists
@@ -41,29 +73,33 @@ export class WatchHistoryService {
       throw new NotFoundException('Content not found');
     }
 
-    // Increment view count in database
-    const updated = await this.prisma.content.update({
-      where: { id: contentId },
-      data: {
-        views: {
-          increment: 1,
-        },
-      },
-      select: {
-        id: true,
-        views: true,
-        contentType: true,
-      },
-    });
+    // Perform atomic transaction: Create ViewTrack AND Increment View
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.content.update({
+        where: { id: contentId },
+        data: { views: { increment: 1 } },
+        select: { id: true, views: true, contentType: true },
+      }),
+      (this.prisma as any).viewTrack.create({
+        data: {
+          contentId,
+          userId: userId || null,
+          ipAddress: userId ? null : (ipAddress || null),
+        }
+      })
+    ]);
+
+    // Update in-memory cache
+    contentRecentViewers.set(viewerKey, now);
 
     this.logger.log(
-      `View count incremented for content ${contentId}: ${content.views} → ${updated.views}`,
+      `View count incremented persistently for content ${contentId}: ${content.views} → ${updated.views}`,
     );
 
-    //  BROADCAST VIEW COUNT UPDATE TO ALL VIEWERS
+    // BROADCAST VIEW COUNT UPDATE TO ALL VIEWERS
     this.liveGateway.broadcastViewCount(contentId, updated.views);
 
-    //  For live streams, also track concurrent viewers
+    // For live streams, also track concurrent viewers
     if (updated.contentType === 'LIVE_STREAM') {
       const concurrentViewers = this.getActiveViewerCount(contentId);
       this.liveGateway.broadcastConcurrentViewers(contentId, concurrentViewers);
@@ -79,13 +115,14 @@ export class WatchHistoryService {
 
   // Track when user starts watching (for concurrent viewer count)
 
-  async startWatching(contentId: string, viewerId: string) {
+  async startWatching(contentId: string, viewerId: string, userId?: string, ipAddress?: string) {
     // Add user to active viewers
     if (!this.activeViewers.has(contentId)) {
       this.activeViewers.set(contentId, new Set());
     }
 
     const viewers = this.activeViewers.get(contentId)!;
+    // For active viewers set, we use viewerId (socket.id or userId) to track actual open tabs/connections
     const isNewToSession = !viewers.has(viewerId);
     viewers.add(viewerId);
 
@@ -98,7 +135,7 @@ export class WatchHistoryService {
 
     // Increment total views ONLY if this is a new viewer in this session
     if (isNewToSession) {
-      await this.incrementViews(contentId, viewerId);
+      await this.incrementViews(contentId, userId, ipAddress);
     }
 
     return { concurrentViewers: concurrentCount };
@@ -264,20 +301,35 @@ export class WatchHistoryService {
     };
   }
 
-  // Cleanup: Remove inactive viewers (run periodically)
-
+  // Cleanup: Remove inactive viewers and expired recent viewer cache entries
   cleanupInactiveViewers() {
-    let cleaned = 0;
+    let activeCleaned = 0;
+    let recentCleaned = 0;
+    const now = Date.now();
 
+    // Cleanup active viewers
     for (const [contentId, viewers] of this.activeViewers.entries()) {
       if (viewers.size === 0) {
         this.activeViewers.delete(contentId);
-        cleaned++;
+        activeCleaned++;
       }
     }
 
-    if (cleaned > 0) {
-      this.logger.log(`Cleaned up ${cleaned} empty viewer sets`);
+    // Cleanup recent viewers cache
+    for (const [contentId, viewerMap] of this.recentViewers.entries()) {
+      for (const [viewerKey, timestamp] of viewerMap.entries()) {
+        if (now - timestamp > this.RECENT_VIEW_TTL) {
+          viewerMap.delete(viewerKey);
+          recentCleaned++;
+        }
+      }
+      if (viewerMap.size === 0) {
+        this.recentViewers.delete(contentId);
+      }
+    }
+
+    if (activeCleaned > 0 || recentCleaned > 0) {
+      this.logger.log(`Cleanup: Removed ${activeCleaned} empty active sets and ${recentCleaned} expired view cache entries`);
     }
   }
 }
