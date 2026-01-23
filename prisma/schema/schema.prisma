@@ -76,5 +76,6 @@ enum UserCategory {
   SPORTS
   GAMBLING
   TECH
+  IRL_PRO
   OTHERS
 }
