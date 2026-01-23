@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryFollowDto } from './dto/query-follow.dto';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
+import { publicUserSelect } from '../user/dto/publicUserSelect';
 
 @Injectable()
 export class FollowService {
@@ -112,12 +113,7 @@ export class FollowService {
               updatedAt: true,
 
               owner: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  status: true,
-                  profileImage: true,
-                },
+                select: publicUserSelect,
               },
 
               _count: {
@@ -158,7 +154,7 @@ export class FollowService {
     const data = await Promise.all(follows.map((item: any) => {
       const { _count, content, ...channelData } = item.following;
       const liveStream = content && content.length > 0 ? content[0] : null;
-      
+
       let currentViewers = 0;
       if (channelData.isLive && liveStream) {
         currentViewers = this.watchHistoryService.getActiveViewerCount(liveStream.id);
@@ -197,7 +193,10 @@ export class FollowService {
 
     return this.prisma.follow.findMany({
       where: { followingId: channel.id },
-      include: { follower: true },
+      select: {
+        follower: { select: publicUserSelect },
+        createdAt: true
+      },
     });
   }
 

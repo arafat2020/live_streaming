@@ -7,6 +7,9 @@ import { CreateChatDto } from './dto/create-chat.dto';
 import { UpdateChatDto } from './dto/update-chat.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChatGateway } from './chat.gateway';
+import { safeUserSelect } from '../user/dto/safeUserSelect';
+import { publicUserSelect } from '../user/dto/publicUserSelect';
+import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 
 @Injectable()
 export class ChatService {
@@ -28,9 +31,17 @@ export class ChatService {
     try {
       return await this.prisma.chatRoom.findMany({
         include: {
-          participants: { include: { user: true } },
-          chatMessage: { include: { user: true } },
-          channel: true,
+          participants: {
+            include: {
+              user: { select: publicUserSelect }
+            }
+          },
+          chatMessage: {
+            include: {
+              user: { select: publicUserSelect }
+            }
+          },
+          channel: { select: safeChannelSelect },
         },
       });
     } catch (error) {
@@ -45,9 +56,17 @@ export class ChatService {
       const room = await this.prisma.chatRoom.findUnique({
         where: { id },
         include: {
-          participants: { include: { user: true } },
-          chatMessage: { include: { user: true } },
-          channel: true,
+          participants: {
+            include: {
+              user: { select: safeUserSelect }
+            }
+          },
+          chatMessage: {
+            include: {
+              user: { select: safeUserSelect }
+            }
+          },
+          channel: { select: safeChannelSelect },
         },
       });
       if (!room) throw new NotFoundException(`ChatRoom ${id} not found`);
@@ -92,7 +111,12 @@ export class ChatService {
     try {
       return await this.prisma.chatParticipant.create({
         data: { roomId, userId },
-        include: { user: true },
+        select: {
+          id: true,
+          roomId: true,
+          userId: true,
+          user: { select: publicUserSelect },
+        },
       });
     } catch (error) {
       console.error(error);
@@ -126,14 +150,7 @@ export class ChatService {
         data: { roomId, userId, content },
         include: {
           user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              username: true,
-              profileImage: true,
-              chatColor: true,
-            }
+            select: publicUserSelect
           }
         },
       });
@@ -150,14 +167,7 @@ export class ChatService {
         where: { roomId },
         include: {
           user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              username: true,
-              profileImage: true,
-              chatColor: true,
-            }
+            select: publicUserSelect
           }
         },
         orderBy: { createdAt: 'desc' },

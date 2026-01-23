@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { safeUserSelect } from './dto/safeUserSelect';
+import { publicUserSelect } from './dto/publicUserSelect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -39,7 +40,7 @@ export class UserService {
   async findByUsername(username: string) {
     return this.prisma.user.findUnique({
       where: { username },
-      select: { ...safeUserSelect },
+      select: publicUserSelect,
     });
   }
 
@@ -57,7 +58,21 @@ export class UserService {
     if (!isUser) {
       throw new NotFoundException('User with this ID Not exists.');
     }
-    return this.prisma.user.findUnique({ where: { id }, select: { ...safeUserSelect, } });
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: publicUserSelect,
+    });
+  }
+
+  async findOneForAdmin(id: string) {
+    const isUser = await this.prisma.user.findUnique({ where: { id: id } });
+    if (!isUser) {
+      throw new NotFoundException('User with this ID Not exists.');
+    }
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: safeUserSelect,
+    });
   }
 
   async update(id: string, dto: UpdateUserDto) {
@@ -258,6 +273,7 @@ export class UserService {
         privacyAcceptedAt: new Date(),
         dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
       },
+      select: { ...safeUserSelect },
     });
 
     return { message: 'Terms accepted successfully', user };
