@@ -410,7 +410,7 @@ export class ContentService {
 
     return this.prisma.content.update({
       where: { id },
-      data: { status: newStatus as any },
+      data: { status: newStatus },
     });
   }
 

@@ -53,10 +53,15 @@ export class VideoController {
       file.buffer,
     );
 
-    // Handle processing errors in background
-    processingPromise.catch((err) => {
-      this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
-    });
+    // Handle processing completion in background
+    processingPromise
+      .then(async (playbackUrl) => {
+        this.logger.log(`✅ Processing complete for ${lessonId}. Updating content status...`);
+        await this.videoService.updateContentAfterProcessing(contentId, playbackUrl);
+      })
+      .catch((err) => {
+        this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
+      });
 
     return {
       success: true,
@@ -211,10 +216,16 @@ export class VideoController {
       mergedFilePath, // Pass file path
     );
 
-    // Handle processing errors in background
-    processingPromise.catch((err) => {
-      this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
-    });
+    // Handle processing completion in background
+    processingPromise
+      .then(async (playbackUrl) => {
+        this.logger.log(`✅ Processing complete for ${lessonId}. Updating content status...`);
+        // Update content to AVAILABLE with playback URL
+        await this.videoService.updateContentAfterProcessing(contentId, playbackUrl);
+      })
+      .catch((err) => {
+        this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
+      });
 
     await this.chunkService.cleanupSession(uploadId);
 
