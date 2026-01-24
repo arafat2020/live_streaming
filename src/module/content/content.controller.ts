@@ -30,15 +30,22 @@ export class ContentController {
 
   @ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
   @Get('live-broadcast')
-  async liveOnRappioList(@Req() req: GetMe, @Res() res: Response) {
+  async liveOnRappioList(
+    @Req() req: GetMe,
+    @Query() query: QueryContentDto,
+    @Res() res: Response,
+  ) {
     const userId = req.user?.id;
-    const data = await this.contentService.liveOnRappioList(userId);
+    const result = await this.contentService.liveOnRappioList(query, userId);
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Content retrieved successfully.',
-      data: data,
+      data: {
+        data: result.data,
+        meta: result.meta,
+      },
     });
   }
 

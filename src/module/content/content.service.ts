@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
@@ -175,8 +176,12 @@ export class ContentService {
       },
     };
   }
-  async liveOnRappioList(userId?: string) {
-    const where: any = {
+  async liveOnRappioList(query: QueryContentDto, userId?: string) {
+    const page = Math.max(query.page ?? 1, 1);
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.ContentWhereInput = {
       status: 'AVAILABLE',
       contentType: 'LIVE_STREAM',
     };
@@ -215,33 +220,47 @@ export class ContentService {
       where.channel = { owner: { isShadowBanned: false } };
     }
 
-    const content = await this.prisma.content.findMany({
-      where,
-      include: {
-        channel: {
-          include: {
-            owner: {
-              select: {
-                id: true,
-                firstName: true,
-                profileImage: true,
+    const [content, total] = await this.prisma.$transaction([
+      this.prisma.content.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { views: 'desc' },
+        include: {
+          channel: {
+            include: {
+              owner: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  profileImage: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.content.count({ where }),
+    ]);
 
-    if (!content) throw new NotFoundException('Content not found');
-
-    return content.map((item) => ({
+    const mappedContent = content.map((item) => ({
       ...item,
       concurrentViewers:
         item.contentType === 'LIVE_STREAM'
           ? this.watchHistoryService.getActiveViewerCount(item.id)
           : 0,
-       totalViews: item.views,
+      totalViews: item.views,
     }));
+
+    return {
+      data: mappedContent,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
   }
 
   async findOne(id: string, userId?: string) {
