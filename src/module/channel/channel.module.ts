@@ -13,4 +13,4 @@ import { WatchHistoryModule } from '../watch-history/watch-history.module';
   controllers: [ChannelController, ChannelManagementController],
   exports: [ChannelService],
 })
-export class ChannelModule { }
+export class ChannelModule {}

@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private readonly logger = new Logger(SeederService.name);
 
@@ -42,13 +42,14 @@ export class SeederService implements OnApplicationBootstrap {
           where: { id: superAdmin.id },
           data: { role: UserRole.ADMIN },
         });
-        this.logger.log(`Updated role for existing user ${superAdminEmail} to ADMIN`);
+        this.logger.log(
+          `Updated role for existing user ${superAdminEmail} to ADMIN`,
+        );
       } else {
         this.logger.log('Admin already exists with this email.');
       }
       return;
     }
-
 
     const user = await this.prisma.user.create({
       data: {

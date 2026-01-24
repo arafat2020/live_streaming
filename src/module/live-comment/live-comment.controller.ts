@@ -18,18 +18,27 @@ import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetMe } from '../user/dto/request-with-user.interface';
 
-
 @ApiTags('live-comments')
 @Controller('live-comments')
 export class LiveCommentController {
   //constructor(private readonly liveCommentService: LiveCommentService) {}
-  constructor(private readonly service: LiveCommentService) { }
+  constructor(private readonly service: LiveCommentService) {}
 
   // GET /live-comments/:videoId
   @Get(':videoId')
   @ApiOperation({ summary: 'Get all comments for a video with pagination' })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20, max: 100)' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default: 20, max: 100)',
+  })
   getAll(
     @Param('videoId') videoId: string,
     @Query() paginationQuery: PaginationQueryDto,
@@ -37,13 +46,9 @@ export class LiveCommentController {
     return this.service.getAll(videoId, paginationQuery);
   }
 
-
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(
-    @Body() body: CreateLiveCommentDto,
-    @Req() req: GetMe,
-  ) {
+  create(@Body() body: CreateLiveCommentDto, @Req() req: GetMe) {
     const userId = req.user.id;
     return this.service.create(userId, body);
   }

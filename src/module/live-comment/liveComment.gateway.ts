@@ -15,7 +15,9 @@ import { WatchHistoryService } from '../watch-history/watch-history.service';
   namespace: '/ws/live',
   cors: { origin: '*' },
 })
-export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class LiveCommentGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -28,13 +30,12 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
   constructor(
     @Inject(forwardRef(() => WatchHistoryService))
     private watchHistoryService: WatchHistoryService,
-  ) { }
+  ) {}
 
   // Handle client connection
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
   }
-
 
   // Handle client disconnection AUTO-CLEANUP when user closes browser/tab
 
@@ -43,7 +44,9 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     const userId = this.socketToUser.get(client.id);
 
     if (contentId) {
-      this.logger.log(`Client ${client.id} (User: ${userId || 'Anonymous'}) disconnected from content ${contentId}`);
+      this.logger.log(
+        `Client ${client.id} (User: ${userId || 'Anonymous'}) disconnected from content ${contentId}`,
+      );
 
       // Emit event so WatchHistoryService can update concurrent viewers
       this.watchHistoryService.stopWatching(contentId, userId || client.id);
@@ -58,7 +61,6 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
       this.socketToUser.delete(client.id);
     }
   }
-
 
   // Join video room (for comments)
 
@@ -82,7 +84,6 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     return { joined: videoId };
   }
 
-
   // NEW: Start watching (triggers view count)
 
   @SubscribeMessage('start_watching')
@@ -102,7 +103,12 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
     // Emit to backend to increment views
     const ipAddress = client.handshake.address;
-    this.watchHistoryService.startWatching(contentId, userId || client.id, userId, ipAddress);
+    this.watchHistoryService.startWatching(
+      contentId,
+      userId || client.id,
+      userId,
+      ipAddress,
+    );
     this.server.emit('viewer.joined', { contentId, userId: userId || null });
 
     // BROADCAST LIVE STATS IMMEDIATELY
@@ -110,7 +116,6 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
     return { watching: contentId };
   }
-
 
   // NEW: Stop watching (decrements concurrent viewers)
 
@@ -128,7 +133,9 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
       this.socketToUser.delete(client.id);
     }
 
-    this.logger.log(`User ${userId || 'Anonymous'} stopped watching ${contentId}`);
+    this.logger.log(
+      `User ${userId || 'Anonymous'} stopped watching ${contentId}`,
+    );
 
     // Emit to backend to update concurrent viewers
     this.watchHistoryService.stopWatching(contentId, userId || client.id);
@@ -139,7 +146,6 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
 
     return { stopped: contentId };
   }
-
 
   // NEW: Broadcast view count update to all viewers
 
@@ -153,7 +159,6 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     this.logger.debug(`Broadcasted view count for ${contentId}: ${views}`);
   }
 
-
   // NEW: Broadcast concurrent viewer count (for live streams)
 
   broadcastConcurrentViewers(contentId: string, count: number) {
@@ -163,7 +168,9 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
       timestamp: new Date(),
     });
 
-    this.logger.debug(`Broadcasted concurrent viewers for ${contentId}: ${count}`);
+    this.logger.debug(
+      `Broadcasted concurrent viewers for ${contentId}: ${count}`,
+    );
   }
 
   /**
@@ -172,7 +179,8 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
   broadcastLiveStats(contentId: string, stats: any) {
     if (!this.server) return;
 
-    const viewerCount = this.watchHistoryService.getActiveViewerCount(contentId);
+    const viewerCount =
+      this.watchHistoryService.getActiveViewerCount(contentId);
 
     this.server.to(`content:${contentId}`).emit('live_stats_update', {
       contentId,
@@ -181,7 +189,6 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
       timestamp: new Date(),
     });
   }
-
 
   // Comment events (existing functionality)
 
@@ -196,7 +203,6 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
   sendDelete(videoId: string, id: string) {
     this.server.to(`video:${videoId}`).emit('comment.deleted', { id });
   }
-
 
   // Stream events (existing functionality)
 
@@ -214,7 +220,9 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
   }
 
   streamEnded(contentId?: string) {
-    this.logger.log(`Broadcasting stream.ended event${contentId ? ` for ${contentId}` : ''}`);
+    this.logger.log(
+      `Broadcasting stream.ended event${contentId ? ` for ${contentId}` : ''}`,
+    );
 
     const payload = {
       status: 'ENDED',
@@ -231,14 +239,14 @@ export class LiveCommentGateway implements OnGatewayConnection, OnGatewayDisconn
     }
   }
 
-
   // Get room stats (debugging)
 
   @SubscribeMessage('get_stats')
   async handleGetStats(@MessageBody() contentId: string) {
     if (!this.server) return { contentId, connectedClients: 0 };
 
-    const adapter = (this.server as any).adapter || (this.server.sockets as any)?.adapter;
+    const adapter =
+      (this.server as any).adapter || (this.server.sockets as any)?.adapter;
     const room = adapter?.rooms?.get(`content:${contentId}`);
     const viewerCount = room ? room.size : 0;
 

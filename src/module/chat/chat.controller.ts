@@ -1,25 +1,23 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
-  Res,
+  Get,
   HttpStatus,
-  Inject,
-  forwardRef,
+  Param,
+  Patch,
+  Post,
+  Res,
 } from '@nestjs/common';
-import { ChatService } from './chat.service';
-import { CreateChatDto } from './dto/create-chat.dto';
-import { UpdateChatDto } from './dto/update-chat.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SendMessageDto } from './dto/send-message.dto';
-import { CreateParticipantDto } from './dto/create-participant.dto';
 import { Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
 import { ChatGateway } from './chat.gateway'; // import gateway type
+import { ChatService } from './chat.service';
+import { CreateChatDto } from './dto/create-chat.dto';
+import { CreateParticipantDto } from './dto/create-participant.dto';
+import { SendMessageDto } from './dto/send-message.dto';
+import { UpdateChatDto } from './dto/update-chat.dto';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -27,7 +25,7 @@ export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly chatGateway: ChatGateway, // inject gateway
-  ) { }
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a chat room' })
@@ -160,7 +158,8 @@ export class ChatController {
     // Better to fetch before deletion so we can emit meaningful event
     let participantRecord;
     try {
-      participantRecord = await this.chatService.removeParticipant(participantId);
+      participantRecord =
+        await this.chatService.removeParticipant(participantId);
       // participantRecord contains the deleted record (Prisma returns it)
     } catch (err) {
       // If removal failed, let service throw exception
@@ -193,7 +192,11 @@ export class ChatController {
     @Body() dto: SendMessageDto,
     @Res() res: Response,
   ) {
-    const data = await this.chatService.sendMessage(roomId, dto.userId, dto.content);
+    const data = await this.chatService.sendMessage(
+      roomId,
+      dto.userId,
+      dto.content,
+    );
 
     // Emit socket event: new message in the room
     try {

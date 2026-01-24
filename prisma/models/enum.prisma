@@ -1,0 +1,68 @@
+// ----------------------------------------------------
+// ENUMS (Structured Data Definitions)
+// ----------------------------------------------------
+// User account status
+enum UserStatus {
+    ACTIVE
+    INACTIVE
+    SUSPEND
+}
+
+// User role for authorization and feature access
+enum UserRole {
+    ADMIN // Full system access, platform-wide controls
+    CREATOR // Manages a Channel, uploads/streams content
+    USER // Standard viewer/subscriber
+    MODERATOR // moderator
+}
+
+// Subscription status, integrated with the billing system
+enum SubscriptionStatus {
+    ACTIVE // User is currently paid up
+    GRACE_PERIOD // Paid period ended, access until the next billing date
+    CANCELED // Subscription has fully lapsed
+    FREE_TIER // Default status for non-paying users
+    PAST_DUE // Payment failed, in a temporary retry period
+}
+
+// Type of media content on the platform
+enum ContentType {
+    VOD // Video On Demand (pre-recorded, uploaded content)
+    LIVE_STREAM // Real-time broadcast
+}
+
+// Workflow status for media content processing (VOD ingestion pipeline)
+enum ContentStatus {
+    PROCESSING // Video is being transcoded or ingested (Internal state)
+    AVAILABLE // Ready for playback (Public state)
+    FAILED // Transcoding or ingest failed
+    PRIVATE // Available but not publicly listed
+    ARCHIVED // Old live stream recording
+    ENDED
+    SHADOW_BANNED
+}
+
+enum NotificationType {
+    CHANNEL_LIVE
+    NEW_VIDEO
+    ANNOUNCEMENT
+}
+
+enum BanType {
+    PERMANENT
+    TEMPORARY
+}
+
+// User profile category for content type
+enum UserCategory {
+    JUST_CHATTING
+    IRL
+    GAMING
+    MUSIC
+    EDUCATION
+    SPORTS
+    GAMBLING
+    TECH
+    IRL_PRO
+    OTHERS
+}

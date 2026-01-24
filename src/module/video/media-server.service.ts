@@ -1,11 +1,16 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import * as path from 'path';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+import * as path from 'path';
 import { VideoService } from '../video/video.service';
 import { ThumbnailService } from './thumbnail.service';
 
-const NodeMediaServer = require('node-media-server');
+import NodeMediaServer from 'node-media-server';
 
 interface StreamSession {
   streamKey: string;
@@ -26,7 +31,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly videoService: VideoService,
     private readonly thumbnailService: ThumbnailService,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     this.initializeMediaServer();
@@ -55,14 +60,16 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
   private async broadcastAllStats() {
     for (const [streamKey, session] of this.activeSessions) {
-      const uptime = Math.floor((Date.now() - session.startTime.getTime()) / 1000);
+      const uptime = Math.floor(
+        (Date.now() - session.startTime.getTime()) / 1000,
+      );
 
       // Tell Gateway to broadcast stats to rooms
       // We'll add this method to VideoService or call Gateway directly if possible
       this.videoService.broadcastLiveStats(session.contentId, {
         uptime,
         streamKey,
-        status: 'LIVE'
+        status: 'LIVE',
       });
     }
   }
@@ -93,7 +100,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     this.registerEventHandlers();
 
     this.logger.log('🎥 Media Server Ready');
-    this.logger.log(`📍 RTMP: rtmp://${process.env.RTMP_HOST}:${config.rtmp.port}/live`);
+    this.logger.log(
+      `📍 RTMP: rtmp://${process.env.RTMP_HOST}:${config.rtmp.port}/live`,
+    );
     this.logger.log(`📍 HTTP: http://localhost:${config.http.port}`);
   }
 
@@ -109,7 +118,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     // Connection events for debugging
     this.nms.on('preConnect', (id: any, args: any) => {
-      this.logger.debug(`Client connecting: ${id} with args: ${JSON.stringify(args)}`);
+      this.logger.debug(
+        `Client connecting: ${id} with args: ${JSON.stringify(args)}`,
+      );
     });
   }
 
@@ -132,9 +143,12 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     try {
       // Step 3.1: Initialize stream and get a safe Content ID
-      const { contentId, channel } = await this.videoService.initializeLiveStream(streamKey);
+      const { contentId, channel } =
+        await this.videoService.initializeLiveStream(streamKey);
 
-      this.logger.log(`🔴 Stream starting for ${channel.name} (Content: ${contentId})`);
+      this.logger.log(
+        `🔴 Stream starting for ${channel.name} (Content: ${contentId})`,
+      );
 
       // Step 3.2: Create directory for this stream using contentId (Secure)
       const liveDir = this.createStreamDirectory(contentId);
@@ -143,7 +157,10 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       const ffmpegProcess = this.startFFmpegTranscoding(streamKey, liveDir);
 
       // Step 3.4: Start R2 upload watcher and notify frontend
-      const { watcher } = await this.videoService.handleLiveStream(contentId, liveDir);
+      const { watcher } = await this.videoService.handleLiveStream(
+        contentId,
+        liveDir,
+      );
 
       // Step 3.5: Store session information
       this.activeSessions.set(streamKey, {
@@ -162,9 +179,10 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       const firstSegmentPath = path.join(liveDir, '000.ts');
 
       this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
-
     } catch (error) {
-      this.logger.error(`❌ Failed to start stream ${streamKey}: ${error.stack || error.message}`);
+      this.logger.error(
+        `❌ Failed to start stream ${streamKey}: ${error.stack || error.message}`,
+      );
       await this.cleanupSession(streamKey);
     }
   }
@@ -172,19 +190,26 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Helper to generate thumbnail after first segment is ready
    */
-  private async generateThumbnailDelayed(streamKey: string, segmentPath: string, r2Prefix: string) {
+  private async generateThumbnailDelayed(
+    streamKey: string,
+    segmentPath: string,
+    r2Prefix: string,
+  ) {
     try {
-      this.logger.log(`⏳ Waiting for first segment to generate thumbnail: ${streamKey}`);
+      this.logger.log(
+        `⏳ Waiting for first segment to generate thumbnail: ${streamKey}`,
+      );
 
       // Poll for the first segment file (up to 30 seconds)
       let attempts = 0;
       while (attempts < 30) {
         if (fs.existsSync(segmentPath) && fs.statSync(segmentPath).size > 0) {
-          const thumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
-            segmentPath,
-            r2Prefix,
-            streamKey
-          );
+          const thumbnailUrl =
+            await this.thumbnailService.generateThumbnailFromSegment(
+              segmentPath,
+              r2Prefix,
+              streamKey,
+            );
           await this.videoService.updateLiveThumbnail(streamKey, thumbnailUrl);
 
           // Cleanup preserved segment after thumbnail is done
@@ -194,12 +219,16 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
           }
           return;
         }
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         attempts++;
       }
-      this.logger.warn(`⚠️ Timeout waiting for segment ${segmentPath} for thumbnail`);
+      this.logger.warn(
+        `⚠️ Timeout waiting for segment ${segmentPath} for thumbnail`,
+      );
     } catch (err) {
-      this.logger.error(`❌ Thumbnail generation failed for ${streamKey}: ${err.message}`);
+      this.logger.error(
+        `❌ Thumbnail generation failed for ${streamKey}: ${err.message}`,
+      );
     }
   }
 
@@ -221,7 +250,10 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
    * Step 5: Start FFmpeg transcoding process
    * ✅ OPTIMIZED FOR LOW LATENCY
    */
-  private startFFmpegTranscoding(streamKey: string, liveDir: string): ChildProcess {
+  private startFFmpegTranscoding(
+    streamKey: string,
+    liveDir: string,
+  ): ChildProcess {
     // Use 127.0.0.1 for internal connection within the same container
     const rtmpHost = '127.0.0.1';
     const rtmpUrl = `rtmp://${rtmpHost}:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
@@ -229,35 +261,49 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`🎬 FFmpeg connecting to: ${rtmpUrl}`);
 
     const ffmpeg = spawn('ffmpeg', [
-      '-i', rtmpUrl,
-      '-c:v', 'copy',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-f', 'hls',
+      '-i',
+      rtmpUrl,
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-f',
+      'hls',
 
       // ✅ OPTIMIZED: 2-second segments for faster playback start
-      '-hls_time', '2',
+      '-hls_time',
+      '2',
 
       // ✅ OPTIMIZED: Keep 10 segments (20 seconds of video)
-      '-hls_list_size', '10',
+      '-hls_list_size',
+      '10',
 
       // ✅ OPTIMIZED: Better flags for live streaming
-      '-hls_flags', 'delete_segments+independent_segments+program_date_time',
+      '-hls_flags',
+      'delete_segments+independent_segments+program_date_time',
 
       // ✅ OPTIMIZED: Event playlist type for live streams
-      '-hls_playlist_type', 'event',
+      '-hls_playlist_type',
+      'event',
 
       // ✅ OPTIMIZED: Start numbering from 0
-      '-start_number', '0',
+      '-start_number',
+      '0',
 
       // ✅ OPTIMIZED: GOP size for 2-second segments (48 frames at 24fps)
-      '-g', '48',
-      '-keyint_min', '48',
+      '-g',
+      '48',
+      '-keyint_min',
+      '48',
 
       // ✅ OPTIMIZED: Disable scene change detection for consistent segments
-      '-sc_threshold', '0',
+      '-sc_threshold',
+      '0',
 
-      '-hls_segment_filename', path.join(liveDir, '%03d.ts'),
+      '-hls_segment_filename',
+      path.join(liveDir, '%03d.ts'),
       path.join(liveDir, 'index.m3u8'),
     ]);
 
@@ -269,7 +315,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     ffmpeg.on('error', (error) => {
       this.logger.error(`❌ FFmpeg error for ${streamKey}: ${error.message}`);
       if (error.message.includes('ENOENT')) {
-        this.logger.error('CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.');
+        this.logger.error(
+          'CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.',
+        );
       }
     });
 
@@ -279,7 +327,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
         // Trigger the cleanup if the session is still marked as active
         if (this.activeSessions.has(streamKey)) {
-          this.logger.error(`🚨 Fatal: FFmpeg crashed for ${streamKey}. Stopping session.`);
+          this.logger.error(
+            `🚨 Fatal: FFmpeg crashed for ${streamKey}. Stopping session.`,
+          );
           this.handleStreamStop({ streamName: streamKey });
         }
       } else {
@@ -310,9 +360,13 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       // Clean up session
       await this.cleanupSession(streamKey);
 
-      this.logger.log(`✅ Stream ${streamKey} stopped (Remaining active: ${this.activeSessions.size})`);
+      this.logger.log(
+        `✅ Stream ${streamKey} stopped (Remaining active: ${this.activeSessions.size})`,
+      );
     } catch (error) {
-      this.logger.error(`❌ Error stopping stream ${streamKey}: ${error.message}`);
+      this.logger.error(
+        `❌ Error stopping stream ${streamKey}: ${error.message}`,
+      );
     }
   }
 
@@ -333,7 +387,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
         session.ffmpegProcess.kill('SIGTERM');
         this.logger.debug(`⚰️ Killed FFmpeg for ${streamKey}`);
         // Small delay to allow FFmpeg to flush
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
       // Finalize the manifest locally so the watcher picks it up
@@ -345,7 +399,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
             fs.appendFileSync(playlistPath, '\n#EXT-X-ENDLIST\n');
             this.logger.log(`🏁 Finalized manifest for ${streamKey}`);
             // Give the watcher one more cycle to upload the finalized manifest
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
           }
         } catch (err) {
           this.logger.error(`Failed to finalize manifest: ${err.message}`);
@@ -366,15 +420,18 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
             this.logger.debug(`🗑️ Deleted directory: ${session.liveDir}`);
           }
         } catch (err) {
-          this.logger.error(`Failed to delete directory ${session.liveDir}: ${err.message}`);
+          this.logger.error(
+            `Failed to delete directory ${session.liveDir}: ${err.message}`,
+          );
         }
       }, 15000); // ✅ Increased to 15 seconds delay for R2 upload completion
 
       // Remove from active sessions
       this.activeSessions.delete(streamKey);
-
     } catch (error) {
-      this.logger.error(`Error cleaning up session ${streamKey}: ${error.message}`);
+      this.logger.error(
+        `Error cleaning up session ${streamKey}: ${error.message}`,
+      );
     }
   }
 
@@ -386,7 +443,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     const cleanupPromises: Promise<void>[] = [];
     for (const [streamKey] of this.activeSessions) {
-      cleanupPromises.push(this.cleanupSession(streamKey));
+      await this.cleanupSession(streamKey);
     }
     await Promise.all(cleanupPromises);
 

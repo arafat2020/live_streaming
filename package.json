@@ -6,19 +6,19 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "start:dev": "nest start --watch",
     "prebuild": "npx prisma generate",
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\"",
     "start": "npx prisma migrate deploy && npx prisma generate && node dist/main.js",
     "dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs}/**/*.ts\" --fix",
-    "start:migrate:prod": "prisma migrate deploy && npm run start:prod"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --ignore-path .prettierignore --check \"**/*.+(js|ts|json)\"",
+    "format:fix": "prettier --ignore-path .prettierignore --write \"**/*.+(js|ts|json)\""
   },
   "prisma": {
-    "schema": "./prisma/schema"
+    "schema": "./prisma"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.948.0",

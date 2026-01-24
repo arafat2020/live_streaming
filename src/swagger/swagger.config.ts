@@ -2,7 +2,9 @@ import { DocumentBuilder } from '@nestjs/swagger';
 
 export const swaggerConfig = new DocumentBuilder()
   .setTitle('Rappio-TV API Documentation')
-  .setDescription('Comprehensive API documentation for the application services')
+  .setDescription(
+    'Comprehensive API documentation for the application services',
+  )
   .setVersion('1.0')
   .addCookieAuth('refreshToken')
   .addTag('API')
@@ -12,7 +14,7 @@ export const swaggerConfig = new DocumentBuilder()
       name: 'authorization',
       in: 'header',
     },
-    'auth', 
+    'auth',
   )
   .addSecurityRequirements({
     auth: [],

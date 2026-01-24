@@ -36,7 +36,7 @@ export class ChannelManagementController {
     private readonly channelService: ChannelService,
     private readonly mediaServerService: MediaServerService,
     private readonly videoService: VideoService,
-  ) { }
+  ) {}
 
   @ApiOperation({ summary: 'Get real-time stats for my live stream' })
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
@@ -50,7 +50,9 @@ export class ChannelManagementController {
     const rtStats = this.mediaServerService.getStreamStats(channel.streamKey);
 
     // Low latency playback URL directly from media server
-    const internalPlaybackUrl = this.mediaServerService.getStreamUrl(channel.streamKey);
+    const internalPlaybackUrl = this.mediaServerService.getStreamUrl(
+      channel.streamKey,
+    );
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -60,10 +62,12 @@ export class ChannelManagementController {
         isLive: rtStats?.isActive || channel.isLive || false,
         totalViews: channel.statistics?.totalViews || 0,
         followerCount: channel.statistics?.totalFollowers || 0,
-        currentStream: dbStats?.currentStream ? {
-          ...dbStats.currentStream,
-          internalPlaybackUrl, // Faster fallback for creator studio
-        } : null,
+        currentStream: dbStats?.currentStream
+          ? {
+              ...dbStats.currentStream,
+              internalPlaybackUrl, // Faster fallback for creator studio
+            }
+          : null,
         realtime: rtStats || { isActive: false },
         // Flatten some useful fields
         uptime: rtStats?.uptime || 0,
@@ -72,7 +76,9 @@ export class ChannelManagementController {
     });
   }
 
-  @ApiOperation({ summary: 'Get all content for the logged-in creator channel' })
+  @ApiOperation({
+    summary: 'Get all content for the logged-in creator channel',
+  })
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
   @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-content')
@@ -107,15 +113,14 @@ export class ChannelManagementController {
   //@UseGuards(AuthGuard('jwt'), RolesGuard,TermsAcceptedGuard)
   @Get('channels')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Get all channels with optional search and pagination' })
+  @ApiOperation({
+    summary: 'Get all channels with optional search and pagination',
+  })
   @ApiResponse({
     status: 200,
     description: 'Channels retrieved successfully',
   })
-  async getChannels(
-    @Query() dto: GetChannelsDto,
-    @Res() res: Response,
-  ) {
+  async getChannels(@Query() dto: GetChannelsDto, @Res() res: Response) {
     const result = await this.channelService.getChannels(dto);
 
     return sendResponse(res, {
@@ -125,7 +130,7 @@ export class ChannelManagementController {
       data: {
         data: result.data,
         meta: result.meta,
-      }
+      },
     });
   }
 
@@ -152,11 +157,14 @@ export class ChannelManagementController {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Channels retrieved successfully.',
-      data: result
+      data: result,
     });
   }
   /*** GET /creator/channel - Retrieves the private channel details, including streamKey.*/
-  @ApiOperation({ summary: 'My Chennel. Retrieves the private channel details Calculate total views across all channel content' })
+  @ApiOperation({
+    summary:
+      'My Chennel. Retrieves the private channel details Calculate total views across all channel content',
+  })
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
   @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Get('my-chennel')
@@ -175,7 +183,11 @@ export class ChannelManagementController {
   @UseGuards(AuthGuard('jwt'), RolesGuard, TermsAcceptedGuard)
   @Roles('CREATOR', 'ADMIN', 'USER', 'MODERATOR')
   @Patch()
-  async updateChannel(@Req() req: GetMe, @Body() body: UpdateChannelDto, @Res() res: Response) {
+  async updateChannel(
+    @Req() req: GetMe,
+    @Body() body: UpdateChannelDto,
+    @Res() res: Response,
+  ) {
     const userId = req.user.id;
     const data = await this.channelService.updateChannel(userId, body);
     return sendResponse(res, {
@@ -245,11 +257,13 @@ export class ChannelManagementController {
       success: true,
       message: 'Content retrieved successfully.',
       data: data, // ✅ Return contents array
-
     });
   }
 
-  @ApiOperation({ summary: 'Retrieves the Signle channel details Calculate total views across all channel content' })
+  @ApiOperation({
+    summary:
+      'Retrieves the Signle channel details Calculate total views across all channel content',
+  })
   // @UseGuards(JwtAuthGuard,TermsAcceptedGuard)
   @Get(':id')
   @HttpCode(200)

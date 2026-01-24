@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsEnum, IsBoolean, IsInt, Min, IsUrl, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+  IsInt,
+  Min,
+  IsUrl,
+  IsUUID,
+} from 'class-validator';
 import { ContentType, ContentStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -17,7 +26,10 @@ export class CreateContentDto {
   contentType: ContentType;
 
   // 🚨 এটি সাধারণত ফ্রন্টএন্ড থেকে আসে না, ব্যাকএন্ড নিজে সেট করে
-  @ApiPropertyOptional({ enum: ContentStatus, example: ContentStatus.PROCESSING })
+  @ApiPropertyOptional({
+    enum: ContentStatus,
+    example: ContentStatus.PROCESSING,
+  })
   @IsOptional()
   @IsEnum(ContentStatus)
   status?: ContentStatus;
@@ -28,12 +40,16 @@ export class CreateContentDto {
   @Min(0)
   durationSeconds?: number;
 
-  @ApiPropertyOptional({ example: 'https://pub-xxx.r2.dev/videos/id/index.m3u8' })
+  @ApiPropertyOptional({
+    example: 'https://pub-xxx.r2.dev/videos/id/index.m3u8',
+  })
   @IsOptional()
   @IsUrl()
   playbackUrl?: string;
 
-  @ApiPropertyOptional({ example: 'https://pub-xxx.r2.dev/videos/id/thumb.jpg' })
+  @ApiPropertyOptional({
+    example: 'https://pub-xxx.r2.dev/videos/id/thumb.jpg',
+  })
   @IsOptional()
   @IsUrl()
   thumbnailUrl?: string;
@@ -43,9 +59,12 @@ export class CreateContentDto {
   @IsBoolean()
   isPremium?: boolean;
 
-  // 🚨 r2ObjectKey পরিবর্তন করে r2Prefix করা হয়েছে 
+  // 🚨 r2ObjectKey পরিবর্তন করে r2Prefix করা হয়েছে
   // কারণ HLS এর ক্ষেত্রে আমাদের পুরো ফোল্ডারটা ট্রাক করতে হয়।
-  @ApiPropertyOptional({ example: 'videos/uuid-of-content', description: 'R2 Folder Prefix' })
+  @ApiPropertyOptional({
+    example: 'videos/uuid-of-content',
+    description: 'R2 Folder Prefix',
+  })
   @IsOptional()
   @IsString()
   r2Prefix?: string;

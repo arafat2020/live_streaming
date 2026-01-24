@@ -1,22 +1,22 @@
 import {
   Controller,
-  Get,
-  Post,
-  Param,
   Delete,
-  Req,
-  UseGuards,
+  Get,
   HttpStatus,
-  Res,
+  Param,
+  Post,
   Query,
+  Req,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
-import { FollowService } from './follow.service';
-import { RequestWithUser } from '../user/dto/request-with-user.interface';
-import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RequestWithUser } from '../user/dto/request-with-user.interface';
 import { QueryFollowDto } from './dto/query-follow.dto';
+import { FollowService } from './follow.service';
 
 @Controller('follow')
 export class FollowController {
@@ -30,7 +30,10 @@ export class FollowController {
     @Req() req: RequestWithUser,
     @Res() res: Response,
   ) {
-    const data = await this.followService.followChannel(req.user.id, channnelId);
+    const data = await this.followService.followChannel(
+      req.user.id,
+      channnelId,
+    );
     return sendResponse(res, {
       statusCode: HttpStatus.CREATED,
       success: true,
@@ -39,7 +42,9 @@ export class FollowController {
     });
   }
 
-  @ApiOperation({ summary: 'Check if the authenticated user follows this channel' })
+  @ApiOperation({
+    summary: 'Check if the authenticated user follows this channel',
+  })
   @UseGuards(JwtAuthGuard)
   @Get(':channnelId/status')
   async status(
@@ -68,7 +73,7 @@ export class FollowController {
   //     data,
   //   });
   // }
-@ApiOperation({ 
+  @ApiOperation({
     summary: 'Get all channels the user follows',
     description: 'Returns paginated list of followed channels with total count',
   })
@@ -81,16 +86,19 @@ export class FollowController {
     @Query() query: QueryFollowDto,
     @Res() res: Response,
   ) {
-    const result = await this.followService.getFollowedChannels(req.user.id, query);
-    
+    const result = await this.followService.getFollowedChannels(
+      req.user.id,
+      query,
+    );
+
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Followed channels retrieved successfully.',
       data: {
-        data:result.data,
+        data: result.data,
         meta: result.meta,
-      }
+      },
     });
   }
   @ApiOperation({ summary: 'Get all followers of the specified channel' })

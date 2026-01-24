@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -13,7 +18,7 @@ export class ChannelService {
   constructor(
     private prisma: PrismaService,
     private watchHistoryService: WatchHistoryService,
-  ) { }
+  ) {}
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }
@@ -21,7 +26,7 @@ export class ChannelService {
   /**Creates a channel for a new CREATOR user.*/
   async createChannelForCreator(userId: string, name: string) {
     const existingChannel = await this.prisma.channel.findUnique({
-      where: { ownerId: userId }
+      where: { ownerId: userId },
     });
 
     if (existingChannel) {
@@ -40,7 +45,6 @@ export class ChannelService {
       },
     });
   }
-
 
   /**Retrieves channel profile and content for public view.*/
   // async getPublicChannel(handle: string) {
@@ -116,8 +120,8 @@ export class ChannelService {
         },
         _count: {
           select: {
-            content: true,     // Total content count
-            follow: true,      // Total followers
+            content: true, // Total content count
+            follow: true, // Total followers
           },
         },
       },
@@ -167,13 +171,17 @@ export class ChannelService {
 
   /**Allows channel owner to update name, description, and handle (with rate limit).*/
   async updateChannel(userId: string, data: UpdateChannelDto) {
-    const channel = await this.prisma.channel.findUnique({ where: { ownerId: userId } });
+    const channel = await this.prisma.channel.findUnique({
+      where: { ownerId: userId },
+    });
     if (!channel) {
       throw new NotFoundException('Channel not found.');
     }
     const isOwner = channel.ownerId === userId;
     if (!isOwner) {
-      throw new ForbiddenException('You are not authorized to updated this channel. Only the channel owner can updated channel.');
+      throw new ForbiddenException(
+        'You are not authorized to updated this channel. Only the channel owner can updated channel.',
+      );
     }
     // // Logic for Handle Change Rate Limit (30 days)
     // if (data.handle && data.handle !== channel.handle) {
@@ -189,7 +197,10 @@ export class ChannelService {
       where: { ownerId: userId },
       data: {
         ...data,
-        lastHandleUpdate: data.handle && data.handle !== channel.handle ? new Date() : channel.lastHandleUpdate,
+        lastHandleUpdate:
+          data.handle && data.handle !== channel.handle
+            ? new Date()
+            : channel.lastHandleUpdate,
       },
     });
   }
@@ -213,12 +224,14 @@ export class ChannelService {
     // FIX: Select the channel ID and check for existence
     const channel = await this.prisma.channel.findUnique({
       where: { ownerId: userId },
-      select: { id: true }
+      select: { id: true },
     });
 
     if (!channel) {
       // This exception should be hit if the channel record is missing
-      throw new NotFoundException('Channel not found. Cannot rotate key without a channel record.');
+      throw new NotFoundException(
+        'Channel not found. Cannot rotate key without a channel record.',
+      );
     }
 
     const newKey = this.generateStreamKey();
@@ -254,11 +267,11 @@ export class ChannelService {
     // Build where clause for search
     const where = search
       ? {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { handle: { contains: search, mode: 'insensitive' as const } },
-        ],
-      }
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { handle: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
       : {};
 
     // Get total count for pagination
@@ -286,7 +299,7 @@ export class ChannelService {
     });
 
     // Get views for the channels
-    const channelIds = channels.map(c => c.id);
+    const channelIds = channels.map((c) => c.id);
     const views = await this.prisma.content.groupBy({
       by: ['channelId'],
       where: {
@@ -298,10 +311,10 @@ export class ChannelService {
     });
 
     const viewsMap = new Map(
-      views.map(v => [v.channelId, v._sum.views ?? 0])
+      views.map((v) => [v.channelId, v._sum.views ?? 0]),
     );
 
-    const data = channels.map(channel => ({
+    const data = channels.map((channel) => ({
       ...channel,
       totalViews: viewsMap.get(channel.id) ?? 0,
     }));
@@ -436,7 +449,11 @@ export class ChannelService {
     return this.getChannelById(channelByHandle.id);
   }
 
-  async getContentByChannelId(channelId: string, page: number = 1, limit: number = 10) {
+  async getContentByChannelId(
+    channelId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
     // Validate pagination parameters
     const validPage = Math.max(1, page);
     const validLimit = Math.max(1, Math.min(100, limit)); // Max 100 items per page
@@ -531,7 +548,7 @@ export class ChannelService {
         },
       });
 
-      followedChannelIds = follows.map(f => f.followingId);
+      followedChannelIds = follows.map((f) => f.followingId);
     }
 
     const exclusionFilter = {
@@ -642,7 +659,7 @@ export class ChannelService {
     });
 
     const highViewChannelIds = highViewContent
-      .map(c => c.channelId)
+      .map((c) => c.channelId)
       .filter((id): id is string => !!id && !followedChannelIds.includes(id));
 
     const highViewChannels = await this.prisma.channel.findMany({
@@ -668,7 +685,12 @@ export class ChannelService {
     // STEP 6: Merge + unique
     const channelMap = new Map<string, any>();
 
-    [...similarChannels, ...popularChannels, ...liveChannels, ...highViewChannels].forEach(channel => {
+    [
+      ...similarChannels,
+      ...popularChannels,
+      ...liveChannels,
+      ...highViewChannels,
+    ].forEach((channel) => {
       if (!channelMap.has(channel.id)) {
         channelMap.set(channel.id, channel);
       }
@@ -688,66 +710,70 @@ export class ChannelService {
       },
     });
 
-    const viewsMap = new Map<string, number>(candidateViews.map(v => [v.channelId as string, v._sum.views || 0]));
+    const viewsMap = new Map<string, number>(
+      candidateViews.map((v) => [v.channelId as string, v._sum.views || 0]),
+    );
 
     // STEP 8: Score system
-    const mappedChannels = await Promise.all(Array.from(channelMap.values()).map(async (channel) => {
-      const channelData = channel as any;
+    const mappedChannels = await Promise.all(
+      Array.from(channelMap.values()).map(async (channel) => {
+        const channelData = channel as any;
 
-      const totalViews = viewsMap.get(channelData.id) || 0;
-      const followCount = channelData._count?.follow || 0;
-      const contentCount = channelData._count?.content || 0;
-      const isLive = channelData.isLive || false;
+        const totalViews = viewsMap.get(channelData.id) || 0;
+        const followCount = channelData._count?.follow || 0;
+        const contentCount = channelData._count?.content || 0;
+        const isLive = channelData.isLive || false;
 
-      let category = channelData.category || null;
-      let currentViewers = 0;
+        let category = channelData.category || null;
+        let currentViewers = 0;
 
-      if (isLive) {
-        // Fetch latest live stream for this channel
-        const liveStream = await this.prisma.content.findFirst({
-          where: {
-            channelId: channelData.id,
-            contentType: 'LIVE_STREAM',
-            status: 'AVAILABLE',
-          },
-          orderBy: { createdAt: 'desc' },
-          select: { id: true, category: true },
-        });
+        if (isLive) {
+          // Fetch latest live stream for this channel
+          const liveStream = await this.prisma.content.findFirst({
+            where: {
+              channelId: channelData.id,
+              contentType: 'LIVE_STREAM',
+              status: 'AVAILABLE',
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, category: true },
+          });
 
-        if (liveStream) {
-          category = liveStream.category || category;
-          currentViewers = this.watchHistoryService.getActiveViewerCount(liveStream.id);
+          if (liveStream) {
+            category = liveStream.category || category;
+            currentViewers = this.watchHistoryService.getActiveViewerCount(
+              liveStream.id,
+            );
+          }
         }
-      }
 
-      const score =
-        followCount * 2 +
-        contentCount +
-        (isLive ? 10 : 0) +
-        Math.floor(totalViews / 50);
+        const score =
+          followCount * 2 +
+          contentCount +
+          (isLive ? 10 : 0) +
+          Math.floor(totalViews / 50);
 
-      return {
-        id: channelData.id,
-        name: channelData.name,
-        handle: channelData.handle,
-        logo: channelData.logo,
-        description: channelData.description,
-        isLive: !!isLive,
-        category,
-        currentViewers,
-        owner: channelData.owner,
-        followers: followCount,
-        contents: contentCount,
-        totalViews,
-        score,
-      };
-    }));
+        return {
+          id: channelData.id,
+          name: channelData.name,
+          handle: channelData.handle,
+          logo: channelData.logo,
+          description: channelData.description,
+          isLive: !!isLive,
+          category,
+          currentViewers,
+          owner: channelData.owner,
+          followers: followCount,
+          contents: contentCount,
+          totalViews,
+          score,
+        };
+      }),
+    );
 
     // STEP 9: Sort + limit
     mappedChannels.sort((a, b) => b.score - a.score);
 
     return mappedChannels.slice(0, limit);
   }
-
-
 }

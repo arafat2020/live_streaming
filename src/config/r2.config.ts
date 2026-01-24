@@ -7,7 +7,7 @@ const validateEnvVar = (name: string, value: string | undefined): string => {
   if (!value) {
     throw new Error(
       `❌ Missing required environment variable: ${name}\n` +
-      `Please set it in your .env file or environment.`
+        `Please set it in your .env file or environment.`,
     );
   }
   return value;
@@ -21,8 +21,14 @@ export const r2Client = new S3Client({
   region: 'auto', // R2 uses 'auto' for region
   endpoint: validateEnvVar('R2_ENDPOINT', process.env.R2_ENDPOINT),
   credentials: {
-    accessKeyId: validateEnvVar('R2_ACCESS_KEY_ID', process.env.R2_ACCESS_KEY_ID),
-    secretAccessKey: validateEnvVar('R2_SECRET_ACCESS_KEY', process.env.R2_SECRET_ACCESS_KEY),
+    accessKeyId: validateEnvVar(
+      'R2_ACCESS_KEY_ID',
+      process.env.R2_ACCESS_KEY_ID,
+    ),
+    secretAccessKey: validateEnvVar(
+      'R2_SECRET_ACCESS_KEY',
+      process.env.R2_SECRET_ACCESS_KEY,
+    ),
   },
   // ✅ Production optimizations
   maxAttempts: 3, // Retry failed requests
@@ -44,7 +50,7 @@ export const R2_BUCKET = process.env.R2_BUCKET_NAME || 'videos';
  */
 export const R2_PUBLIC_URL = validateEnvVar(
   'R2_PUBLIC_BUCKET_URL',
-  process.env.R2_PUBLIC_BUCKET_URL
+  process.env.R2_PUBLIC_BUCKET_URL,
 );
 
 /**

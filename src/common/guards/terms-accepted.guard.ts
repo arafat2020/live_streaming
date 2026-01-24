@@ -1,8 +1,7 @@
-import { 
-  Injectable, 
-  CanActivate, 
-  ExecutionContext, 
-  ForbiddenException,
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -21,10 +20,10 @@ export class TermsAcceptedGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Check if route has @SkipTermsCheck() decorator
-    const skipTermsCheck = this.reflector.getAllAndOverride<boolean>('skipTermsCheck', [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const skipTermsCheck = this.reflector.getAllAndOverride<boolean>(
+      'skipTermsCheck',
+      [context.getHandler(), context.getClass()],
+    );
 
     if (skipTermsCheck) {
       return true;
@@ -54,14 +53,12 @@ export class TermsAcceptedGuard implements CanActivate {
       return true;
     }
 
-    const hasAcceptedAll = 
-      user.ageConfirmed && 
-      user.termsAccepted && 
-      user.privacyAccepted;
+    const hasAcceptedAll =
+      user.ageConfirmed && user.termsAccepted && user.privacyAccepted;
 
     // if (!hasAcceptedAll) {
     //   this.logger.warn(`❌ User ${userId} has NOT accepted terms - blocking`);
-      
+
     //   throw new ForbiddenException({
     //     statusCode: 403,
     //     message: 'You must accept the Terms of Service and Privacy Policy to continue',
@@ -70,7 +67,7 @@ export class TermsAcceptedGuard implements CanActivate {
     //   });
     // }
 
-    this.logger.log(`✅ User ${userId} has accepted terms`);
+    this.logger.log(`✅ User ${userId} has accepted terms`, hasAcceptedAll);
     return true;
   }
 }

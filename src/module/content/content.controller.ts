@@ -1,33 +1,32 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
-  Query,
-  ParseUUIDPipe,
+  Get,
   HttpCode,
   HttpStatus,
-  Res,
-  Req,
-  UseGuards,
   Ip,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
-import { ContentService } from './content.service';
-import { CreateContentDto } from './dto/create-content.dto';
-import { UpdateContentDto } from './dto/update-content.dto';
-import { QueryContentDto } from './dto/query-content.dto';
+import { ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
-import { ApiOperation } from '@nestjs/swagger';
-import { GetMe } from '../user/dto/request-with-user.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GetMe } from '../user/dto/request-with-user.interface';
+import { ContentService } from './content.service';
+import { QueryContentDto } from './dto/query-content.dto';
+import { UpdateContentDto } from './dto/update-content.dto';
 
 @Controller('content')
 export class ContentController {
-  constructor(private readonly contentService: ContentService) { }
+  constructor(private readonly contentService: ContentService) {}
   // @ApiOperation({ summary: 'Create new content for a channel' })
   // @Post()
   // async create(@Body() dto: CreateContentDto, @Res() res: Response) {
@@ -41,10 +40,7 @@ export class ContentController {
   // }
   @ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
   @Get('live-broadcast')
-  async liveOnRappioList(
-    @Req() req: GetMe,
-    @Res() res: Response,
-  ) {
+  async liveOnRappioList(@Req() req: GetMe, @Res() res: Response) {
     const userId = req.user?.id;
     const data = await this.contentService.liveOnRappioList(userId);
 
@@ -52,10 +48,12 @@ export class ContentController {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Content retrieved successfully.',
-      data: data
+      data: data,
     });
   }
-  @ApiOperation({ summary: 'List contents (supports filtering, search and pagination)' })
+  @ApiOperation({
+    summary: 'List contents (supports filtering, search and pagination)',
+  })
   @Get()
   // @UseGuards(JwtAuthGuard)
   async findAll(
@@ -73,7 +71,7 @@ export class ContentController {
       data: {
         data: result.data,
         meta: result.meta,
-      }
+      },
     });
   }
   @ApiOperation({ summary: 'Get a single content item by its ID' })
@@ -81,7 +79,7 @@ export class ContentController {
   async findOne(
     @Req() req: GetMe,
     @Param('id', ParseUUIDPipe) id: string,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const userId = req.user?.id;
     const data = await this.contentService.findOne(id, userId);
@@ -92,10 +90,16 @@ export class ContentController {
       data,
     });
   }
-  @ApiOperation({ summary: 'Update content by its ID (partial updates supported)' })
+  @ApiOperation({
+    summary: 'Update content by its ID (partial updates supported)',
+  })
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContentDto, @Res() res: Response) {
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateContentDto,
+    @Res() res: Response,
+  ) {
     const data = await this.contentService.update(id, dto);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -109,7 +113,11 @@ export class ContentController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
-  async remove(@Req() req: GetMe, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+  async remove(
+    @Req() req: GetMe,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
     const userId = req.user?.id;
     const userRole = req.user.role;
     const data = await this.contentService.remove(id, userId, userRole);
@@ -122,7 +130,10 @@ export class ContentController {
   }
 
   // optional route to increment views
-  @ApiOperation({ summary: 'Increment view count for a content item (idempotent endpoint for tracking views)' })
+  @ApiOperation({
+    summary:
+      'Increment view count for a content item (idempotent endpoint for tracking views)',
+  })
   @Post(':id/views')
   @HttpCode(200)
   incrementViews(
@@ -132,5 +143,4 @@ export class ContentController {
   ) {
     return this.contentService.incrementViews(id, req.user?.id, ip);
   }
-
 }

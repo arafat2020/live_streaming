@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Delete, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Delete,
+  Patch,
+} from '@nestjs/common';
 import { BanService } from './ban.service';
 import { UserService } from './user.service';
 import { BanUserDto } from './dto/ban-user.dto';
@@ -15,52 +25,57 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminBanController {
-    constructor(
-        private readonly banService: BanService,
-        private readonly userService: UserService,
-    ) { }
+  constructor(
+    private readonly banService: BanService,
+    private readonly userService: UserService,
+  ) {}
 
-    @Get('search')
-    @ApiOperation({ summary: 'Search users for banning with pagination' })
-    @ApiQuery({ name: 'q', required: false, description: 'Search query (email, name, or ID)' })
-    async search(
-        @Query('q') query: string,
-        @Query() pagination: PaginationDto
-    ) {
-        return this.banService.searchUsers(query, pagination.page, pagination.limit);
-    }
+  @Get('search')
+  @ApiOperation({ summary: 'Search users for banning with pagination' })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'Search query (email, name, or ID)',
+  })
+  async search(@Query('q') query: string, @Query() pagination: PaginationDto) {
+    return this.banService.searchUsers(
+      query,
+      pagination.page,
+      pagination.limit,
+    );
+  }
 
-    @Post(':userId')
-    async ban(
-        @Param('userId') userId: string,
-        @Body() dto: BanUserDto,
-        @GetUser('id') adminId: string,
-    ) {
-        return this.banService.banUser(userId, adminId, dto);
-    }
+  @Post(':userId')
+  async ban(
+    @Param('userId') userId: string,
+    @Body() dto: BanUserDto,
+    @GetUser('id') adminId: string,
+  ) {
+    return this.banService.banUser(userId, adminId, dto);
+  }
 
-    @Post(':userId/unban')
-    async unban(@Param('userId') userId: string) {
-        return this.banService.unbanUser(userId);
-    }
-    @Patch(':userId/shadow-ban')
-    @ApiOperation({ summary: 'Toggle shadow-ban on a user' })
-    async toggleShadowBan(
-        @Param('userId') userId: string,
-        @Body('isShadowBanned') isShadowBanned: boolean,
-    ) {
-        return this.userService.toggleShadowBan(userId, isShadowBanned);
-    }
+  @Post(':userId/unban')
+  async unban(@Param('userId') userId: string) {
+    return this.banService.unbanUser(userId);
+  }
+  @Patch(':userId/shadow-ban')
+  @ApiOperation({ summary: 'Toggle shadow-ban on a user' })
+  async toggleShadowBan(
+    @Param('userId') userId: string,
+    @Body('isShadowBanned') isShadowBanned: boolean,
+  ) {
+    return this.userService.toggleShadowBan(userId, isShadowBanned);
+  }
 
-    @Get('list')
-    @ApiOperation({ summary: 'Get all banned users with pagination' })
-    async listBanned(@Query() pagination: PaginationDto) {
-        return this.banService.getBannedUsers(pagination.page, pagination.limit);
-    }
+  @Get('list')
+  @ApiOperation({ summary: 'Get all banned users with pagination' })
+  async listBanned(@Query() pagination: PaginationDto) {
+    return this.banService.getBannedUsers(pagination.page, pagination.limit);
+  }
 
-    @Delete(':userId')
-    @ApiOperation({ summary: 'Permanently delete a user' })
-    async deleteUser(@Param('userId') userId: string) {
-        return this.banService.deleteUser(userId);
-    }
+  @Delete(':userId')
+  @ApiOperation({ summary: 'Permanently delete a user' })
+  async deleteUser(@Param('userId') userId: string) {
+    return this.banService.deleteUser(userId);
+  }
 }

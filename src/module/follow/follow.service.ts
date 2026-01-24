@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryFollowDto } from './dto/query-follow.dto';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
@@ -9,7 +13,7 @@ export class FollowService {
   constructor(
     private prisma: PrismaService,
     private watchHistoryService: WatchHistoryService,
-  ) { }
+  ) {}
 
   async followChannel(userId: string, channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
@@ -151,26 +155,30 @@ export class FollowService {
     ]);
 
     // Flatten and restructure response
-    const data = await Promise.all(follows.map((item: any) => {
-      const { _count, content, ...channelData } = item.following;
-      const liveStream = content && content.length > 0 ? content[0] : null;
+    const data = await Promise.all(
+      follows.map((item: any) => {
+        const { _count, content, ...channelData } = item.following;
+        const liveStream = content && content.length > 0 ? content[0] : null;
 
-      let currentViewers = 0;
-      if (channelData.isLive && liveStream) {
-        currentViewers = this.watchHistoryService.getActiveViewerCount(liveStream.id);
-      }
+        let currentViewers = 0;
+        if (channelData.isLive && liveStream) {
+          currentViewers = this.watchHistoryService.getActiveViewerCount(
+            liveStream.id,
+          );
+        }
 
-      return {
-        followedAt: item.createdAt,
-        channel: {
-          ...channelData,
-          followerCount: _count?.follow || 0,
-          category: liveStream?.category || null,
-          currentViewers,
-        },
-        owner: item.following.owner,
-      };
-    }));
+        return {
+          followedAt: item.createdAt,
+          channel: {
+            ...channelData,
+            followerCount: _count?.follow || 0,
+            category: liveStream?.category || null,
+            currentViewers,
+          },
+          owner: item.following.owner,
+        };
+      }),
+    );
 
     return {
       data,
@@ -183,7 +191,6 @@ export class FollowService {
     };
   }
 
-
   async getFollowers(channnelId: string) {
     const channel = await this.prisma.channel.findUnique({
       where: { id: channnelId },
@@ -195,7 +202,7 @@ export class FollowService {
       where: { followingId: channel.id },
       select: {
         follower: { select: publicUserSelect },
-        createdAt: true
+        createdAt: true,
       },
     });
   }

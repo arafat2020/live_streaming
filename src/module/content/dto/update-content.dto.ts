@@ -1,12 +1,20 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 import { ContentStatus, ContentType } from '@prisma/client';
 
 export class UpdateContentDto {
-//   @ApiPropertyOptional({
-//     description: 'Channel ID to associate this content with',
-//     example: 'uuid',
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'Channel ID to associate this content with',
+  //     example: 'uuid',
+  //   })
   @IsOptional()
   @IsUUID()
   channelId?: string;
@@ -35,20 +43,20 @@ export class UpdateContentDto {
   @IsString()
   category?: string;
 
-//   @ApiPropertyOptional({
-//     description: 'Content type',
-//     enum: ContentType,
-//     example: ContentType.VOD,
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'Content type',
+  //     enum: ContentType,
+  //     example: ContentType.VOD,
+  //   })
   @IsOptional()
   @IsEnum(ContentType)
   contentType?: ContentType;
 
-//   @ApiPropertyOptional({
-//     description: 'Current status of the content',
-//     enum: ContentStatus,
-//     example: ContentStatus.AVAILABLE,
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'Current status of the content',
+  //     enum: ContentStatus,
+  //     example: ContentStatus.AVAILABLE,
+  //   })
   @IsOptional()
   @IsEnum(ContentStatus)
   status?: ContentStatus;
@@ -62,42 +70,42 @@ export class UpdateContentDto {
   @Min(0)
   durationSeconds?: number;
 
-//   @ApiPropertyOptional({
-//     description: 'HLS playback URL',
-//     example: 'https://pub-xxx.r2.dev/videos/lessonId/index.m3u8',
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'HLS playback URL',
+  //     example: 'https://pub-xxx.r2.dev/videos/lessonId/index.m3u8',
+  //   })
   @IsOptional()
   @IsString()
   playbackUrl?: string;
 
-//   @ApiPropertyOptional({
-//     description: 'R2 folder prefix',
-//     example: 'videos/lessonId',
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'R2 folder prefix',
+  //     example: 'videos/lessonId',
+  //   })
   @IsOptional()
   @IsString()
   r2Prefix?: string;
 
-//   @ApiPropertyOptional({
-//     description: 'Original uploaded file name',
-//     example: 'my_video.mp4',
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'Original uploaded file name',
+  //     example: 'my_video.mp4',
+  //   })
   @IsOptional()
   @IsString()
   originalFileName?: string;
 
-//   @ApiPropertyOptional({
-//     description: 'Thumbnail image URL',
-//     example: 'https://cdn.example.com/thumb.jpg',
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'Thumbnail image URL',
+  //     example: 'https://cdn.example.com/thumb.jpg',
+  //   })
   @IsOptional()
   @IsString()
   thumbnailUrl?: string;
 
-//   @ApiPropertyOptional({
-//     description: 'Is this premium content?',
-//     example: false,
-//   })
+  //   @ApiPropertyOptional({
+  //     description: 'Is this premium content?',
+  //     example: false,
+  //   })
   @IsOptional()
   @IsBoolean()
   isPremium?: boolean;

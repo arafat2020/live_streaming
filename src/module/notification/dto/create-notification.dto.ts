@@ -1,5 +1,5 @@
-import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 
 export enum NotificationType {
   CHANNEL_LIVE = 'CHANNEL_LIVE',
@@ -12,7 +12,10 @@ export class CreateNotificationDto {
   @IsString()
   userId: string;
 
-  @ApiPropertyOptional({ enum: NotificationType, description: 'Type of notification' })
+  @ApiPropertyOptional({
+    enum: NotificationType,
+    description: 'Type of notification',
+  })
   @IsOptional()
   @IsEnum(NotificationType)
   type?: NotificationType;
@@ -25,5 +28,4 @@ export class CreateNotificationDto {
   @IsOptional()
   @IsString()
   contentId?: string;
-
 }

@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
 import { CreateModeratorDto } from './dto/create-moderator.dto';
 import { UpdateModeratorDto } from './dto/update-moderator.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -11,8 +17,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 @Injectable()
 export class ModeratorService {
   private readonly logger = new Logger(ModeratorService.name);
-  constructor(private readonly prisma: PrismaService) { }
-
+  constructor(private readonly prisma: PrismaService) {}
 
   @Cron(CronExpression.EVERY_HOUR)
   async cleanupExpiredBans() {
@@ -30,25 +35,21 @@ export class ModeratorService {
     }
   }
 
-
-
-
   // ... existing methods ...
 
   async getBannedUsers(channelId: string, requesterId: string) {
     // 1. Verify requester is moderator or owner
     const isMod = await this.checkIsModerator(requesterId, channelId);
     if (!isMod) {
-      throw new ForbiddenException('You do not have permission to moderate this channel');
+      throw new ForbiddenException(
+        'You do not have permission to moderate this channel',
+      );
     }
 
     const bannedUsers = await this.prisma.banUser.findMany({
       where: {
         channelId,
-        OR: [
-          { banType: BanType.PERMANENT },
-          { expiresAt: { gt: new Date() } }
-        ]
+        OR: [{ banType: BanType.PERMANENT }, { expiresAt: { gt: new Date() } }],
       },
       include: {
         user: {
@@ -72,8 +73,6 @@ export class ModeratorService {
   }
 
   // ... rest of the file ...
-
-
 
   async create(createModeratorDto: CreateModeratorDto, requesterId: string) {
     const { userId, channelId } = createModeratorDto;
@@ -109,7 +108,9 @@ export class ModeratorService {
     });
 
     if (existingModerator) {
-      throw new BadRequestException('User is already a moderator of this channel');
+      throw new BadRequestException(
+        'User is already a moderator of this channel',
+      );
     }
 
     // Create moderator
@@ -376,7 +377,6 @@ export class ModeratorService {
   }
 
   async banUser(channelId: string, dto: ModeratorBanUserDto, bannedBy: string) {
-
     const channel = await this.prisma.channel.findUnique({
       where: { id: channelId },
     });
@@ -459,7 +459,9 @@ export class ModeratorService {
     // 1. Verify requester is moderator or owner
     const isMod = await this.checkIsModerator(requesterId, channelId);
     if (!isMod) {
-      throw new ForbiddenException('You do not have permission to moderate this channel');
+      throw new ForbiddenException(
+        'You do not have permission to moderate this channel',
+      );
     }
 
     const ban = await this.prisma.banUser.findUnique({
@@ -484,8 +486,6 @@ export class ModeratorService {
     };
   }
 
-
-
   async checkUserBan(channelId: string, userId: string) {
     const ban = await this.prisma.banUser.findUnique({
       where: {
@@ -499,7 +499,7 @@ export class ModeratorService {
         banType: true,
         expiresAt: true,
         reason: true,
-      }
+      },
     });
 
     // No ban record
@@ -529,11 +529,17 @@ export class ModeratorService {
     };
   }
 
-  async searchUsersForModeration(channelId: string, query: string, requesterId: string) {
+  async searchUsersForModeration(
+    channelId: string,
+    query: string,
+    requesterId: string,
+  ) {
     // 1. Verify requester is moderator or owner of the channel
     const isMod = await this.checkIsModerator(requesterId, channelId);
     if (!isMod) {
-      throw new ForbiddenException('You do not have permission to moderate this channel');
+      throw new ForbiddenException(
+        'You do not have permission to moderate this channel',
+      );
     }
 
     // 2. Search users (efficient query)
@@ -551,7 +557,7 @@ export class ModeratorService {
         profileImage: true,
         moderator: {
           where: { channelId },
-          select: { id: true }
+          select: { id: true },
         },
         banUser: {
           where: { channelId },
@@ -559,15 +565,15 @@ export class ModeratorService {
             id: true,
             banType: true,
             expiresAt: true,
-            reason: true
-          }
+            reason: true,
+          },
         },
       },
       take: 20,
     });
 
-    return users.map(user => {
-      const activeBan = user.banUser.find(ban => {
+    return users.map((user) => {
+      const activeBan = user.banUser.find((ban) => {
         if (ban.banType === BanType.PERMANENT) return true;
         return ban.expiresAt && ban.expiresAt > new Date();
       });
@@ -603,7 +609,9 @@ export class ModeratorService {
     });
 
     if (existingAppeal) {
-      throw new BadRequestException('You already have a pending appeal for this channel');
+      throw new BadRequestException(
+        'You already have a pending appeal for this channel',
+      );
     }
 
     // 3. Create appeal
@@ -620,7 +628,9 @@ export class ModeratorService {
     // 1. Verify requester is moderator or owner
     const isMod = await this.checkIsModerator(requesterId, channelId);
     if (!isMod) {
-      throw new ForbiddenException('You do not have permission to view appeals for this channel');
+      throw new ForbiddenException(
+        'You do not have permission to view appeals for this channel',
+      );
     }
 
     const appeals = await this.prisma.unbanAppeal.findMany({
@@ -645,7 +655,11 @@ export class ModeratorService {
     };
   }
 
-  async handleAppeal(appealId: string, dto: HandleAppealDto, requesterId: string) {
+  async handleAppeal(
+    appealId: string,
+    dto: HandleAppealDto,
+    requesterId: string,
+  ) {
     const { status, moderatorNote } = dto;
 
     // 1. Find appeal
@@ -661,7 +675,9 @@ export class ModeratorService {
     // 2. Verify requester is moderator or owner of the channel
     const isMod = await this.checkIsModerator(requesterId, appeal.channelId);
     if (!isMod) {
-      throw new ForbiddenException('You do not have permission to handle appeals for this channel');
+      throw new ForbiddenException(
+        'You do not have permission to handle appeals for this channel',
+      );
     }
 
     if (appeal.status !== AppealStatus.PENDING) {

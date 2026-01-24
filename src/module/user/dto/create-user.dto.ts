@@ -1,10 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-} from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { Match } from './match.decorator';
 //import { UserRole } from '@prisma/client';
 
@@ -19,12 +14,19 @@ export class CreateUserDto {
   @IsNotEmpty()
   lastName: string;
 
-  @ApiProperty({ example: 'nurse.sarah@clinic.com', description: 'Staff member email address' })
+  @ApiProperty({
+    example: 'nurse.sarah@clinic.com',
+    description: 'Staff member email address',
+  })
   @IsEmail()
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: '0190000', description: 'phone member (Optional)', required: false })
+  @ApiProperty({
+    example: '0190000',
+    description: 'phone member (Optional)',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   phone?: string;
@@ -40,10 +42,6 @@ export class CreateUserDto {
   @IsNotEmpty()
   @Match('password', { message: 'Passwords do not match' })
   confirmPassword: string;
-
-
-
-
 
   // @ApiProperty({ example: '1234567890', description: 'Unique professional license number' })
   // @IsString()

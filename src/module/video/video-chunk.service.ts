@@ -28,7 +28,9 @@ export class VideoChunkService {
   }
 
   // Initialize upload session
-  async initializeSession(data: Omit<UploadSession, 'createdAt' | 'chunks'>): Promise<void> {
+  async initializeSession(
+    data: Omit<UploadSession, 'createdAt' | 'chunks'>,
+  ): Promise<void> {
     const sessionDir = path.join(this.uploadDir, data.uploadId);
 
     // Create session directory
@@ -56,7 +58,9 @@ export class VideoChunkService {
     buffer: Buffer,
   ): Promise<{ chunksReceived: number; totalChunks: number }> {
     try {
-      this.logger.log(`💾 Saving chunk ${chunkIndex} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+      this.logger.log(
+        `💾 Saving chunk ${chunkIndex} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`,
+      );
 
       const sessionDir = path.join(this.uploadDir, uploadId);
       const metadataPath = path.join(sessionDir, 'metadata.json');
@@ -70,7 +74,9 @@ export class VideoChunkService {
 
       // ✅ IDEMPOTENCY CHECK: Skip if chunk already exists
       if (fs.existsSync(chunkPath)) {
-        this.logger.warn(`⚠️ Chunk ${chunkIndex} already exists, skipping (idempotent request)`);
+        this.logger.warn(
+          `⚠️ Chunk ${chunkIndex} already exists, skipping (idempotent request)`,
+        );
 
         // Still return current progress
         const metadata: UploadSession = JSON.parse(
@@ -105,7 +111,6 @@ export class VideoChunkService {
         chunksReceived: metadata.chunks.length,
         totalChunks: metadata.totalChunks,
       };
-
     } catch (error) {
       this.logger.error(`❌ Save chunk failed: ${error.message}`);
       this.logger.error(`  Upload ID: ${uploadId}, Chunk: ${chunkIndex}`);
@@ -114,8 +119,13 @@ export class VideoChunkService {
   }
 
   // Merge all chunks into single file (Memory Efficient)
-  async mergeChunksToFile(uploadId: string, targetFilePath: string): Promise<UploadSession> {
-    this.logger.log(`🔍 Starting merge for uploadId: ${uploadId} into ${targetFilePath}`);
+  async mergeChunksToFile(
+    uploadId: string,
+    targetFilePath: string,
+  ): Promise<UploadSession> {
+    this.logger.log(
+      `🔍 Starting merge for uploadId: ${uploadId} into ${targetFilePath}`,
+    );
 
     const sessionDir = path.join(this.uploadDir, uploadId);
     const metadataPath = path.join(sessionDir, 'metadata.json');
@@ -177,17 +187,21 @@ export class VideoChunkService {
 
     if (fs.existsSync(sessionDir)) {
       try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         fs.rmSync(sessionDir, { recursive: true, force: true });
         this.logger.log(`🗑️ Cleaned up session: ${uploadId}`);
       } catch (error) {
-        this.logger.error(`Failed to cleanup session ${uploadId}: ${error.message}`);
+        this.logger.error(
+          `Failed to cleanup session ${uploadId}: ${error.message}`,
+        );
         try {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           fs.rmSync(sessionDir, { recursive: true, force: true });
           this.logger.log(`🗑️ Cleaned up session (retry): ${uploadId}`);
         } catch (retryError) {
-          this.logger.error(`Failed to cleanup after retry: ${retryError.message}`);
+          this.logger.error(
+            `Failed to cleanup after retry: ${retryError.message}`,
+          );
         }
       }
     }
@@ -215,7 +229,9 @@ export class VideoChunkService {
       exists: true,
       chunksReceived: metadata.chunks.length,
       totalChunks: metadata.totalChunks,
-      progress: Math.round((metadata.chunks.length / metadata.totalChunks) * 100),
+      progress: Math.round(
+        (metadata.chunks.length / metadata.totalChunks) * 100,
+      ),
     };
   }
 

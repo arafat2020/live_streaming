@@ -7,4 +7,4 @@ import { ModeratorController } from './moderator.controller';
   providers: [ModeratorService],
   exports: [ModeratorService], // Export so other modules can use it
 })
-export class ModeratorModule { }
+export class ModeratorModule {}
