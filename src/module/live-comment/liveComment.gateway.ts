@@ -1,14 +1,14 @@
+import { forwardRef, Inject, Logger } from '@nestjs/common';
 import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
-  MessageBody,
   ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
 
 @WebSocketGateway({
@@ -39,7 +39,7 @@ export class LiveCommentGateway
 
   // Handle client disconnection AUTO-CLEANUP when user closes browser/tab
 
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     const contentId = this.socketToContent.get(client.id);
     const userId = this.socketToUser.get(client.id);
 
@@ -48,8 +48,18 @@ export class LiveCommentGateway
         `Client ${client.id} (User: ${userId || 'Anonymous'}) disconnected from content ${contentId}`,
       );
 
-      // Emit event so WatchHistoryService can update concurrent viewers
-      this.watchHistoryService.stopWatching(contentId, userId || client.id);
+      try {
+        // Emit event so WatchHistoryService can update concurrent viewers
+        await this.watchHistoryService.stopWatching(
+          contentId,
+          userId || client.id,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Error in stopWatching during disconnect: ${error.message}`,
+        );
+      }
+
       this.server.emit('viewer.left', { contentId, userId: userId || null });
 
       // BROADCAST LIVE STATS IMMEDIATELY
@@ -87,7 +97,7 @@ export class LiveCommentGateway
   // NEW: Start watching (triggers view count)
 
   @SubscribeMessage('start_watching')
-  handleStartWatching(
+  async handleStartWatching(
     @MessageBody() data: { contentId: string; userId?: string },
     @ConnectedSocket() client: Socket,
   ) {
@@ -103,12 +113,17 @@ export class LiveCommentGateway
 
     // Emit to backend to increment views
     const ipAddress = client.handshake.address;
-    this.watchHistoryService.startWatching(
-      contentId,
-      userId || client.id,
-      userId,
-      ipAddress,
-    );
+    try {
+      await this.watchHistoryService.startWatching(
+        contentId,
+        userId || client.id,
+        userId,
+        ipAddress,
+      );
+    } catch (error) {
+      this.logger.error(`Error in startWatching: ${error.message}`);
+    }
+
     this.server.emit('viewer.joined', { contentId, userId: userId || null });
 
     // BROADCAST LIVE STATS IMMEDIATELY
@@ -120,7 +135,7 @@ export class LiveCommentGateway
   // NEW: Stop watching (decrements concurrent viewers)
 
   @SubscribeMessage('stop_watching')
-  handleStopWatching(
+  async handleStopWatching(
     @MessageBody() data: { contentId: string; userId?: string },
     @ConnectedSocket() client: Socket,
   ) {
@@ -138,7 +153,15 @@ export class LiveCommentGateway
     );
 
     // Emit to backend to update concurrent viewers
-    this.watchHistoryService.stopWatching(contentId, userId || client.id);
+    try {
+      await this.watchHistoryService.stopWatching(
+        contentId,
+        userId || client.id,
+      );
+    } catch (error) {
+      this.logger.error(`Error in stopWatching: ${error.message}`);
+    }
+
     this.server.emit('viewer.left', { contentId, userId: userId || null });
 
     // BROADCAST LIVE STATS IMMEDIATELY

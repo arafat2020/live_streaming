@@ -77,7 +77,10 @@ export class WatchHistoryService {
     });
 
     if (!content) {
-      throw new NotFoundException('Content not found');
+      this.logger.warn(
+        `Increment attempt failed: Content ${contentId} not found`,
+      );
+      return { success: false, error: 'Content not found' };
     }
 
     // Perform atomic transaction: Create ViewTrack AND Increment View
