@@ -4,19 +4,21 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateContentDto } from './dto/create-content.dto';
-import { UpdateContentDto } from './dto/update-content.dto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { QueryContentDto, ContentSortBy } from './dto/query-content.dto';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
+import { CreateContentDto } from './dto/create-content.dto';
+import { ContentSortBy, QueryContentDto } from './dto/query-content.dto';
+import { UpdateContentDto } from './dto/update-content.dto';
 
 @Injectable()
 export class ContentService {
-  constructor(private prisma: PrismaService,
-    private readonly watchHistoryService: WatchHistoryService
-  ) { }
+  constructor(
+    private prisma: PrismaService,
+    private readonly watchHistoryService: WatchHistoryService,
+  ) {}
 
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
@@ -48,9 +50,10 @@ export class ContentService {
     const skip = (page - 1) * pageSize;
 
     // Determine sorting
-    const orderBy = sortBy === ContentSortBy.MOST_VIEWED
-      ? { views: 'desc' as const }
-      : { createdAt: 'desc' as const };
+    const orderBy =
+      sortBy === ContentSortBy.MOST_VIEWED
+        ? { views: 'desc' as const }
+        : { createdAt: 'desc' as const };
 
     // Build where clause
     const where: any = {};
@@ -85,9 +88,21 @@ export class ContentService {
         ...(where.AND || []),
         {
           OR: [
-            { isShadowBanned: false, channel: { owner: { isShadowBanned: false } } },
+            {
+              isShadowBanned: false,
+              channel: { owner: { isShadowBanned: false } },
+            },
             { channel: { ownerId: userId } },
-            ...(isAdmin ? [{ OR: [{ isShadowBanned: true }, { channel: { owner: { isShadowBanned: true } } }] }] : []),
+            ...(isAdmin
+              ? [
+                  {
+                    OR: [
+                      { isShadowBanned: true },
+                      { channel: { owner: { isShadowBanned: true } } },
+                    ],
+                  },
+                ]
+              : []),
           ],
         },
       ];
@@ -105,7 +120,7 @@ export class ContentService {
         select: { channelId: true },
       });
 
-      const bannedChannelIds = bannedChannels.map(ban => ban.channelId);
+      const bannedChannelIds = bannedChannels.map((ban) => ban.channelId);
 
       // If user is banned from any channels, exclude their content
       if (bannedChannelIds.length > 0) {
@@ -140,11 +155,12 @@ export class ContentService {
       this.prisma.content.count({ where }),
     ]);
 
-    const dataWithViewers = data.map(content => ({
+    const dataWithViewers = data.map((content) => ({
       ...content,
-      concurrentViewers: content.contentType === 'LIVE_STREAM'
-        ? this.watchHistoryService.getActiveViewerCount(content.id)
-        : 0,
+      concurrentViewers:
+        content.contentType === 'LIVE_STREAM'
+          ? this.watchHistoryService.getActiveViewerCount(content.id)
+          : 0,
     }));
 
     return {
@@ -160,10 +176,14 @@ export class ContentService {
       },
     };
   }
-  async liveOnRappioList(userId?: string) {
-    const where: any = {
-      status: "AVAILABLE",
-      contentType: "LIVE_STREAM"
+  async liveOnRappioList(query: QueryContentDto, userId?: string) {
+    const page = Math.max(query.page ?? 1, 1);
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.ContentWhereInput = {
+      status: 'AVAILABLE',
+      contentType: 'LIVE_STREAM',
     };
 
     if (userId) {
@@ -177,9 +197,21 @@ export class ContentService {
       where.AND = [
         {
           OR: [
-            { isShadowBanned: false, channel: { owner: { isShadowBanned: false } } },
+            {
+              isShadowBanned: false,
+              channel: { owner: { isShadowBanned: false } },
+            },
             { channel: { ownerId: userId } },
-            ...(isAdmin ? [{ OR: [{ isShadowBanned: true }, { channel: { owner: { isShadowBanned: true } } }] }] : []),
+            ...(isAdmin
+              ? [
+                  {
+                    OR: [
+                      { isShadowBanned: true },
+                      { channel: { owner: { isShadowBanned: true } } },
+                    ],
+                  },
+                ]
+              : []),
           ],
         },
       ];
@@ -188,33 +220,48 @@ export class ContentService {
       where.channel = { owner: { isShadowBanned: false } };
     }
 
-    const content = await this.prisma.content.findMany({
-      where,
-      include: {
-        channel: {
-          include: {
-            owner: {
-              select: {
-                id: true,
-                firstName: true,
-                profileImage: true,
+    const [content, total] = await this.prisma.$transaction([
+      this.prisma.content.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { views: 'desc' },
+        include: {
+          channel: {
+            include: {
+              owner: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  profileImage: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.content.count({ where }),
+    ]);
 
-    if (!content) throw new NotFoundException('Content not found');
-
-    return content.map(item => ({
+    const mappedContent = content.map((item) => ({
       ...item,
-      concurrentViewers: item.contentType === 'LIVE_STREAM'
-        ? this.watchHistoryService.getActiveViewerCount(item.id)
-        : 0,
+      concurrentViewers:
+        item.contentType === 'LIVE_STREAM'
+          ? this.watchHistoryService.getActiveViewerCount(item.id)
+          : 0,
+      totalViews: item.views,
     }));
-  }
 
+    return {
+      data: mappedContent,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
 
   async findOne(id: string, userId?: string) {
     const content = await this.prisma.content.findUnique({
@@ -228,9 +275,9 @@ export class ContentService {
                 ...publicUserSelect,
                 role: true,
                 isShadowBanned: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
         watchHistory: { orderBy: { createdAt: 'desc' }, take: 50 }, // example
       },
@@ -239,7 +286,8 @@ export class ContentService {
     if (!content) throw new NotFoundException('Content not found');
 
     // Shadow ban protection for direct access
-    const isShadowBanned = content.isShadowBanned || content.channel?.owner?.isShadowBanned;
+    const isShadowBanned =
+      content.isShadowBanned || content.channel?.owner?.isShadowBanned;
 
     if (isShadowBanned) {
       let canSee = false;
@@ -249,7 +297,7 @@ export class ContentService {
         } else {
           const requestingUser = await this.prisma.user.findUnique({
             where: { id: userId },
-            select: { role: true }
+            select: { role: true },
           });
           if (requestingUser?.role === 'ADMIN') {
             canSee = true;
@@ -262,13 +310,15 @@ export class ContentService {
       }
     }
 
-    const concurrentViewers = content.contentType === 'LIVE_STREAM'
-      ? this.watchHistoryService.getActiveViewerCount(id)
-      : 0;
+    const concurrentViewers =
+      content.contentType === 'LIVE_STREAM'
+        ? this.watchHistoryService.getActiveViewerCount(id)
+        : 0;
 
     return {
       ...content,
       concurrentViewers,
+      totalViews: content.views,
     };
   }
 
@@ -278,13 +328,13 @@ export class ContentService {
       throw new BadRequestException('ID is required');
     }
     const isExists = await this.prisma.content.findUnique({
-      where: { id }
+      where: { id },
     });
     if (!isExists) {
       throw new NotFoundException(`Content with ID ${id} not found`);
     }
     const data: any = { ...dto };
-    if ((dto).channelId) {
+    if (dto.channelId) {
       data.channel = { connect: { id: (dto as any).channelId } };
       delete data.channelId;
     }
@@ -299,7 +349,6 @@ export class ContentService {
 
     return updated;
   }
-
 
   async remove(id: string, userId: string, userRole?: string) {
     // Find the content with channel owner info
@@ -328,7 +377,9 @@ export class ContentService {
     const isAdmin = userRole === 'ADMIN';
     // VERIFY: Only channel owner can delete
     if (!isOwner && !isAdmin) {
-      throw new ForbiddenException('You are not authorized to delete this content. Only the channel owner can delete content.');
+      throw new ForbiddenException(
+        'You are not authorized to delete this content. Only the channel owner can delete content.',
+      );
     }
 
     // Delete the content
@@ -348,9 +399,10 @@ export class ContentService {
 
     const skip = (page - 1) * pageSize;
 
-    const orderBy = sortBy === ContentSortBy.MOST_VIEWED
-      ? { views: 'desc' as const }
-      : { createdAt: 'desc' as const };
+    const orderBy =
+      sortBy === ContentSortBy.MOST_VIEWED
+        ? { views: 'desc' as const }
+        : { createdAt: 'desc' as const };
 
     const where: any = {};
 
@@ -415,8 +467,11 @@ export class ContentService {
   }
 
   async toggleShadowBan(id: string, isShadowBanned: boolean) {
-    const shadowBanValue = String(isShadowBanned) === 'true' || isShadowBanned === true;
-    console.log(`[toggleShadowBan] id: ${id}, isShadowBanned (raw): ${isShadowBanned}, shadowBanValue (resolved): ${shadowBanValue}`);
+    const shadowBanValue =
+      String(isShadowBanned) === 'true' || isShadowBanned === true;
+    console.log(
+      `[toggleShadowBan] id: ${id}, isShadowBanned (raw): ${isShadowBanned}, shadowBanValue (resolved): ${shadowBanValue}`,
+    );
 
     const content = await this.prisma.content.findUnique({
       where: { id },
@@ -445,7 +500,9 @@ export class ContentService {
       }
     }
 
-    console.log(`[toggleShadowBan] setting isShadowBanned to ${shadowBanValue} and status to ${newStatus}`);
+    console.log(
+      `[toggleShadowBan] setting isShadowBanned to ${shadowBanValue} and status to ${newStatus}`,
+    );
 
     const result = await this.prisma.content.update({
       where: { id },

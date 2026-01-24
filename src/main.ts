@@ -27,14 +27,21 @@ async function bootstrap() {
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
   app.enableCors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       const allowedOrigins = [
         'http://localhost:5173',
         'https://rappio-tv.netlify.app',
-        'https://rappio.tv'
+        'https://rappio.tv',
       ];
       // Allow requests with no origin (like mobile apps or curl)
-      if (!origin || allowedOrigins.indexOf(origin) !== -1 || origin.includes('localhost')) {
+      if (
+        !origin ||
+        allowedOrigins.indexOf(origin) !== -1 ||
+        origin.includes('localhost')
+      ) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
@@ -44,11 +51,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Serve HLS files from uploads     
-  app.use(
-    '/uploads',
-    express.static(path.join(process.cwd(), 'uploads')),
-  );
+  // Serve HLS files from uploads
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   // Serve live stream HLS files
   app.use(
@@ -77,7 +81,6 @@ async function bootstrap() {
   app.listen(port, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://localhost:${port}`);
   });
-
 }
 
 bootstrap().catch((err) => {

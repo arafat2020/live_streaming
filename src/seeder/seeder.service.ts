@@ -1,12 +1,16 @@
-import { Injectable, OnApplicationBootstrap, Logger } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
-import * as bcrypt from 'bcrypt';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
   private readonly logger = new Logger(SeederService.name);
 
@@ -20,39 +24,56 @@ export class SeederService implements OnApplicationBootstrap {
   }
 
   private async seedAdmin() {
-    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
-    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
+    const superAdminUsername = this.configService.get<string>(
+      'SUPER_ADMIN_USERNAME',
+    );
+    const superAdminEmail =
+      this.configService.get<string>('SUPER_ADMIN_EMAIL') || 'admin@rappio.tv';
+    const superAdminPassword = this.configService.get<string>(
+      'SUPER_ADMIN_PASSWORD',
+    );
 
-    if (!superAdminEmail || !superAdminPassword) {
+    if (!superAdminUsername || !superAdminPassword) {
       this.logger.warn(
-        'SUPER_ADMIN_EMAIL or SUPER_ADMIN_PASSWORD not set. Skipping admin seeding.',
+        'SUPER_ADMIN_USERNAME or SUPER_ADMIN_PASSWORD not set. Skipping admin seeding.',
       );
       return;
     }
 
-    const superAdmin = await this.prisma.user.findUnique({
+    // Check if admin exists by username or email
+    const existingAdminByUsername = await this.prisma.user.findUnique({
+      where: { username: superAdminUsername },
+    });
+
+    const existingAdminByEmail = await this.prisma.user.findUnique({
       where: { email: superAdminEmail },
     });
+
+    const superAdmin = existingAdminByUsername || existingAdminByEmail;
 
     const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
 
     if (superAdmin) {
+      // If found, ensure role is ADMIN
       if (superAdmin.role !== UserRole.ADMIN) {
         await this.prisma.user.update({
           where: { id: superAdmin.id },
           data: { role: UserRole.ADMIN },
         });
-        this.logger.log(`Updated role for existing user ${superAdminEmail} to ADMIN`);
+        this.logger.log(
+          `Updated role for existing user ${superAdmin.username || superAdmin.email} to ADMIN`,
+        );
       } else {
-        this.logger.log('Admin already exists with this email.');
+        this.logger.log('Admin already exists.');
       }
       return;
     }
 
-
+    // Create new admin user
     const user = await this.prisma.user.create({
       data: {
-        email: superAdminEmail,
+        username: superAdminUsername,
+        email: superAdminEmail, // Required by schema
         password: hashedPassword,
         firstName: 'Super',
         lastName: 'Admin',
@@ -68,26 +89,28 @@ export class SeederService implements OnApplicationBootstrap {
       },
     });
 
-    const baseHandle = superAdminEmail.split('@')[0];
-    let handle = baseHandle;
+    // Create Channel for Admin
+    const handle = superAdminUsername; // Use username as handle since it's unique
     const isHandleTaken = await this.prisma.channel.findUnique({
       where: { handle },
     });
 
-    if (isHandleTaken) {
-      handle = `${baseHandle}-${Math.floor(1000 + Math.random() * 9000)}`;
-    }
+    const finalHandle = isHandleTaken
+      ? `${handle}-${Math.floor(1000 + Math.random() * 9000)}`
+      : handle;
 
     const channelPayload = {
       ownerId: user.id,
       name: user.firstName,
-      handle,
+      handle: finalHandle,
       description: 'Platform owner',
       streamKey: this.generateStreamKey(),
     };
 
     await this.prisma.channel.create({ data: channelPayload });
 
-    this.logger.log(`✅ Default super admin created: ${superAdminEmail}`);
+    this.logger.log(
+      `✅ Default super admin created: ${superAdminUsername} (${superAdminEmail})`,
+    );
   }
 }

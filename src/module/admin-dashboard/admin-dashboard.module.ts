@@ -3,7 +3,7 @@ import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminDashboardController } from './admin-dashboard.controller';
 
 @Module({
-    controllers: [AdminDashboardController],
-    providers: [AdminDashboardService],
+  controllers: [AdminDashboardController],
+  providers: [AdminDashboardService],
 })
-export class AdminDashboardModule { }
+export class AdminDashboardModule {}

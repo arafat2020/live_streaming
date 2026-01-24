@@ -2,7 +2,6 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import axios from 'axios';
 import Cloudflare from 'cloudflare';
 
-
 // import Cloudflare from 'cloudflare';
 @Injectable()
 export class CloudflareService {
@@ -11,10 +10,14 @@ export class CloudflareService {
   constructor() {
     // 1. Validate and assert the types of environment variables
     if (!process.env.CF_ACCOUNT_ID) {
-      throw new InternalServerErrorException('Cloudflare account ID is not configured.');
+      throw new InternalServerErrorException(
+        'Cloudflare account ID is not configured.',
+      );
     }
     if (!process.env.CF_API_TOKEN) {
-      throw new InternalServerErrorException('Cloudflare API token is not configured.');
+      throw new InternalServerErrorException(
+        'Cloudflare API token is not configured.',
+      );
     }
 
     // Assign the validated values, asserting they are strings
@@ -22,7 +25,6 @@ export class CloudflareService {
     this.token = process.env.CF_API_TOKEN;
   }
   async createLiveInput(userId: string, name?: string) {
-
     console.log(`Creating Live Input for :${userId}`);
     const client = new Cloudflare({
       apiToken: this.token, // Use the validated token
@@ -35,19 +37,24 @@ export class CloudflareService {
       account_id: this.accountId,
       meta: {
         name: streamName,
-      }
+      },
     });
 
-    console.log("liveInput------------------>", liveInput);
+    console.log('liveInput------------------>', liveInput);
 
-    console.log("accountId---------------->", this.accountId)
-    console.log("token---------------->", this.token)
+    console.log('accountId---------------->', this.accountId);
+    console.log('token---------------->', this.token);
     const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/live_inputs`;
-    console.log("url---------------------->", url);
+    console.log('url---------------------->', url);
     const payload = { meta: { name: name || `user_${userId}_live` } };
-    console.log("payload---------------------->", payload);
-    const response = await axios.post(url, payload, { headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' } });
-    console.log("response---------------------->", response);
+    console.log('payload---------------------->', payload);
+    const response = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    console.log('response---------------------->', response);
     return response.data.result;
   }
 
@@ -81,7 +88,6 @@ export class CloudflareService {
     return response.data.result;
   }
 }
-
 
 // async createLiveInput(userId: string) {
 //   const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/live_inputs`;

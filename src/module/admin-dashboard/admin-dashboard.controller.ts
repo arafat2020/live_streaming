@@ -13,28 +13,28 @@ import { UserRole } from '@prisma/client';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminDashboardController {
-    constructor(private readonly adminDashboardService: AdminDashboardService) { }
+  constructor(private readonly adminDashboardService: AdminDashboardService) {}
 
-    @ApiOperation({ summary: 'Get overview statistics for the admin dashboard' })
-    @Get('stats')
-    async getStats(@Res() res: Response) {
-        const data = await this.adminDashboardService.getStats();
-        return sendResponse(res, {
-            statusCode: HttpStatus.OK,
-            success: true,
-            message: 'Admin dashboard statistics retrieved successfully',
-            data,
-        });
-    }
-    @ApiOperation({ summary: 'Get storage usage analytics' })
-    @Get('storage')
-    async getStorageStats(@Res() res: Response) {
-        const data = await this.adminDashboardService.getStorageStats();
-        return sendResponse(res, {
-            statusCode: HttpStatus.OK,
-            success: true,
-            message: 'Storage analytics retrieved successfully',
-            data,
-        });
-    }
+  @ApiOperation({ summary: 'Get overview statistics for the admin dashboard' })
+  @Get('stats')
+  async getStats(@Res() res: Response) {
+    const data = await this.adminDashboardService.getStats();
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Admin dashboard statistics retrieved successfully',
+      data,
+    });
+  }
+  @ApiOperation({ summary: 'Get storage usage analytics' })
+  @Get('storage')
+  async getStorageStats(@Res() res: Response) {
+    const data = await this.adminDashboardService.getStorageStats();
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Storage analytics retrieved successfully',
+      data,
+    });
+  }
 }

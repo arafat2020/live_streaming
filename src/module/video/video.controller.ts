@@ -1,4 +1,13 @@
-import { Controller, Post, UploadedFile, UseInterceptors, BadRequestException, Body, UseGuards, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
+  Body,
+  UseGuards,
+  Logger,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,7 +30,7 @@ export class VideoController {
   constructor(
     private readonly videoService: VideoService,
     private readonly chunkService: VideoChunkService,
-  ) { }
+  ) {}
   // =====================================================
   // EXISTING ENDPOINT (Keep for backward compatibility)
   // =====================================================
@@ -47,20 +56,25 @@ export class VideoController {
     const lessonId = uuidv4();
 
     // Use SAME processLargeVideo method
-    const { contentId, processingPromise } = await this.videoService.processLargeVideo(
-      lessonId,
-      dto,
-      file.buffer,
-    );
+    const { contentId, processingPromise } =
+      await this.videoService.processLargeVideo(lessonId, dto, file.buffer);
 
     // Handle processing completion in background
     processingPromise
       .then(async (result) => {
-        this.logger.log(`✅ Processing complete for ${lessonId}. Updating content status...`);
-        await this.videoService.updateContentAfterProcessing(contentId, result.playbackUrl, result.thumbnailUrl);
+        this.logger.log(
+          `✅ Processing complete for ${lessonId}. Updating content status...`,
+        );
+        await this.videoService.updateContentAfterProcessing(
+          contentId,
+          result.playbackUrl,
+          result.thumbnailUrl,
+        );
       })
       .catch((err) => {
-        this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
+        this.logger.error(
+          `❌ Background processing failed for ${lessonId}: ${err.message}`,
+        );
       });
 
     return {
@@ -99,10 +113,14 @@ export class VideoController {
       throw new BadRequestException('fileName is required');
     }
     if (!fileSize || fileSize <= 0) {
-      throw new BadRequestException('fileSize is required and must be greater than 0');
+      throw new BadRequestException(
+        'fileSize is required and must be greater than 0',
+      );
     }
     if (!totalChunks || totalChunks <= 0) {
-      throw new BadRequestException('totalChunks is required and must be greater than 0');
+      throw new BadRequestException(
+        'totalChunks is required and must be greater than 0',
+      );
     }
     if (!streamKey || streamKey.trim() === '') {
       throw new BadRequestException('streamKey is required');
@@ -191,7 +209,12 @@ export class VideoController {
     this.logger.log(`🎬 Completing upload: ${uploadId}`);
 
     const lessonId = uuidv4();
-    const tempOutputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
+    const tempOutputDir = path.resolve(
+      process.cwd(),
+      'uploads',
+      'videos',
+      lessonId,
+    );
 
     if (!fs.existsSync(tempOutputDir)) {
       fs.mkdirSync(tempOutputDir, { recursive: true });
@@ -199,37 +222,51 @@ export class VideoController {
 
     const mergedFilePath = path.join(tempOutputDir, 'merged_input.mp4');
 
-    const metadata = await this.chunkService.mergeChunksToFile(uploadId, mergedFilePath);
+    const metadata = await this.chunkService.mergeChunksToFile(
+      uploadId,
+      mergedFilePath,
+    );
 
     this.logger.log(`🎥 Starting video processing: ${lessonId}`);
 
     // ✅ Start processing in background (Fire and Forget)
-    const { contentId, processingPromise } = await this.videoService.processLargeVideo(
-      lessonId,
-      {
-        title: metadata.title,
-        description: metadata.description,
-        category: metadata.category,
-        streamKey: metadata.streamKey,
-      },
-      undefined, // No buffer
-      mergedFilePath, // Pass file path
-    );
+    const { contentId, processingPromise } =
+      await this.videoService.processLargeVideo(
+        lessonId,
+        {
+          title: metadata.title,
+          description: metadata.description,
+          category: metadata.category,
+          streamKey: metadata.streamKey,
+        },
+        undefined, // No buffer
+        mergedFilePath, // Pass file path
+      );
 
     // Handle processing completion in background
     processingPromise
       .then(async (result) => {
-        this.logger.log(`✅ Processing complete for ${lessonId}. Updating content status...`);
+        this.logger.log(
+          `✅ Processing complete for ${lessonId}. Updating content status...`,
+        );
         // Update content to AVAILABLE with playback URL and thumbnail
-        await this.videoService.updateContentAfterProcessing(contentId, result.playbackUrl, result.thumbnailUrl);
+        await this.videoService.updateContentAfterProcessing(
+          contentId,
+          result.playbackUrl,
+          result.thumbnailUrl,
+        );
       })
       .catch((err) => {
-        this.logger.error(`❌ Background processing failed for ${lessonId}: ${err.message}`);
+        this.logger.error(
+          `❌ Background processing failed for ${lessonId}: ${err.message}`,
+        );
       });
 
     await this.chunkService.cleanupSession(uploadId);
 
-    this.logger.log(`✅ Upload complete. Processing started for content: ${contentId}`);
+    this.logger.log(
+      `✅ Upload complete. Processing started for content: ${contentId}`,
+    );
 
     return {
       success: true,
@@ -253,5 +290,4 @@ export class VideoController {
 
     return { success: true, message: 'Upload cancelled' };
   }
-
 }

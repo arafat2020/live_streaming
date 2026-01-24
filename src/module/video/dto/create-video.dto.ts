@@ -44,5 +44,4 @@ export class CreateVideoDto {
   // @IsOptional()
   // @IsEnum(ContentType)
   // contentType?: ContentType;
-
 }

@@ -1,4 +1,15 @@
-import { Controller, Post, Body, Res, Get, Query, Param, Patch, Delete, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Res,
+  Get,
+  Query,
+  Param,
+  Patch,
+  Delete,
+  HttpStatus,
+} from '@nestjs/common';
 
 import { Response } from 'express';
 import sendResponse from '../utils/sendResponse';
@@ -77,7 +88,11 @@ export class NotificationController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateNotificationDto, @Res() res: Response) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateNotificationDto,
+    @Res() res: Response,
+  ) {
     const data = await this.notificationService.update(id, dto as any);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,

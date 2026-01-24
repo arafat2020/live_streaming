@@ -11,4 +11,4 @@ import { BanService } from './ban.service';
   providers: [UserService, BanService],
   exports: [UserService, BanService],
 })
-export class UserModule { }
+export class UserModule {}

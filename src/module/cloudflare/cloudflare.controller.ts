@@ -1,11 +1,9 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller } from '@nestjs/common';
 import { CloudflareService } from './cloudflare.service';
-import { CreateCloudflareDto } from './dto/create-cloudflare.dto';
-import { UpdateCloudflareDto } from './dto/update-cloudflare.dto';
 
 @Controller('cloudflare')
 export class CloudflareController {
-  constructor(private readonly cloudflareService: CloudflareService) { }
+  constructor(private readonly cloudflareService: CloudflareService) {}
 
   // @Post()
   // create(@Body() createCloudflareDto: CreateCloudflareDto) {

@@ -1,21 +1,20 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
-  BadRequestException
 } from '@nestjs/common';
+import { ContentStatus, ContentType } from '@prisma/client';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ContentType, ContentStatus } from '@prisma/client';
-import { R2UploadService } from './r2-upload.service';
 import { R2_PUBLIC_URL } from '../../config/r2.config';
+import { PrismaService } from '../../prisma/prisma.service';
 import { ContentService } from '../content/content.service';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
-import { ThumbnailService } from './thumbnail.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import { CreateVideoDto } from './dto/create-video.dto';
+import { R2UploadService } from './r2-upload.service';
+import { ThumbnailService } from './thumbnail.service';
 
 @Injectable()
 export class VideoService {
@@ -27,7 +26,7 @@ export class VideoService {
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly thumbnailService: ThumbnailService,
-  ) { }
+  ) {}
 
   /**
    * Validate if a stream key exists and belongs to an active channel
@@ -56,7 +55,9 @@ export class VideoService {
    * @param streamKey The secret stream key used for RTMP ingest
    * @returns Safe content ID and channel info
    */
-  async initializeLiveStream(streamKey: string): Promise<{ contentId: string; channel: any }> {
+  async initializeLiveStream(
+    streamKey: string,
+  ): Promise<{ contentId: string; channel: any }> {
     const channel = await this.prisma.channel.findUnique({
       where: { streamKey },
       select: {
@@ -64,8 +65,8 @@ export class VideoService {
         name: true,
         category: true,
         pendingTitle: true,
-        pendingDescription: true
-      }
+        pendingDescription: true,
+      },
     });
 
     if (!channel) throw new NotFoundException('Channel not found');
@@ -93,14 +94,24 @@ export class VideoService {
     dto: CreateVideoDto,
     fileBuffer?: Buffer,
     inputPath?: string, // ✅ Allow passing a file path directly
-  ): Promise<{ contentId: string; processingPromise: Promise<{ playbackUrl: string; thumbnailUrl: string }> }> {
+  ): Promise<{
+    contentId: string;
+    processingPromise: Promise<{ playbackUrl: string; thumbnailUrl: string }>;
+  }> {
     // ✅ VALIDATE INPUT
     if (!fileBuffer && !inputPath) {
-      throw new BadRequestException('Either fileBuffer or inputPath must be provided');
+      throw new BadRequestException(
+        'Either fileBuffer or inputPath must be provided',
+      );
     }
 
     const r2Prefix = `videos/${lessonId}`;
-    const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
+    const outputDir = path.resolve(
+      process.cwd(),
+      'uploads',
+      'videos',
+      lessonId,
+    );
 
     // Ensure directory exists
     if (!fs.existsSync(outputDir)) {
@@ -111,7 +122,9 @@ export class VideoService {
 
     // Save buffer to file if provided
     if (fileBuffer) {
-      this.logger.log(`📦 Processing video buffer: ${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+      this.logger.log(
+        `📦 Processing video buffer: ${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB`,
+      );
       fs.writeFileSync(finalInputPath, fileBuffer);
     } else {
       this.logger.log(`⚡ Processing existing file: ${inputPath}`);
@@ -127,16 +140,20 @@ export class VideoService {
       throw new BadRequestException('Input video file is empty');
     }
 
-    this.logger.log(`📊 Input file size: ${(fileStats.size / 1024 / 1024).toFixed(2)} MB`);
+    this.logger.log(
+      `📊 Input file size: ${(fileStats.size / 1024 / 1024).toFixed(2)} MB`,
+    );
 
     // Generate thumbnail from the original input video BEFORE processing
     let thumbnailUrl = '';
     try {
-      this.logger.log(`📸 Generating thumbnail from original video: ${lessonId}...`);
+      this.logger.log(
+        `📸 Generating thumbnail from original video: ${lessonId}...`,
+      );
       thumbnailUrl = await this.thumbnailService.generateThumbnailFromSegment(
         finalInputPath,
         r2Prefix,
-        lessonId
+        lessonId,
       );
       this.logger.log(`✅ Thumbnail generated: ${thumbnailUrl}`);
     } catch (thumbErr) {
@@ -152,25 +169,42 @@ export class VideoService {
         // Construct FFmpeg command
         const ffmpeg = spawn('ffmpeg', [
           '-y', // Overwrite output files without asking
-          '-i', finalInputPath,
-          '-err_detect', 'ignore_err', // Ignore errors in input
-          '-fflags', '+genpts', // Generate presentation timestamps
-          '-codec:v', 'libx264',
-          '-preset', 'fast', // Faster encoding
-          '-profile:v', 'main',
-          '-level', '3.1',
-          '-pix_fmt', 'yuv420p', // Ensure compatible pixel format
-          '-codec:a', 'aac',
-          '-ar', '44100',
-          '-ac', '2',
-          '-b:a', '128k', // Audio bitrate
+          '-i',
+          finalInputPath,
+          '-err_detect',
+          'ignore_err', // Ignore errors in input
+          '-fflags',
+          '+genpts', // Generate presentation timestamps
+          '-codec:v',
+          'libx264',
+          '-preset',
+          'fast', // Faster encoding
+          '-profile:v',
+          'main',
+          '-level',
+          '3.1',
+          '-pix_fmt',
+          'yuv420p', // Ensure compatible pixel format
+          '-codec:a',
+          'aac',
+          '-ar',
+          '44100',
+          '-ac',
+          '2',
+          '-b:a',
+          '128k', // Audio bitrate
 
           // ✅ OPTIMAL FOR WEB: 4-second segments
-          '-start_number', '0',
-          '-hls_time', '4',
-          '-hls_list_size', '0',
-          '-hls_segment_type', 'mpegts',
-          '-f', 'hls',
+          '-start_number',
+          '0',
+          '-hls_time',
+          '4',
+          '-hls_list_size',
+          '0',
+          '-hls_segment_type',
+          'mpegts',
+          '-f',
+          'hls',
           path.join(outputDir, 'index.m3u8'),
         ]);
 
@@ -182,29 +216,35 @@ export class VideoService {
           ffmpegOutput += data.toString();
         });
 
+        this.logger.log(`FFmpeg output:\n${ffmpegOutput.slice(-500)}`); // Last 500 chars
+
         ffmpeg.stderr?.on('data', (data) => {
           ffmpegError += data.toString();
         });
 
-        return new Promise<{ playbackUrl: string; thumbnailUrl: string }>((resolve, reject) => {
-          ffmpeg.on('close', async (code) => {
-            if (code === 0) {
-              this.logger.log(`✅ Transcoding done: ${lessonId}`);
+        return new Promise<{ playbackUrl: string; thumbnailUrl: string }>(
+          (resolve, reject) => {
+            ffmpeg.on('close', async (code) => {
+              if (code === 0) {
+                this.logger.log(`✅ Transcoding done: ${lessonId}`);
 
-              // Upload result to R2
-              const playbackUrl = await this.uploadToR2(outputDir, r2Prefix);
+                // Upload result to R2
+                const playbackUrl = await this.uploadToR2(outputDir, r2Prefix);
 
-              // Cleanup local files
-              this.cleanupLocalFiles(outputDir);
+                // Cleanup local files
+                this.cleanupLocalFiles(outputDir);
 
-              resolve({ playbackUrl, thumbnailUrl });
-            } else {
-              this.logger.error(`❌ FFmpeg failed for ${lessonId} with code ${code}`);
-              this.logger.error(`FFmpeg stderr: ${ffmpegError.slice(-500)}`); // Last 500 chars
-              reject(new Error(`FFmpeg failed with code ${code}`));
-            }
-          });
-        });
+                resolve({ playbackUrl, thumbnailUrl });
+              } else {
+                this.logger.error(
+                  `❌ FFmpeg failed for ${lessonId} with code ${code}`,
+                );
+                this.logger.error(`FFmpeg stderr: ${ffmpegError.slice(-500)}`); // Last 500 chars
+                reject(new Error(`FFmpeg failed with code ${code}`));
+              }
+            });
+          },
+        );
       } catch (err) {
         this.logger.error(`❌ Processing error: ${err.message}`);
         throw err;
@@ -214,11 +254,13 @@ export class VideoService {
     // Find channel by streamKey to get channelId
     const channel = await this.prisma.channel.findUnique({
       where: { streamKey: dto.streamKey },
-      select: { id: true, name: true }
+      select: { id: true, name: true },
     });
 
     if (!channel) {
-      throw new NotFoundException('Channel not found for the provided stream key');
+      throw new NotFoundException(
+        'Channel not found for the provided stream key',
+      );
     }
 
     // Create record in DB
@@ -238,15 +280,24 @@ export class VideoService {
   /**
    * Helper to upload entire folder to R2
    */
-  private async uploadToR2(localDir: string, r2Prefix: string): Promise<string> {
+  private async uploadToR2(
+    localDir: string,
+    r2Prefix: string,
+  ): Promise<string> {
     const files = fs.readdirSync(localDir);
-    const m3u8File = files.find(f => f.endsWith('.m3u8'));
+    const m3u8File = files.find((f) => f.endsWith('.m3u8'));
 
     for (const file of files) {
       const fullPath = path.join(localDir, file);
-      const contentType = file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t';
+      const contentType = file.endsWith('.m3u8')
+        ? 'application/vnd.apple.mpegurl'
+        : 'video/mp2t';
 
-      await this.r2UploadService.uploadFile(fullPath, `${r2Prefix}/${file}`, contentType);
+      await this.r2UploadService.uploadFile(
+        fullPath,
+        `${r2Prefix}/${file}`,
+        contentType,
+      );
     }
 
     return `${R2_PUBLIC_URL}/${r2Prefix}/${m3u8File}`;
@@ -263,7 +314,7 @@ export class VideoService {
 
     while (Date.now() - startTime < timeout) {
       const files = fs.readdirSync(localDir);
-      const tsFiles = files.filter(f => f.endsWith('.ts'));
+      const tsFiles = files.filter((f) => f.endsWith('.ts'));
 
       if (tsFiles.length > 0 && tsFiles.length === lastFileCount) {
         stableCount++;
@@ -273,7 +324,7 @@ export class VideoService {
       }
 
       lastFileCount = tsFiles.length;
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return false;
   }
@@ -293,11 +344,13 @@ export class VideoService {
           return;
         }
       } catch (err) {
-        this.logger.warn(`⚠️ Cleanup attempt ${attempt} failed: ${err.message}`);
+        this.logger.warn(
+          `⚠️ Cleanup attempt ${attempt} failed: ${err.message}`,
+        );
 
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -316,16 +369,50 @@ export class VideoService {
       const r2Prefix = `live/${contentId}`;
       const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
 
-      // Update the content record with the safe playback URL
+      // 1. Start R2 upload watcher immediately so it can begin uploading segments/manifest
+      const watcher = this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
+
+      // 2. WAIT for the manifest to actually appear on R2 before marking as LIVE
+      // This prevents the frontend from getting a 404 if it tries to play immediately
+      this.logger.log(
+        `⏳ Waiting for manifest to be available on R2: ${playbackUrl}`,
+      );
+
+      const manifestKey = `${r2Prefix}/index.m3u8`;
+      let isAvailable = false;
+      let attempts = 0;
+      const maxAttempts = 100; // Total 20 seconds timeout (100 * 200ms)
+
+      while (attempts < maxAttempts) {
+        const exists = await this.r2UploadService.fileExists(manifestKey);
+        if (exists) {
+          isAvailable = true;
+          this.logger.log(
+            `✅ Manifest is now available on R2 after ${attempts * 0.2}s`,
+          );
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        attempts++;
+      }
+
+      if (!isAvailable) {
+        this.logger.warn(
+          `⚠️ Manifest not found on R2 after ${maxAttempts}s. Proceeding anyway, but playback might fail initially.`,
+        );
+      }
+
+      // 3. Update the content record with the safe playback URL
       const content = await this.prisma.content.update({
         where: { id: contentId },
         data: {
           r2Prefix,
           playbackUrl,
-        }
+          status: ContentStatus.AVAILABLE,
+        },
       });
 
-      // Update channel to live status
+      // 4. Update channel to live status
       if (content.channelId) {
         await this.prisma.channel.update({
           where: { id: content.channelId },
@@ -335,13 +422,10 @@ export class VideoService {
 
       this.logger.log(`📺 Safe Playback URL: ${playbackUrl}`);
 
-      // Notify via WebSocket
+      // 5. Notify via WebSocket
       this.liveGateway.streamLive(playbackUrl, content);
 
-      // Start R2 upload watcher
-      const watcher = this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
       return { watcher };
-
     } catch (error) {
       this.logger.error(`Failed to handle live stream start: ${error.message}`);
       throw error;
@@ -396,7 +480,6 @@ export class VideoService {
       this.liveGateway.streamEnded(content?.id);
 
       this.logger.log(` Stream ${streamKey} ended successfully`);
-
     } catch (error) {
       this.logger.error(`Error handling stream stop: ${error.message}`);
       throw error;
@@ -432,13 +515,15 @@ export class VideoService {
         channelId: channel.id,
         channelName: channel.name,
         isLive: channel.isLive,
-        currentStream: currentStream ? {
-          id: currentStream.id,
-          title: currentStream.title,
-          description: currentStream.description,
-          startedAt: currentStream.createdAt,
-          playbackUrl: currentStream.playbackUrl,
-        } : null,
+        currentStream: currentStream
+          ? {
+              id: currentStream.id,
+              title: currentStream.title,
+              description: currentStream.description,
+              startedAt: currentStream.createdAt,
+              playbackUrl: currentStream.playbackUrl,
+            }
+          : null,
       };
     } catch (error) {
       this.logger.error(`Error getting stream stats: ${error.message}`);
@@ -449,10 +534,15 @@ export class VideoService {
   /**
    * Update the thumbnail URL for a live stream
    */
-  async updateLiveThumbnail(streamKey: string, thumbnailUrl: string): Promise<void> {
+  async updateLiveThumbnail(
+    streamKey: string,
+    thumbnailUrl: string,
+  ): Promise<void> {
     try {
       // We need to find the active content for this channel
-      const channel = await this.prisma.channel.findUnique({ where: { streamKey } });
+      const channel = await this.prisma.channel.findUnique({
+        where: { streamKey },
+      });
       if (!channel) return;
 
       const content = await this.prisma.content.findFirst({
@@ -470,9 +560,13 @@ export class VideoService {
           data: { thumbnailUrl },
         });
 
-        this.logger.log(`✅ Updated thumbnail for live stream ${streamKey}: ${thumbnailUrl}`);
+        this.logger.log(
+          `✅ Updated thumbnail for live stream ${streamKey}: ${thumbnailUrl}`,
+        );
       } else {
-        this.logger.warn(`⚠️ Could not find content for stream key ${streamKey} to update thumbnail`);
+        this.logger.warn(
+          `⚠️ Could not find content for stream key ${streamKey} to update thumbnail`,
+        );
       }
     } catch (error) {
       this.logger.error(`❌ Failed to update live thumbnail: ${error.message}`);
@@ -490,20 +584,22 @@ export class VideoService {
       // 1. Mark all channels as offline
       const resetChannels = await this.prisma.channel.updateMany({
         where: { isLive: true },
-        data: { isLive: false }
+        data: { isLive: false },
       });
 
       // 2. Mark all ongoing live contents as ended
       const resetContent = await this.prisma.content.updateMany({
         where: {
           contentType: ContentType.LIVE_STREAM,
-          status: ContentStatus.AVAILABLE
+          status: ContentStatus.AVAILABLE,
         },
-        data: { status: ContentStatus.ENDED }
+        data: { status: ContentStatus.ENDED },
       });
 
       if (resetChannels.count > 0 || resetContent.count > 0) {
-        this.logger.warn(`🧹 Cleaned up ${resetChannels.count} stale channels and ${resetContent.count} stale content records.`);
+        this.logger.warn(
+          `🧹 Cleaned up ${resetChannels.count} stale channels and ${resetContent.count} stale content records.`,
+        );
       } else {
         this.logger.log('✅ No stale streams found.');
       }
@@ -515,16 +611,24 @@ export class VideoService {
   /**
    * Update content status after successful processing
    */
-  async updateContentAfterProcessing(contentId: string, playbackUrl: string, thumbnailUrl?: string): Promise<void> {
+  async updateContentAfterProcessing(
+    contentId: string,
+    playbackUrl: string,
+    thumbnailUrl?: string,
+  ): Promise<void> {
     try {
       await this.contentService.update(contentId, {
         status: ContentStatus.AVAILABLE,
         playbackUrl,
         ...(thumbnailUrl && { thumbnailUrl }),
       });
-      this.logger.log(`✅ Content ${contentId} updated to AVAILABLE with playback URL${thumbnailUrl ? ' and thumbnail' : ''}`);
+      this.logger.log(
+        `✅ Content ${contentId} updated to AVAILABLE with playback URL${thumbnailUrl ? ' and thumbnail' : ''}`,
+      );
     } catch (error) {
-      this.logger.error(`❌ Failed to update content ${contentId}: ${error.message}`);
+      this.logger.error(
+        `❌ Failed to update content ${contentId}: ${error.message}`,
+      );
     }
   }
 }

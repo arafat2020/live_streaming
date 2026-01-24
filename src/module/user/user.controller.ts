@@ -22,7 +22,12 @@ import { GetMe, RequestWithUser } from './dto/request-with-user.interface';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request, Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
-import { ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 
 import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { Roles } from '../auth/guards/roles.decorator';
@@ -32,11 +37,14 @@ import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
 
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) { }
+  constructor(private readonly userService: UserService) {}
 
   @Get('check-availability')
   @ApiOperation({ summary: 'Check username availability' })
-  async checkUsernameAvailability(@Query('username') username: string, @Res() res: Response) {
+  async checkUsernameAvailability(
+    @Query('username') username: string,
+    @Res() res: Response,
+  ) {
     if (!username || username.length < 3) {
       return sendResponse(res, {
         statusCode: HttpStatus.BAD_REQUEST,
@@ -46,14 +54,17 @@ export class UserController {
       });
     }
 
-    const isAvailable = await this.userService.checkUsernameAvailability(username);
+    const isAvailable =
+      await this.userService.checkUsernameAvailability(username);
 
     const userData = { available: isAvailable };
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
-      message: isAvailable ? 'Username is available' : 'Username is already taken',
+      message: isAvailable
+        ? 'Username is available'
+        : 'Username is already taken',
       data: userData,
     });
   }
@@ -75,21 +86,28 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @Post('accept-terms')
   @ApiOperation({ summary: 'Accept Terms of Service and Privacy Policy' })
-  async acceptTerms(@Req() req: GetMe, @Body() dto: AcceptTermsDto, @Res() res: Response) {
-    const data = await this.userService.acceptTermsAndConditions(req.user.id, dto);
+  async acceptTerms(
+    @Req() req: GetMe,
+    @Body() dto: AcceptTermsDto,
+    @Res() res: Response,
+  ) {
+    const data = await this.userService.acceptTermsAndConditions(
+      req.user.id,
+      dto,
+    );
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'User Accept Terms and Conditions successfully.',
       data,
-    })
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('terms-status')
   //@ApiBearerAuth()
   @ApiOperation({ summary: 'Get terms acceptance status' })
-  async getTermsStatus(@Req() req: GetMe,) {
+  async getTermsStatus(@Req() req: GetMe) {
     //console.log("getTermsStatus hit ---------------------->")
     return this.userService.getTermsStatus(req.user.id);
   }
@@ -102,7 +120,6 @@ export class UserController {
   // async getTermsStatus(@Req() req: any) {
   //   return this.userService.getTermsStatus(req.user.id);
   // }
-
 
   // STATIC route first
   @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
@@ -126,7 +143,11 @@ export class UserController {
   @ApiOperation({ summary: 'Retrieve User by ID' })
   @ApiResponse({ status: 200, description: 'The requested User.' })
   @ApiResponse({ status: 404, description: 'User not found.' })
-  async findOne(@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
     const data = await this.userService.findOne(id);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -135,11 +156,17 @@ export class UserController {
       data,
     });
   }
-  @ApiOperation({ summary: 'Allows only ADMIN to update a user’s role or status' })
+  @ApiOperation({
+    summary: 'Allows only ADMIN to update a user’s role or status',
+  })
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
   @Roles(UserRole.ADMIN)
   @Patch('admin/:id')
-  async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Res() res: Response) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+    @Res() res: Response,
+  ) {
     const data = await this.userService.update(id, dto);
     return sendResponse(res, {
       statusCode: HttpStatus.CREATED,
@@ -223,8 +250,6 @@ export class UserController {
       success: true,
       message: 'User deleted successfully.',
       data,
-    })
+    });
   }
-
-
 }

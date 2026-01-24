@@ -1,7 +1,8 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import * as path from 'path';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-const NodeMediaServer = require('node-media-server');
+import NodeMediaServer from 'node-media-server';
+import * as path from 'path';
+
 @Injectable()
 export class MediaServerService implements OnModuleInit {
   private readonly logger = new Logger(MediaServerService.name);
@@ -40,6 +41,7 @@ export class MediaServerService implements OnModuleInit {
      * 🔐 STREAM KEY VALIDATION (VERY IMPORTANT)
      */
     nms.on('prePublish', async (id, streamPath, args) => {
+      this.logger.log(`🔑 Stream attempt: ${streamPath}`, args);
       const streamKey = streamPath.split('/').pop();
       if (!streamKey) {
         this.logger.warn(`❌ No stream key found`);
@@ -65,7 +67,7 @@ export class MediaServerService implements OnModuleInit {
       this.logger.log(`🔴 LIVE STARTED: ${streamKey}`);
 
       await this.prisma.stream.update({
-        where: { id:streamKey },
+        where: { id: streamKey },
         data: {
           status: 'LIVE',
           createdAt: new Date(),
@@ -82,7 +84,7 @@ export class MediaServerService implements OnModuleInit {
       this.logger.log(`⛔ LIVE ENDED: ${streamKey}`);
 
       await this.prisma.stream.update({
-        where: { id:streamKey },
+        where: { id: streamKey },
         data: {
           status: 'OFFLINE',
           updatedAt: new Date(),
@@ -99,7 +101,7 @@ export class MediaServerService implements OnModuleInit {
    */
   private async isStreamKeyValid(streamKey: string): Promise<boolean> {
     const stream = await this.prisma.stream.findUnique({
-      where: { id:streamKey },
+      where: { id: streamKey },
     });
 
     return !!stream;

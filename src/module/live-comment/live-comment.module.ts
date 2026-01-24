@@ -16,6 +16,6 @@ import { WatchHistoryModule } from '../watch-history/watch-history.module';
   ],
   controllers: [LiveCommentController],
   providers: [LiveCommentService, LiveCommentGateway],
-  exports: [LiveCommentGateway]
+  exports: [LiveCommentGateway],
 })
-export class LiveCommentModule { }
+export class LiveCommentModule {}

@@ -28,16 +28,17 @@ import { AdminDashboardModule } from './module/admin-dashboard/admin-dashboard.m
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
-
 @Module({
   imports: [
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 1000,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 1000,
+      },
+    ]),
     ConfigModule.forRoot({
-      isGlobal: true,      // makes ConfigService available everywhere
+      isGlobal: true, // makes ConfigService available everywhere
       envFilePath: '.env', // optional, default is .env
     }),
     MailerModule.forRootAsync({
@@ -54,7 +55,10 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
           },
         },
         defaults: {
-          from: config.get<string>('SMTP_FROM') || config.get<string>('SMTP_USER') || 'SoftVence Newsletter <noreply@softvence.com>',
+          from:
+            config.get<string>('SMTP_FROM') ||
+            config.get<string>('SMTP_USER') ||
+            'SoftVence Newsletter <noreply@softvence.com>',
         },
       }),
     }),
@@ -78,10 +82,13 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     AdminDashboardModule,
   ],
   controllers: [AppController],
-  providers: [AppService, SeederService, {
-    provide: APP_GUARD,
-    useClass: TermsAcceptedGuard, // ✅ Applied globally
-  },
+  providers: [
+    AppService,
+    SeederService,
+    {
+      provide: APP_GUARD,
+      useClass: TermsAcceptedGuard, // ✅ Applied globally
+    },
     {
       provide: APP_GUARD,
       useClass: BanGuard, // ✅ Applied globally
@@ -92,4 +99,4 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

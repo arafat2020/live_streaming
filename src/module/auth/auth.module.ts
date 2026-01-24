@@ -9,13 +9,12 @@ import { JwtStrategy } from './strategy/jwt.strategy';
 import { GoogleStrategy } from './strategy/google.strategy';
 import { MailService } from '../mail/mail.service';
 
-
 @Module({
   imports: [
     PassportModule,
     JwtModule.register({
       secret: jwtConstants.secret,
-      signOptions: { expiresIn: "1d" },
+      signOptions: { expiresIn: '1d' },
     }),
   ],
   controllers: [AuthController],
@@ -24,8 +23,8 @@ import { MailService } from '../mail/mail.service';
     PrismaService,
     JwtStrategy,
     GoogleStrategy,
-    MailService
+    MailService,
   ],
   exports: [AuthService, JwtModule],
 })
-export class AuthModule { }
+export class AuthModule {}

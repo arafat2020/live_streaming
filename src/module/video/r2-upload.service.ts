@@ -1,9 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
-import { r2Client, R2_BUCKET, R2_PUBLIC_URL } from '../../config/r2.config';
+import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { R2_BUCKET, R2_PUBLIC_URL, r2Client } from '../../config/r2.config';
 
 @Injectable()
 export class R2UploadService {
@@ -51,7 +57,10 @@ export class R2UploadService {
    * Upload playlist file to R2
    * Keep no-cache for playlists (they change frequently)
    */
-  async uploadPlaylist(localPath: string, r2Key: string): Promise<string | null> {
+  async uploadPlaylist(
+    localPath: string,
+    r2Key: string,
+  ): Promise<string | null> {
     try {
       if (!fs.existsSync(localPath)) {
         this.logger.warn(`Playlist not found: ${localPath}`);
@@ -105,13 +114,11 @@ export class R2UploadService {
           return;
         }
 
-        const files = fs
-          .readdirSync(localDir)
-          .filter((f) => f.endsWith('.ts'));
+        const files = fs.readdirSync(localDir).filter((f) => f.endsWith('.ts'));
 
         // Upload segments in parallel
         const uploadPromises = files
-          .filter(file => !uploaded.has(file) && !uploading.has(file))
+          .filter((file) => !uploaded.has(file) && !uploading.has(file))
           .map(async (file) => {
             uploading.add(file);
 
@@ -135,7 +142,9 @@ export class R2UploadService {
               uploaded.add(file);
               uploading.delete(file);
 
-              this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
+              this.logger.log(
+                `📤 ${R2_PUBLIC_URL}/${r2Prefix}/${file} uploaded`,
+              );
 
               // ✅ DELETE LOCAL FILE AFTER SUCCESSFUL UPLOAD (Except 000.ts which we need for thumbnail)
               try {
@@ -143,12 +152,13 @@ export class R2UploadService {
                   fs.unlinkSync(localPath);
                   this.logger.log(`🗑️ Deleted local: ${file}`);
                 } else {
-                  this.logger.log(`ℹ️ Preserving ${file} for thumbnail generation`);
+                  this.logger.log(
+                    `ℹ️ Preserving ${file} for thumbnail generation`,
+                  );
                 }
               } catch (delErr) {
                 this.logger.warn(`Failed to delete ${file}: ${delErr.message}`);
               }
-
             } catch (err) {
               uploading.delete(file);
               this.logger.error(`Failed to upload ${file}: ${err.message}`);
@@ -159,16 +169,12 @@ export class R2UploadService {
 
         // Upload playlist after segments
         if (fs.existsSync(playlistPath)) {
-          await this.uploadPlaylist(
-            playlistPath,
-            `${r2Prefix}/index.m3u8`,
-          );
+          await this.uploadPlaylist(playlistPath, `${r2Prefix}/index.m3u8`);
         }
-
       } catch (err) {
         this.logger.warn(`Watcher error: ${err.message}`);
       }
-    }, 1000);
+    }, 300);
 
     return {
       stop: () => {
@@ -182,7 +188,10 @@ export class R2UploadService {
    * Wait for file to be fully written to disk
    * ✅ OPTIMIZED: Faster checks, shorter timeout
    */
-  private async waitForFileReady(filePath: string, timeout = 1000): Promise<void> {
+  private async waitForFileReady(
+    filePath: string,
+    timeout = 1000,
+  ): Promise<void> {
     const start = Date.now();
     let lastSize = -1;
 
@@ -198,10 +207,10 @@ export class R2UploadService {
 
         lastSize = currentSize;
         // ✅ OPTIMIZED: Check every 50ms instead of 100ms
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       } catch {
         // File doesn't exist yet
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     }
   }
@@ -222,12 +231,15 @@ export class R2UploadService {
         return await this.uploadFile(localPath, r2Key, contentType);
       } catch (error) {
         lastError = error;
-        this.logger.warn(`Upload attempt ${attempt}/${maxRetries} failed for ${r2Key}: ${error.message}`);
+        this.logger.warn(
+          `Upload attempt ${attempt}/${maxRetries} failed for ${r2Key}: ${error.message}`,
+          lastError,
+        );
 
         if (attempt < maxRetries) {
           // Exponential backoff: 1s, 2s, 4s
           const delay = Math.pow(2, attempt - 1) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -283,9 +295,13 @@ export class R2UploadService {
       };
 
       await r2Client.send(new DeleteObjectsCommand(deleteParams));
-      this.logger.log(`✅ Deleted ${listResponse.Contents.length} objects with prefix: ${prefix}`);
+      this.logger.log(
+        `✅ Deleted ${listResponse.Contents.length} objects with prefix: ${prefix}`,
+      );
     } catch (error) {
-      this.logger.error(`❌ Failed to delete prefix ${prefix}: ${error.message}`);
+      this.logger.error(
+        `❌ Failed to delete prefix ${prefix}: ${error.message}`,
+      );
       throw error;
     }
   }
@@ -303,7 +319,10 @@ export class R2UploadService {
       await r2Client.send(command);
       return true;
     } catch (error) {
-      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+      if (
+        error.name === 'NotFound' ||
+        error.$metadata?.httpStatusCode === 404
+      ) {
         return false;
       }
       throw error;

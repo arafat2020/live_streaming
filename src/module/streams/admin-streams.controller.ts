@@ -1,4 +1,11 @@
-import { Controller, Get, Param, UseGuards, Res, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  UseGuards,
+  Res,
+  HttpStatus,
+} from '@nestjs/common';
 import { CloudflareService } from '../cloudflare/cloudflare.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -13,18 +20,21 @@ import sendResponse from '../../utils/sendResponse';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminStreamsController {
-    constructor(private readonly cfService: CloudflareService) { }
+  constructor(private readonly cfService: CloudflareService) {}
 
-    @ApiOperation({ summary: 'Admin: Get real-time health for a live stream' })
-    @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
-    @Get(':inputId/health')
-    async getStreamHealth(@Param('inputId') inputId: string, @Res() res: Response) {
-        const data = await this.cfService.getLiveInputHealth(inputId);
-        return sendResponse(res, {
-            statusCode: HttpStatus.OK,
-            success: true,
-            message: 'Stream health data retrieved successfully',
-            data,
-        });
-    }
+  @ApiOperation({ summary: 'Admin: Get real-time health for a live stream' })
+  @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
+  @Get(':inputId/health')
+  async getStreamHealth(
+    @Param('inputId') inputId: string,
+    @Res() res: Response,
+  ) {
+    const data = await this.cfService.getLiveInputHealth(inputId);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Stream health data retrieved successfully',
+      data,
+    });
+  }
 }

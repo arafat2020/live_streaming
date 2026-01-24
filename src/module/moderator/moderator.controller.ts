@@ -1,21 +1,33 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Res, HttpStatus, NotFoundException, ForbiddenException, UseGuards, BadRequestException } from '@nestjs/common';
-import { ModeratorService } from './moderator.service';
-import { CreateModeratorDto } from './dto/create-moderator.dto';
-import { UpdateModeratorDto } from './dto/update-moderator.dto';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  HttpStatus,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiOperation } from '@nestjs/swagger';
+import { Response } from 'express';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetMe } from '../user/dto/request-with-user.interface';
 import sendResponse from '../utils/sendResponse';
-import { Request, Response } from 'express';
+import { CreateModeratorDto } from './dto/create-moderator.dto';
+import { HandleAppealDto } from './dto/handle-appeal.dto';
 import { ModeratorBanUserDto } from './dto/moderator-ban-user.dto';
 import { SubmitAppealDto } from './dto/submit-appeal.dto';
-import { HandleAppealDto } from './dto/handle-appeal.dto';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/guards/roles.decorator';
-import { UserRole } from '@prisma/client';
+import { ModeratorService } from './moderator.service';
 @Controller('moderator')
 export class ModeratorController {
-  constructor(private readonly moderatorService: ModeratorService) { }
+  constructor(private readonly moderatorService: ModeratorService) {}
 
   async verifyChannelOwner(channelId: string, userId: string) {
     const channel = await this.moderatorService['prisma'].channel.findUnique({
@@ -34,7 +46,10 @@ export class ModeratorController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  async create(@Body() createModeratorDto: CreateModeratorDto, @Req() req: GetMe) {
+  async create(
+    @Body() createModeratorDto: CreateModeratorDto,
+    @Req() req: GetMe,
+  ) {
     return this.moderatorService.create(createModeratorDto, req.user.id);
   }
 
@@ -70,7 +85,10 @@ export class ModeratorController {
       throw new BadRequestException('User ID and Channel ID are required');
     }
 
-    const isModerator = await this.moderatorService.checkIsModerator(userId, channelId);
+    const isModerator = await this.moderatorService.checkIsModerator(
+      userId,
+      channelId,
+    );
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
@@ -79,14 +97,16 @@ export class ModeratorController {
     });
   }
 
-  @ApiOperation({ summary: 'Search users to manage (only for channel moderators/owners)' })
+  @ApiOperation({
+    summary: 'Search users to manage (only for channel moderators/owners)',
+  })
   @UseGuards(JwtAuthGuard)
   @Get('search-users')
   async searchUsers(
     @Query('channelId') channelId: string,
     @Query('q') query: string,
     @Req() req: GetMe,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     if (!channelId) {
       throw new BadRequestException('Channel ID is required');
@@ -94,7 +114,11 @@ export class ModeratorController {
 
     const userId = req.user.id;
     const searchQuery = query || '';
-    const data = await this.moderatorService.searchUsersForModeration(channelId, searchQuery, userId);
+    const data = await this.moderatorService.searchUsersForModeration(
+      channelId,
+      searchQuery,
+      userId,
+    );
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -111,12 +135,15 @@ export class ModeratorController {
     @Param('channelId') channelId: string,
     @Body() dto: ModeratorBanUserDto,
     @Req() req: GetMe,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const userId = req.user.id;
     const user = req.user;
     //console.log("user---------->",user?.channel?.id)
-    const checkIsModerator = await this.moderatorService.checkIsModerator(userId, channelId);
+    const checkIsModerator = await this.moderatorService.checkIsModerator(
+      userId,
+      channelId,
+    );
     if (checkIsModerator || user?.channel?.id === channelId) {
       const data = await this.moderatorService.banUser(channelId, dto, userId);
 
@@ -126,19 +153,15 @@ export class ModeratorController {
         message: 'User banned successfully',
         data,
       });
-
     }
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: false,
       message: 'You are not this channel Moderator',
-      data: null
+      data: null,
     });
     //await this.verifyChannelOwner(channelId, userId);
-
-
   }
-
 
   @ApiOperation({ summary: 'Unban a user from the channel' })
   @UseGuards(JwtAuthGuard)
@@ -147,10 +170,14 @@ export class ModeratorController {
     @Param('channelId') channelId: string,
     @Param('userId') userId: string,
     @Req() req: GetMe,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const requesterId = req.user.id;
-    const data = await this.moderatorService.unbanUser(channelId, userId, requesterId);
+    const data = await this.moderatorService.unbanUser(
+      channelId,
+      userId,
+      requesterId,
+    );
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -166,10 +193,13 @@ export class ModeratorController {
   async getBannedUsers(
     @Param('channelId') channelId: string,
     @Req() req: GetMe,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const requesterId = req.user.id;
-    const data = await this.moderatorService.getBannedUsers(channelId, requesterId);
+    const data = await this.moderatorService.getBannedUsers(
+      channelId,
+      requesterId,
+    );
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
@@ -185,7 +215,7 @@ export class ModeratorController {
   async submitAppeal(
     @Req() req: GetMe,
     @Body() dto: SubmitAppealDto,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const userId = req.user.id;
     const data = await this.moderatorService.submitAppeal(userId, dto);
@@ -204,7 +234,7 @@ export class ModeratorController {
   async getAppeals(
     @Param('channelId') channelId: string,
     @Req() req: GetMe,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const requesterId = req.user.id;
     const data = await this.moderatorService.getAppeals(channelId, requesterId);
@@ -224,10 +254,14 @@ export class ModeratorController {
     @Param('appealId') appealId: string,
     @Body() dto: HandleAppealDto,
     @Req() req: GetMe,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const requesterId = req.user.id;
-    const data = await this.moderatorService.handleAppeal(appealId, dto, requesterId);
+    const data = await this.moderatorService.handleAppeal(
+      appealId,
+      dto,
+      requesterId,
+    );
 
     return sendResponse(res, {
       statusCode: HttpStatus.OK,

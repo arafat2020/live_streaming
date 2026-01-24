@@ -10,5 +10,4 @@ export class CreateStreamDto {
   @IsOptional()
   @IsString()
   name?: string;
-
 }

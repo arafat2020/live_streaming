@@ -6,7 +6,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole ,UserStatus} from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 export class UpdateUserDto {
   @ApiProperty({ example: 'user@Gmail.com', description: 'user email address' })
   @IsOptional()
@@ -25,28 +25,39 @@ export class UpdateUserDto {
   @IsNotEmpty()
   lastName?: string;
 
-  @ApiProperty({ 
-    example: 'https://your-r2-url.com/profiles/user-123/avatar.jpg', 
-    required: false 
+  @ApiProperty({
+    example: 'https://your-r2-url.com/profiles/user-123/avatar.jpg',
+    required: false,
   })
   @IsOptional()
   @IsString()
   @IsOptional()
   profileImage?: string;
 
-  @ApiProperty({ example: '0190000', description: 'phone member (Optional)', required: false })
+  @ApiProperty({
+    example: '0190000',
+    description: 'phone member (Optional)',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   phone?: string;
 
-  @ApiProperty({ example: UserRole.ADMIN, description: 'Role of the staff member', enum: UserRole })
+  @ApiProperty({
+    example: UserRole.ADMIN,
+    description: 'Role of the staff member',
+    enum: UserRole,
+  })
   @IsEnum(UserRole)
   @IsOptional()
   role?: UserRole;
 
-  @ApiProperty({ example: UserStatus.ACTIVE, description: 'Role of the staff member', enum: UserStatus })
+  @ApiProperty({
+    example: UserStatus.ACTIVE,
+    description: 'Role of the staff member',
+    enum: UserStatus,
+  })
   @IsEnum(UserStatus)
   @IsOptional()
   status?: UserStatus;
-
 }
