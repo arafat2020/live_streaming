@@ -27,17 +27,7 @@ import { UpdateContentDto } from './dto/update-content.dto';
 @Controller('content')
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
-  // @ApiOperation({ summary: 'Create new content for a channel' })
-  // @Post()
-  // async create(@Body() dto: CreateContentDto, @Res() res: Response) {
-  //   const data = await this.contentService.create(dto);
-  //   return sendResponse(res, {
-  //     statusCode: HttpStatus.CREATED,
-  //     success: true,
-  //     message: 'Content created successfully.',
-  //     data,
-  //   });
-  // }
+
   @ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
   @Get('live-broadcast')
   async liveOnRappioList(@Req() req: GetMe, @Res() res: Response) {
@@ -51,6 +41,7 @@ export class ContentController {
       data: data,
     });
   }
+
   @ApiOperation({
     summary: 'List contents (supports filtering, search and pagination)',
   })
@@ -74,6 +65,7 @@ export class ContentController {
       },
     });
   }
+
   @ApiOperation({ summary: 'Get a single content item by its ID' })
   @Get(':id')
   async findOne(
@@ -90,6 +82,7 @@ export class ContentController {
       data,
     });
   }
+
   @ApiOperation({
     summary: 'Update content by its ID (partial updates supported)',
   })

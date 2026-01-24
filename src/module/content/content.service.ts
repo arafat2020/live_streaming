@@ -4,13 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateContentDto } from './dto/create-content.dto';
-import { UpdateContentDto } from './dto/update-content.dto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { QueryContentDto, ContentSortBy } from './dto/query-content.dto';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
+import { CreateContentDto } from './dto/create-content.dto';
+import { ContentSortBy, QueryContentDto } from './dto/query-content.dto';
+import { UpdateContentDto } from './dto/update-content.dto';
 
 @Injectable()
 export class ContentService {
@@ -240,6 +240,7 @@ export class ContentService {
         item.contentType === 'LIVE_STREAM'
           ? this.watchHistoryService.getActiveViewerCount(item.id)
           : 0,
+       totalViews: item.views,
     }));
   }
 
@@ -298,6 +299,7 @@ export class ContentService {
     return {
       ...content,
       concurrentViewers,
+      totalViews: content.views,
     };
   }
 
