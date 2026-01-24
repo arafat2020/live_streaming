@@ -369,16 +369,50 @@ export class VideoService {
       const r2Prefix = `live/${contentId}`;
       const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
 
-      // Update the content record with the safe playback URL
+      // 1. Start R2 upload watcher immediately so it can begin uploading segments/manifest
+      const watcher = this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
+
+      // 2. WAIT for the manifest to actually appear on R2 before marking as LIVE
+      // This prevents the frontend from getting a 404 if it tries to play immediately
+      this.logger.log(
+        `⏳ Waiting for manifest to be available on R2: ${playbackUrl}`,
+      );
+
+      const manifestKey = `${r2Prefix}/index.m3u8`;
+      let isAvailable = false;
+      let attempts = 0;
+      const maxAttempts = 100; // Total 20 seconds timeout (100 * 200ms)
+
+      while (attempts < maxAttempts) {
+        const exists = await this.r2UploadService.fileExists(manifestKey);
+        if (exists) {
+          isAvailable = true;
+          this.logger.log(
+            `✅ Manifest is now available on R2 after ${attempts * 0.2}s`,
+          );
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        attempts++;
+      }
+
+      if (!isAvailable) {
+        this.logger.warn(
+          `⚠️ Manifest not found on R2 after ${maxAttempts}s. Proceeding anyway, but playback might fail initially.`,
+        );
+      }
+
+      // 3. Update the content record with the safe playback URL
       const content = await this.prisma.content.update({
         where: { id: contentId },
         data: {
           r2Prefix,
           playbackUrl,
+          status: ContentStatus.AVAILABLE,
         },
       });
 
-      // Update channel to live status
+      // 4. Update channel to live status
       if (content.channelId) {
         await this.prisma.channel.update({
           where: { id: content.channelId },
@@ -388,11 +422,9 @@ export class VideoService {
 
       this.logger.log(`📺 Safe Playback URL: ${playbackUrl}`);
 
-      // Notify via WebSocket
+      // 5. Notify via WebSocket
       this.liveGateway.streamLive(playbackUrl, content);
 
-      // Start R2 upload watcher
-      const watcher = this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
       return { watcher };
     } catch (error) {
       this.logger.error(`Failed to handle live stream start: ${error.message}`);

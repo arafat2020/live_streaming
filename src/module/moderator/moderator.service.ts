@@ -56,6 +56,7 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
+            lastName: true,
             email: true,
             profileImage: true,
           },

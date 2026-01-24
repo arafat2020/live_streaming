@@ -142,7 +142,9 @@ export class R2UploadService {
               uploaded.add(file);
               uploading.delete(file);
 
-              this.logger.log(`📤 ${r2Prefix}/${file} uploaded`);
+              this.logger.log(
+                `📤 ${R2_PUBLIC_URL}/${r2Prefix}/${file} uploaded`,
+              );
 
               // ✅ DELETE LOCAL FILE AFTER SUCCESSFUL UPLOAD (Except 000.ts which we need for thumbnail)
               try {
@@ -172,7 +174,7 @@ export class R2UploadService {
       } catch (err) {
         this.logger.warn(`Watcher error: ${err.message}`);
       }
-    }, 1000);
+    }, 300);
 
     return {
       stop: () => {
