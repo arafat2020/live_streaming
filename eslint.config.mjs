@@ -11,6 +11,8 @@ export default defineConfig([
     'logs/*',
     'prisma/*',
     'scripts/*',
+    'media/*',
+    'uploads/*',
   ]),
   {
     files: ['**/*.{js,mjs,cjs,ts,mts,cts}'],

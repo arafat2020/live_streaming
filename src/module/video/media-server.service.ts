@@ -202,7 +202,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
       // Poll for the first segment file (up to 30 seconds)
       let attempts = 0;
-      while (attempts < 30) {
+      const maxAttempts = 150; // 30 seconds (150 * 200ms)
+
+      while (attempts < maxAttempts) {
         if (fs.existsSync(segmentPath) && fs.statSync(segmentPath).size > 0) {
           const thumbnailUrl =
             await this.thumbnailService.generateThumbnailFromSegment(
@@ -219,11 +221,11 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
           }
           return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 200));
         attempts++;
       }
       this.logger.warn(
-        `⚠️ Timeout waiting for segment ${segmentPath} for thumbnail`,
+        `⚠️ Timeout waiting for segment ${segmentPath} for thumbnail after ${maxAttempts * 0.2}s`,
       );
     } catch (err) {
       this.logger.error(
