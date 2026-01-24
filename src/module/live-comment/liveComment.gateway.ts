@@ -162,11 +162,29 @@ export class LiveCommentGateway
   // NEW: Broadcast concurrent viewer count (for live streams)
 
   broadcastConcurrentViewers(contentId: string, count: number) {
-    this.server.to(`content:${contentId}`).emit('concurrent.updated', {
+    const updateData = {
       contentId,
       concurrentViewers: count,
       timestamp: new Date(),
-    });
+    };
+
+    const liveStatsData = {
+      contentId,
+      viewerCount: count,
+      status: 'LIVE',
+      timestamp: new Date(),
+    };
+
+    // Emit to specific content room (for viewers watching the stream)
+    this.server
+      .to(`content:${contentId}`)
+      .emit('concurrent.updated', updateData);
+    this.server
+      .to(`content:${contentId}`)
+      .emit('live_stats_update', liveStatsData);
+
+    // Also emit globally (for homepage cards and other pages)
+    this.server.emit('live_stats_update', liveStatsData);
 
     this.logger.debug(
       `Broadcasted concurrent viewers for ${contentId}: ${count}`,
