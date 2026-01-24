@@ -1,22 +1,24 @@
+import { Logger } from '@nestjs/common';
 import {
-  WebSocketGateway,
-  WebSocketServer,
-  OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({ namespace: '/ws/notifications', cors: { origin: '*' } })
-export class NotificationGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class NotificationGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(NotificationGateway.name);
 
   afterInit(server: Server) {
-    this.logger.log('Notification gateway initialized');
+    this.logger.log('Notification gateway initialized', server.sockets.adapter);
   }
 
   handleConnection(socket: Socket) {

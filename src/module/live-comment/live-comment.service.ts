@@ -12,10 +12,13 @@ export class LiveCommentService {
     private prisma: PrismaService,
     private gateway: LiveCommentGateway,
     private moderatorService: ModeratorService,
-  ) { }
+  ) {}
 
   // ------- GET ALL COMMENTS FOR VIDEO -------
-  async getAll(videoId: string, paginationQuery?: { page?: number; limit?: number }) {
+  async getAll(
+    videoId: string,
+    paginationQuery?: { page?: number; limit?: number },
+  ) {
     const page = paginationQuery?.page || 1;
     const limit = paginationQuery?.limit || 20;
     const skip = (page - 1) * limit;
@@ -30,8 +33,8 @@ export class LiveCommentService {
       where: { videoId },
       include: {
         user: {
-          select: publicUserSelect
-        }
+          select: publicUserSelect,
+        },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -46,7 +49,7 @@ export class LiveCommentService {
           ...comment,
           userRole,
         };
-      })
+      }),
     );
 
     // Calculate pagination metadata
@@ -77,8 +80,8 @@ export class LiveCommentService {
       data: { userId, ...dto },
       include: {
         user: {
-          select: publicUserSelect
-        }
+          select: publicUserSelect,
+        },
       },
     });
 
@@ -98,7 +101,10 @@ export class LiveCommentService {
   }
 
   // ------- HELPER: Determine User Role -------
-  private async getUserRole(userId: string, videoId: string): Promise<'owner' | 'moderator' | 'user'> {
+  private async getUserRole(
+    userId: string,
+    videoId: string,
+  ): Promise<'owner' | 'moderator' | 'user'> {
     try {
       // Get the content/video to find the associated channel
       const content = await this.prisma.content.findUnique({
@@ -119,7 +125,10 @@ export class LiveCommentService {
       }
 
       // Check if user is a moderator
-      const isModerator = await this.moderatorService.checkIsModerator(userId, channelId);
+      const isModerator = await this.moderatorService.checkIsModerator(
+        userId,
+        channelId,
+      );
       if (isModerator) {
         return 'moderator';
       }
@@ -138,8 +147,8 @@ export class LiveCommentService {
       data: dto,
       include: {
         user: {
-          select: publicUserSelect
-        }
+          select: publicUserSelect,
+        },
       },
     });
 

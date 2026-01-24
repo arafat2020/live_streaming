@@ -9,4 +9,4 @@ import { CloudflareModule } from '../cloudflare/cloudflare.module';
   controllers: [StreamsController, AdminStreamsController],
   providers: [StreamsService],
 })
-export class StreamsModule { }
+export class StreamsModule {}

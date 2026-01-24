@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
 import { Socket } from 'socket.io';
 import { AuthService } from '../auth.service';
 
@@ -13,12 +19,19 @@ export class WsAuthGuard implements CanActivate {
 
     // Preferred: token in handshake.auth (Socket.IO v4)
     const authToken = client.handshake?.auth?.token;
-    console.log("[ws-auth.guard] authToken---------------->", authToken);
+    console.log('[ws-auth.guard] authToken---------------->', authToken);
     // Fallback: token in query (older clients)
     const queryToken = client.handshake?.query?.token;
-    const rawToken = typeof authToken === 'string' ? authToken : (typeof queryToken === 'string' ? queryToken : null);
+    const rawToken =
+      typeof authToken === 'string'
+        ? authToken
+        : typeof queryToken === 'string'
+          ? queryToken
+          : null;
 
-    this.logger.debug(`Socket(${client.id}) - authTokenPresent=${!!authToken} queryTokenPresent=${!!queryToken}`);
+    this.logger.debug(
+      `Socket(${client.id}) - authTokenPresent=${!!authToken} queryTokenPresent=${!!queryToken}`,
+    );
 
     if (!rawToken) {
       this.logger.warn(`Socket(${client.id}) no token provided`);

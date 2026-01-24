@@ -20,10 +20,10 @@ import { UserRole } from '@prisma/client';
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
-  constructor(private prisma: PrismaService,
+  constructor(
+    private prisma: PrismaService,
     private readonly r2UploadService: R2UploadService,
-
-  ) { }
+  ) {}
 
   async checkUsernameAvailability(username: string): Promise<boolean> {
     if (!username || username.length < 3) {
@@ -84,7 +84,6 @@ export class UserService {
       ...(dto.email && { email: dto.email }),
       ...(dto.phone && { phone: dto.phone }),
       ...(dto.firstName && { firstName: dto.firstName }),
-
     };
     if (Object.keys(updateData).length === 0) {
       throw new BadRequestException('No valid fields provided for update');
@@ -144,10 +143,10 @@ export class UserService {
       ...(dto.phone && { phone: dto.phone }),
       ...(dto.username && {
         username: dto.username,
-        firstName: dto.username // Always sync firstName with username
+        firstName: dto.username, // Always sync firstName with username
       }),
       // Note: We don't allow direct firstName updates anymore since it should always match username
-      ...((usernameChanged) && { lastDisplayNameUpdate: new Date() }),
+      ...(usernameChanged && { lastDisplayNameUpdate: new Date() }),
       ...(profileImageUrl && { profileImage: profileImageUrl }),
       ...(dto.chatColor && { chatColor: dto.chatColor }),
     };
@@ -182,13 +181,12 @@ export class UserService {
     });
   }
 
-
   async remove(id: string) {
     if (!id) {
       throw new BadRequestException('ID is required');
     }
     const user = await this.prisma.user.findUnique({
-      where: { id }
+      where: { id },
     });
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
@@ -247,14 +245,15 @@ export class UserService {
     }
   }
 
-
   // user.service.ts
   async acceptTermsAndConditions(userId: string, dto: AcceptTermsDto) {
     // Validate age if DOB provided
     if (dto.dateOfBirth) {
       const age = this.calculateAge(new Date(dto.dateOfBirth));
       if (age < 18) {
-        throw new ForbiddenException('You must be 18 or older to use this platform');
+        throw new ForbiddenException(
+          'You must be 18 or older to use this platform',
+        );
       }
     }
 
@@ -284,7 +283,10 @@ export class UserService {
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
 
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
       age--;
     }
 
@@ -345,7 +347,8 @@ export class UserService {
       termsAcceptedAt: user.termsAcceptedAt,
       privacyAccepted: user.privacyAccepted,
       privacyAcceptedAt: user.privacyAcceptedAt,
-      hasAcceptedAll: user.ageConfirmed && user.termsAccepted && user.privacyAccepted,
+      hasAcceptedAll:
+        user.ageConfirmed && user.termsAccepted && user.privacyAccepted,
       age: user.dateOfBirth ? this.calculateAge(user.dateOfBirth) : null,
     };
   }
@@ -374,7 +377,7 @@ export class UserService {
           where: { channelId: user.channel.id },
           data: {
             isShadowBanned,
-            status: newStatus as any
+            status: newStatus as any,
           } as any,
         });
       }

@@ -1,0 +1,65 @@
+{
+  // Prisma V6
+  "prisma.pinToPrisma6": true,
+
+  // 🔧 General Formatting
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  // 🔧 Code Actions on Save
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit"
+  },
+
+  // 🔧 Language Specific (all use Prettier)
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  // 🔧 Prettier Config Sync
+  "prettier.useEditorConfig": true,
+  "prettier.resolveGlobalModules": false,
+  "cSpell.words": [
+    "appendonly",
+    "appleboy",
+    "Buildx",
+    "bullmq",
+    "Caddyfile",
+    "CHOKIDAR",
+    "conv",
+    "coturn",
+    "deauthorized",
+    "dpage",
+    "healthcheck",
+    "instrumentisto",
+    "isready",
+    "notif",
+    "otps",
+    "pgadmin",
+    "procps",
+    "redir",
+    "replicaof",
+    "rescuetransit",
+    "smckearin",
+    "softvence",
+    "Superadmin",
+    "Trxs",
+    "USEPOLLING",
+    "WATCHPACK",
+    "webrtc",
+    "webrtcuser"
+  ]
+}

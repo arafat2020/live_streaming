@@ -13,68 +13,114 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsUsernameUnique } from './unique-username.decorator';
 
 export class LoginDto {
-  @ApiProperty({ example: 'admin@gmail.com', description: 'User email address for login', required: true, })
+  @ApiProperty({
+    example: 'admin@gmail.com',
+    description: 'User email address for login',
+    required: true,
+  })
   @IsEmail()
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: 'admin123', description: 'User password', required: true })
+  @ApiProperty({
+    example: 'admin123',
+    description: 'User password',
+    required: true,
+  })
   @IsString()
   @IsNotEmpty()
   password: string;
 }
 
 export class UsernameLoginDto {
-  @ApiProperty({ example: 'johndoe', description: 'Username for login', required: true, })
+  @ApiProperty({
+    example: 'johndoe',
+    description: 'Username for login',
+    required: true,
+  })
   @IsString()
   @IsNotEmpty()
   username: string;
 
-  @ApiProperty({ example: 'admin123', description: 'User password', required: true })
+  @ApiProperty({
+    example: 'admin123',
+    description: 'User password',
+    required: true,
+  })
   @IsString()
   @IsNotEmpty()
   password: string;
 }
 
-
 export class RegisterDto {
-
-  @ApiProperty({ example: 'john', description: 'First name of the user', required: false, })
+  @ApiProperty({
+    example: 'john',
+    description: 'First name of the user',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   firstName?: string;
 
-  @ApiProperty({ example: 'johndoe', description: 'Unique username (required)', required: true })
+  @ApiProperty({
+    example: 'johndoe',
+    description: 'Unique username (required)',
+    required: true,
+  })
   @IsString()
   @IsNotEmpty()
   @Length(3, 20)
   @IsUsernameUnique()
   username: string;
 
-  @ApiProperty({ example: 'doe', description: 'Last name of the user', required: false, })
+  @ApiProperty({
+    example: 'doe',
+    description: 'Last name of the user',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   lastName?: string;
 
-  @ApiProperty({ example: 'johndoe@gmail.com', description: 'User email address', required: true, })
+  @ApiProperty({
+    example: 'johndoe@gmail.com',
+    description: 'User email address',
+    required: true,
+  })
   @IsEmail()
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: '2000-01-31', description: 'User date of birth (YYYY-MM-DD)', required: true })
+  @ApiProperty({
+    example: '2000-01-31',
+    description: 'User date of birth (YYYY-MM-DD)',
+    required: true,
+  })
   @IsDateString()
   @IsNotEmpty()
   dateOfBirth: string;
 
-  @ApiProperty({ example: 'password123', description: 'User password', required: true })
+  @ApiProperty({
+    example: 'password123',
+    description: 'User password',
+    required: true,
+  })
   @IsString()
   @IsNotEmpty()
   password: string;
-  @ApiProperty({ example: 'password123', description: 'Confirm password', required: false })
+  @ApiProperty({
+    example: 'password123',
+    description: 'Confirm password',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   confirmPassword?: string;
-  @ApiProperty({ example: '+8801712345678', description: 'Phone number (E.164 format) (optional)', required: false, })
+  @ApiProperty({
+    example: '+8801712345678',
+    description: 'Phone number (E.164 format) (optional)',
+    required: false,
+  })
   @IsOptional()
   //@IsPhoneNumber(null)
   phone?: string;
@@ -95,7 +141,7 @@ export class RegisterDto {
   is2FAEnabled?: boolean = false;
 }
 
-export class CreateAuthDto extends RegisterDto { }
+export class CreateAuthDto extends RegisterDto {}
 
 export class ChangePasswordDto {
   // @ApiProperty({ example: 'test@gmail.com', description: 'Your current email address', })
@@ -116,9 +162,7 @@ export class ChangePasswordDto {
   @IsString({ message: 'New password must be a string.' })
   @IsNotEmpty({ message: 'New password is required.' })
   newPassword: string;
-
 }
-
 
 export class RequestResetCodeDto {
   @ApiProperty({
@@ -139,7 +183,7 @@ export class VerifyResetCodeDto {
 
   @ApiProperty({
     example: '1234',
-    description: '4-digit reset code sent to the user\'s email',
+    description: "4-digit reset code sent to the user's email",
   })
   @IsString()
   @Length(4, 4, { message: 'Code must be 4 characters' })

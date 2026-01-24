@@ -11,10 +11,10 @@ export async function generateUniqueUsername(
 ): Promise<string> {
   // Extract base username from email and clean it
   const baseUsername = email
-    .split('@')[0]                    // Get part before @
-    .toLowerCase()                     // Convert to lowercase
-    .replace(/[^a-z0-9]/g, '')        // Remove special characters
-    .substring(0, 20);                 // Limit to 20 characters for base
+    .split('@')[0] // Get part before @
+    .toLowerCase() // Convert to lowercase
+    .replace(/[^a-z0-9]/g, '') // Remove special characters
+    .substring(0, 20); // Limit to 20 characters for base
 
   // If base username is empty after cleaning, use a default
   const cleanBase = baseUsername || 'user';
@@ -32,9 +32,10 @@ export async function generateUniqueUsername(
   let counter = 1;
   let username = cleanBase;
 
-  while (counter <= 9999) { // Prevent infinite loop
+  while (counter <= 9999) {
+    // Prevent infinite loop
     username = `${cleanBase}${counter}`;
-    
+
     const userExists = await prisma.user.findUnique({
       where: { username },
     });
@@ -49,7 +50,7 @@ export async function generateUniqueUsername(
   // Fallback: generate random username if all attempts fail
   const randomSuffix = Math.random().toString(36).substring(2, 8);
   const fallbackUsername = `${cleanBase}_${randomSuffix}`;
-  
+
   // Final check for fallback
   const fallbackExists = await prisma.user.findUnique({
     where: { username: fallbackUsername },

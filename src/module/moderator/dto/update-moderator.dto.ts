@@ -3,7 +3,7 @@ import { CreateModeratorDto } from './create-moderator.dto';
 import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class UpdateModeratorDto extends PartialType(CreateModeratorDto) {
-    @ApiPropertyOptional({
+  @ApiPropertyOptional({
     description: 'The UUID of the user to be assigned as moderator',
     example: '123e4567-e89b-12d3-a456-426614174000',
     type: String,

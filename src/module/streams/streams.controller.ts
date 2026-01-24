@@ -1,14 +1,12 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
   Param,
+  Post,
   Req,
-  Body,
   UseGuards,
 } from '@nestjs/common';
-import { CloudflareService } from '../cloudflare/cloudflare.service';
-import { PrismaClient } from '@prisma/client';
 import {
   ApiBody,
   ApiOperation,
@@ -16,27 +14,30 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CreateStreamDto } from './dto/create-stream.dto';
-import { RequestWithUser } from '../user/dto/request-with-user.interface';
+import { PrismaClient } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-
+import { CloudflareService } from '../cloudflare/cloudflare.service';
+import { RequestWithUser } from '../user/dto/request-with-user.interface';
+import { CreateStreamDto } from './dto/create-stream.dto';
 
 @ApiTags('Streams')
 @Controller('streams')
 export class StreamsController {
   private prisma = new PrismaClient();
 
-  constructor(private readonly cfService: CloudflareService) { }
+  constructor(private readonly cfService: CloudflareService) {}
 
   @UseGuards(JwtAuthGuard)
   @Post('create')
   @ApiOperation({ summary: 'Create a new live stream (generate Stream Key)' })
   @ApiBody({ type: CreateStreamDto })
   @ApiResponse({ status: 201, description: 'Stream created successfully' })
-  async createStream(@Req() req: RequestWithUser, @Body() body: CreateStreamDto) {
-
+  async createStream(
+    @Req() req: RequestWithUser,
+    @Body() body: CreateStreamDto,
+  ) {
     const userId = req.user.id;
-    console.log("userId--------->", userId);
+    console.log('userId--------->', userId);
     // const liveInput = await this.cfService.createLiveInput(userId);
     const streamName = body.name || `user_${userId}_live`;
 
@@ -68,6 +69,7 @@ export class StreamsController {
   @ApiResponse({ status: 200 })
   async deleteStream(@Req() req, @Param('inputId') inputId: string) {
     const userId = req.user.id;
+    console.log('userId--------->', userId);
     await this.cfService.deleteLiveInput(inputId);
     return { message: 'Stream deleted successfully' };
   }

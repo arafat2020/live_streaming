@@ -17,14 +17,16 @@ export class ChatService {
   constructor(
     private prisma: PrismaService,
     private gateway: ChatGateway,
-  ) { }
+  ) {}
 
   async create(createChatDto: CreateChatDto) {
     try {
       return await this.prisma.chatRoom.create({ data: createChatDto });
     } catch (error) {
       console.error(error);
-      throw new BadRequestException(error.message || 'Failed to create chat room');
+      throw new BadRequestException(
+        error.message || 'Failed to create chat room',
+      );
     }
   }
 
@@ -34,13 +36,13 @@ export class ChatService {
         include: {
           participants: {
             include: {
-              user: { select: publicUserSelect }
-            }
+              user: { select: publicUserSelect },
+            },
           },
           chatMessage: {
             include: {
-              user: { select: publicUserSelect }
-            }
+              user: { select: publicUserSelect },
+            },
           },
           channel: { select: safeChannelSelect },
         },
@@ -59,13 +61,13 @@ export class ChatService {
         include: {
           participants: {
             include: {
-              user: { select: safeUserSelect }
-            }
+              user: { select: safeUserSelect },
+            },
           },
           chatMessage: {
             include: {
-              user: { select: safeUserSelect }
-            }
+              user: { select: safeUserSelect },
+            },
           },
           channel: { select: safeChannelSelect },
         },
@@ -81,7 +83,10 @@ export class ChatService {
   async update(id: string, updateChatDto: UpdateChatDto) {
     if (!id) throw new BadRequestException('ID is required');
     try {
-      return await this.prisma.chatRoom.update({ where: { id }, data: updateChatDto });
+      return await this.prisma.chatRoom.update({
+        where: { id },
+        data: updateChatDto,
+      });
     } catch (error) {
       console.error(error);
       throw new BadRequestException('Failed to update chat room');
@@ -100,10 +105,13 @@ export class ChatService {
   }
 
   async addParticipant(roomId: string, userId: string) {
-    if (!roomId || !userId) throw new BadRequestException('roomId and userId are required');
+    if (!roomId || !userId)
+      throw new BadRequestException('roomId and userId are required');
 
     // Check existence
-    const room = await this.prisma.chatRoom.findUnique({ where: { id: roomId } });
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+    });
     if (!room) throw new NotFoundException(`ChatRoom ${roomId} not found`);
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -126,9 +134,12 @@ export class ChatService {
   }
 
   async removeParticipant(participantId: string) {
-    if (!participantId) throw new BadRequestException('participantId is required');
+    if (!participantId)
+      throw new BadRequestException('participantId is required');
     try {
-      return await this.prisma.chatParticipant.delete({ where: { id: participantId } });
+      return await this.prisma.chatParticipant.delete({
+        where: { id: participantId },
+      });
     } catch (error) {
       console.error(error);
       throw new BadRequestException('Failed to remove participant');
@@ -140,16 +151,25 @@ export class ChatService {
       throw new BadRequestException('roomId, userId, and content are required');
 
     // Optional: validate room & user exist
-    const room = await this.prisma.chatRoom.findUnique({ where: { id: roomId } });
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+    });
     if (!room) throw new NotFoundException(`ChatRoom ${roomId} not found`);
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, createdAt: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, createdAt: true },
+    });
     if (!user) throw new NotFoundException(`User ${userId} not found`);
 
     // Check account age (15 minutes requirement)
-    const accountAgeMinutes = Math.floor((Date.now() - user.createdAt.getTime()) / (1000 * 60));
+    const accountAgeMinutes = Math.floor(
+      (Date.now() - user.createdAt.getTime()) / (1000 * 60),
+    );
     if (accountAgeMinutes < 15) {
-      throw new ForbiddenException(`New accounts must wait 15 minutes before chatting. Please try again in ${15 - accountAgeMinutes} minutes.`);
+      throw new ForbiddenException(
+        `New accounts must wait 15 minutes before chatting. Please try again in ${15 - accountAgeMinutes} minutes.`,
+      );
     }
 
     try {
@@ -157,8 +177,8 @@ export class ChatService {
         data: { roomId, userId, content },
         include: {
           user: {
-            select: publicUserSelect
-          }
+            select: publicUserSelect,
+          },
         },
       });
     } catch (error) {
@@ -174,8 +194,8 @@ export class ChatService {
         where: { roomId },
         include: {
           user: {
-            select: publicUserSelect
-          }
+            select: publicUserSelect,
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: 50, // Added a reasonable limit since it was missing

@@ -13,7 +13,11 @@ export class UpdateMyProfileDto {
   @IsEmail()
   email?: string;
 
-  @ApiProperty({ example: 'johndoe', description: 'Unique username (Optional)', required: false })
+  @ApiProperty({
+    example: 'johndoe',
+    description: 'Unique username (Optional)',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   @Length(3, 20)
@@ -24,10 +28,11 @@ export class UpdateMyProfileDto {
 
   // Note: firstName is no longer directly editable as it always syncs with username
 
-
-
-
-  @ApiProperty({ example: '0190000', description: 'phone member (Optional)', required: false })
+  @ApiProperty({
+    example: '0190000',
+    description: 'phone member (Optional)',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   phone?: string;
@@ -35,7 +40,7 @@ export class UpdateMyProfileDto {
   @ApiProperty({
     example: 'https://your-r2-url.com/profiles/user-123/avatar.jpg',
     description: 'Profile image URL (Optional)',
-    required: false
+    required: false,
   })
   @IsString()
   @IsOptional()
@@ -44,7 +49,7 @@ export class UpdateMyProfileDto {
   @ApiProperty({
     example: '#FF5733',
     description: 'Chat username color (Hex code)',
-    required: false
+    required: false,
   })
   @IsString()
   @IsOptional()

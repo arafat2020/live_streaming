@@ -10,6 +10,6 @@ import { VideoModule } from '../video/video.module';
   imports: [WatchHistoryModule, forwardRef(() => VideoModule)],
   controllers: [ContentController, AdminContentController],
   providers: [ContentService, StorageCleanupService],
-  exports: [ContentService]
+  exports: [ContentService],
 })
-export class ContentModule { }
+export class ContentModule {}

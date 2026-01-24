@@ -1,4 +1,10 @@
-import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 
@@ -17,8 +23,7 @@ export class WatchHistoryService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => LiveCommentGateway))
     private liveGateway: LiveCommentGateway, // Inject WebSocket gateway
-  ) { }
-
+  ) {}
 
   // Increment view count for content NOW WITH WEBSOCKET BROADCAST
 
@@ -35,7 +40,9 @@ export class WatchHistoryService {
     const lastViewTime = contentRecentViewers.get(viewerKey);
 
     if (lastViewTime && now - lastViewTime < this.RECENT_VIEW_TTL) {
-      this.logger.debug(`Skipping view (In-Memory) for ${contentId} (recent view from ${viewerKey})`);
+      this.logger.debug(
+        `Skipping view (In-Memory) for ${contentId} (recent view from ${viewerKey})`,
+      );
       return { success: true, duplicated: true };
     }
 
@@ -43,16 +50,16 @@ export class WatchHistoryService {
     const existingTrack = await (this.prisma as any).viewTrack.findFirst({
       where: {
         contentId,
-        OR: userId
-          ? [{ userId }]
-          : [{ ipAddress, userId: null }]
-      }
+        OR: userId ? [{ userId }] : [{ ipAddress, userId: null }],
+      },
     });
 
     if (existingTrack) {
       // Update in-memory cache to avoid repeated DB calls for this duplicated view
       contentRecentViewers.set(viewerKey, now);
-      this.logger.debug(`Skipping view (Database) for ${contentId} (persistent view from ${viewerKey})`);
+      this.logger.debug(
+        `Skipping view (Database) for ${contentId} (persistent view from ${viewerKey})`,
+      );
       return { success: true, duplicated: true };
     }
 
@@ -84,9 +91,9 @@ export class WatchHistoryService {
         data: {
           contentId,
           userId: userId || null,
-          ipAddress: userId ? null : (ipAddress || null),
-        }
-      })
+          ipAddress: userId ? null : ipAddress || null,
+        },
+      }),
     ]);
 
     // Update in-memory cache
@@ -112,10 +119,14 @@ export class WatchHistoryService {
     };
   }
 
-
   // Track when user starts watching (for concurrent viewer count)
 
-  async startWatching(contentId: string, viewerId: string, userId?: string, ipAddress?: string) {
+  async startWatching(
+    contentId: string,
+    viewerId: string,
+    userId?: string,
+    ipAddress?: string,
+  ) {
     // Add user to active viewers
     if (!this.activeViewers.has(contentId)) {
       this.activeViewers.set(contentId, new Set());
@@ -128,7 +139,9 @@ export class WatchHistoryService {
 
     const concurrentCount = viewers.size;
 
-    this.logger.log(`Viewer ${viewerId} started watching ${contentId} (${concurrentCount} concurrent)`);
+    this.logger.log(
+      `Viewer ${viewerId} started watching ${contentId} (${concurrentCount} concurrent)`,
+    );
 
     // Broadcast concurrent viewer count
     this.liveGateway.broadcastConcurrentViewers(contentId, concurrentCount);
@@ -141,7 +154,6 @@ export class WatchHistoryService {
     return { concurrentViewers: concurrentCount };
   }
 
-
   // Track when user stops watching
 
   async stopWatching(contentId: string, viewerId: string) {
@@ -151,7 +163,9 @@ export class WatchHistoryService {
       viewers.delete(viewerId);
       const concurrentCount = viewers.size;
 
-      this.logger.log(`Viewer ${viewerId} stopped watching ${contentId} (${concurrentCount} remaining)`);
+      this.logger.log(
+        `Viewer ${viewerId} stopped watching ${contentId} (${concurrentCount} remaining)`,
+      );
 
       // Broadcast updated concurrent viewer count
       this.liveGateway.broadcastConcurrentViewers(contentId, concurrentCount);
@@ -167,13 +181,11 @@ export class WatchHistoryService {
     return { concurrentViewers: 0 };
   }
 
-
   // Get current concurrent viewers for a content
 
   getActiveViewerCount(contentId: string): number {
     return this.activeViewers.get(contentId)?.size || 0;
   }
-
 
   // Get content with view count and concurrent viewers
 
@@ -204,16 +216,14 @@ export class WatchHistoryService {
     }
 
     // Add concurrent viewer count for live streams
-    const concurrentViewers = content.contentType === 'LIVE_STREAM'
-      ? this.getActiveViewerCount(id)
-      : 0;
+    const concurrentViewers =
+      content.contentType === 'LIVE_STREAM' ? this.getActiveViewerCount(id) : 0;
 
     return {
       ...content,
       concurrentViewers,
     };
   }
-
 
   // Get top viewed content
 
@@ -249,14 +259,14 @@ export class WatchHistoryService {
     });
 
     // Add concurrent viewer count for each live stream
-    return contents.map(content => ({
+    return contents.map((content) => ({
       ...content,
-      concurrentViewers: content.contentType === 'LIVE_STREAM'
-        ? this.getActiveViewerCount(content.id)
-        : 0,
+      concurrentViewers:
+        content.contentType === 'LIVE_STREAM'
+          ? this.getActiveViewerCount(content.id)
+          : 0,
     }));
   }
-
 
   // Get total watch time for a content in seconds
   async getTotalWatchTime(contentId: string): Promise<number> {
@@ -329,7 +339,9 @@ export class WatchHistoryService {
     }
 
     if (activeCleaned > 0 || recentCleaned > 0) {
-      this.logger.log(`Cleanup: Removed ${activeCleaned} empty active sets and ${recentCleaned} expired view cache entries`);
+      this.logger.log(
+        `Cleanup: Removed ${activeCleaned} empty active sets and ${recentCleaned} expired view cache entries`,
+      );
     }
   }
 }

@@ -111,7 +111,11 @@ export class R2Service {
   }
 
   // create multipart upload and generate presigned urls for `partsCount` parts
-  async createMultipartPresigned(key: string, partSize: number, partsCount: number) {
+  async createMultipartPresigned(
+    key: string,
+    partSize: number,
+    partsCount: number,
+  ) {
     // 1) create multipart upload
     const createCmd = new CreateMultipartUploadCommand({
       Bucket: this.bucket,
@@ -130,7 +134,9 @@ export class R2Service {
         UploadId: uploadId,
         PartNumber: partNumber,
       });
-      const signed = await getSignedUrl(this.s3, uploadPartCmd, { expiresIn: this.presignExpires });
+      const signed = await getSignedUrl(this.s3, uploadPartCmd, {
+        expiresIn: this.presignExpires,
+      });
       urls.push(signed);
     }
 
@@ -138,7 +144,11 @@ export class R2Service {
   }
 
   // complete multipart
-  async completeMultipart(uploadId: string, key: string, parts: Array<{ PartNumber: number; ETag: string }>) {
+  async completeMultipart(
+    uploadId: string,
+    key: string,
+    parts: Array<{ PartNumber: number; ETag: string }>,
+  ) {
     const cmd = new CompleteMultipartUploadCommand({
       Bucket: this.bucket,
       Key: key,
