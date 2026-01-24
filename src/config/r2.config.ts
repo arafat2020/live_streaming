@@ -51,7 +51,7 @@ export const R2_BUCKET = process.env.R2_BUCKET_NAME || 'videos';
 export const R2_PUBLIC_URL = validateEnvVar(
   'R2_PUBLIC_BUCKET_URL',
   process.env.R2_PUBLIC_BUCKET_URL,
-);
+).replace(/\/$/, '');
 
 /**
  * Log configuration on startup (helpful for debugging)

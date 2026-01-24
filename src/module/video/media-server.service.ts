@@ -260,52 +260,58 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     this.logger.log(`🎬 FFmpeg connecting to: ${rtmpUrl}`);
 
-    const ffmpeg = spawn('ffmpeg', [
-      '-i',
-      rtmpUrl,
-      '-c:v',
-      'copy',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '128k',
-      '-f',
-      'hls',
+    const ffmpeg = spawn(
+      'ffmpeg',
+      [
+        '-i',
+        rtmpUrl,
+        '-c:v',
+        'copy',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '128k',
+        '-f',
+        'hls',
 
-      // ✅ OPTIMIZED: 2-second segments for faster playback start
-      '-hls_time',
-      '2',
+        // ✅ OPTIMIZED: 2-second segments for faster playback start
+        '-hls_time',
+        '2',
 
-      // ✅ OPTIMIZED: Keep 10 segments (20 seconds of video)
-      '-hls_list_size',
-      '10',
+        // ✅ OPTIMIZED: Keep 10 segments (20 seconds of video)
+        '-hls_list_size',
+        '10',
 
-      // ✅ OPTIMIZED: Better flags for live streaming
-      '-hls_flags',
-      'delete_segments+independent_segments+program_date_time',
+        // ✅ OPTIMIZED: Better flags for live streaming
+        '-hls_flags',
+        'delete_segments+independent_segments+program_date_time',
 
-      // ✅ OPTIMIZED: Event playlist type for live streams
-      '-hls_playlist_type',
-      'event',
+        // ✅ OPTIMIZED: Event playlist type for live streams
+        '-hls_playlist_type',
+        'event',
 
-      // ✅ OPTIMIZED: Start numbering from 0
-      '-start_number',
-      '0',
+        // ✅ OPTIMIZED: Start numbering from 0
+        '-start_number',
+        '0',
 
-      // ✅ OPTIMIZED: GOP size for 2-second segments (48 frames at 24fps)
-      '-g',
-      '48',
-      '-keyint_min',
-      '48',
+        // ✅ OPTIMIZED: GOP size for 2-second segments (48 frames at 24fps)
+        '-g',
+        '48',
+        '-keyint_min',
+        '48',
 
-      // ✅ OPTIMIZED: Disable scene change detection for consistent segments
-      '-sc_threshold',
-      '0',
+        // ✅ OPTIMIZED: Disable scene change detection for consistent segments
+        '-sc_threshold',
+        '0',
 
-      '-hls_segment_filename',
-      path.join(liveDir, '%03d.ts'),
-      path.join(liveDir, 'index.m3u8'),
-    ]);
+        '-hls_segment_filename',
+        '%03d.ts',
+        'index.m3u8',
+      ],
+      {
+        cwd: liveDir,
+      },
+    );
 
     // Log FFmpeg output for debugging
     ffmpeg.stderr.on('data', (data) => {
