@@ -1,5 +1,6 @@
 model Notification {
-  id        String            @id @default(uuid())
+  id String @id @default(uuid())
+
   userId    String
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      NotificationType? // e.g., 'CHANNEL_LIVE', 'NEW_VIDEO', 'ANNOUNCEMENT'

@@ -1,39 +1,39 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpStatus,
   Param,
   Patch,
-  Req,
-  Res,
-  UseGuards,
-  HttpStatus,
-  Delete,
-  UploadedFile,
-  UseInterceptors,
   Post,
   Query,
+  Req,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { UserService } from './user.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { UserRole } from '@prisma/client';
-import { GetMe, RequestWithUser } from './dto/request-with-user.interface';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { Request, Response } from 'express';
-import sendResponse from '../../utils/sendResponse';
 import {
   ApiBody,
   ApiConsumes,
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
+import { Request, Response } from 'express';
+import sendResponse from '../../utils/sendResponse';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { GetMe, RequestWithUser } from './dto/request-with-user.interface';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UserService } from './user.service';
 
-import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
-import { Roles } from '../auth/guards/roles.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { AcceptTermsDto } from './dto/user-confirmation.dto';
 import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
+import { Roles } from '../auth/guards/roles.decorator';
+import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
+import { AcceptTermsDto } from './dto/user-confirmation.dto';
 
 @Controller('user')
 export class UserController {
@@ -237,6 +237,19 @@ export class UserController {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Profile updated successfully.',
+      data,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, TermsAcceptedGuard)
+  @Delete('me')
+  @ApiOperation({ summary: 'Delete own account' })
+  async deleteMe(@Req() req: GetMe, @Res() res: Response) {
+    const data = await this.userService.deleteMyAccount(req.user.id);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Account deleted successfully.',
       data,
     });
   }

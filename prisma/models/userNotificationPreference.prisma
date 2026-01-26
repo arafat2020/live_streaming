@@ -1,7 +1,7 @@
 model UserNotificationPreference {
   id               String  @id @default(uuid())
   userId           String  @unique
-  user             User    @relation(fields: [userId], references: [id],onDelete: Cascade)
+  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   channelLive      Boolean @default(false) // Maps to 'Channel goes live'
   newVideoUpload   Boolean @default(false) // Maps to 'New video upload'
   platformAnnounce Boolean @default(false) // 'Platform announcements'

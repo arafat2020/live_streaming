@@ -13,11 +13,14 @@ import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { safeChannelSelect } from './dto/safeChannelSelect';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 
+import { R2UploadService } from '../video/r2-upload.service';
+
 @Injectable()
 export class ChannelService {
   constructor(
     private prisma: PrismaService,
     private watchHistoryService: WatchHistoryService,
+    private readonly r2UploadService: R2UploadService,
   ) {}
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
@@ -411,7 +414,7 @@ export class ChannelService {
       statistics: {
         totalViews: totalViews._sum.views || 0,
         totalContent: _count.content,
-        // totalFollowers: _count.follow,
+        totalFollowers: _count.follow,
         // liveStreamCount,
         // vodCount,
       },
@@ -775,5 +778,102 @@ export class ChannelService {
     mappedChannels.sort((a, b) => b.score - a.score);
 
     return mappedChannels.slice(0, limit);
+  }
+
+  // --- Custom Emojis ---
+
+  async addCustomEmoji(
+    userId: string,
+    code: string,
+    file: Express.Multer.File,
+  ) {
+    const channel = await this.prisma.channel.findUnique({
+      where: { ownerId: userId },
+    });
+    if (!channel) throw new NotFoundException('Channel not found');
+
+    // Check code uniqueness in channel
+    const existing = await this.prisma.channelEmoji.findUnique({
+      where: {
+        channelId_code: {
+          channelId: channel.id,
+          code,
+        },
+      },
+    });
+    if (existing)
+      throw new BadRequestException(
+        'Emoji code already exists in this channel',
+      );
+
+    const url = await this.uploadEmojiImage(file, channel.id, code);
+
+    return this.prisma.channelEmoji.create({
+      data: {
+        code, // ensure it starts with : and ends with : ? user can provide "pepe", we might store ":pepe:"
+        url,
+        channelId: channel.id,
+      },
+    });
+  }
+
+  async removeCustomEmoji(userId: string, emojiId: string) {
+    const channel = await this.prisma.channel.findUnique({
+      where: { ownerId: userId },
+    });
+    if (!channel) throw new NotFoundException('Channel not found');
+
+    const emoji = await this.prisma.channelEmoji.findUnique({
+      where: { id: emojiId },
+    });
+    if (!emoji) throw new NotFoundException('Emoji not found');
+    if (emoji.channelId !== channel.id)
+      throw new ForbiddenException('You cannot delete this emoji');
+
+    return this.prisma.channelEmoji.delete({ where: { id: emojiId } });
+  }
+
+  async getCustomEmojis(channelId: string) {
+    return this.prisma.channelEmoji.findMany({ where: { channelId } });
+  }
+
+  private async uploadEmojiImage(
+    file: Express.Multer.File,
+    channelId: string,
+    code: string,
+  ): Promise<string> {
+    // Validate file type
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+    ];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        'Invalid file type. Only JPG, PNG, WEBP, GIF are allowed',
+      );
+    }
+    // Max 512KB for emojis
+    const maxSize = 512 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException('File size must not exceed 512KB');
+    }
+
+    try {
+      const timestamp = Date.now();
+      const extension = file.originalname.split('.').pop();
+      // Sanitise code for filename
+      const safeCode = code.replace(/[^a-zA-Z0-9]/g, '');
+      const r2Key = `emojis/${channelId}/${safeCode}-${timestamp}.${extension}`;
+
+      return await this.r2UploadService.uploadBuffer(
+        file.buffer,
+        r2Key,
+        file.mimetype,
+      );
+    } catch (error) {
+      throw new BadRequestException('Failed to upload emoji: ' + error.message);
+    }
   }
 }

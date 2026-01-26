@@ -1,12 +1,12 @@
 model ViewTrack {
-    id        String   @id @default(uuid())
-    contentId String
-    content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
-    userId    String?
-    ipAddress String?
-    createdAt DateTime @default(now())
+  id        String   @id @default(uuid())
+  contentId String
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  userId    String?
+  ipAddress String?
+  createdAt DateTime @default(now())
 
-    @@index([contentId, userId])
-    @@index([contentId, ipAddress])
-    @@map("view_tracks")
+  @@index([contentId, userId])
+  @@index([contentId, ipAddress])
+  @@map("view_tracks")
 }

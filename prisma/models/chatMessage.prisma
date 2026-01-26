@@ -1,11 +1,16 @@
 model ChatMessage {
-  id      String @id @default(uuid())
+  id String @id @default(uuid())
+
   content String // The message text
 
   roomId String
-  room   ChatRoom @relation(fields: [roomId], references: [id],onDelete: Cascade)
+  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   userId String
-  user   User     @relation(fields: [userId], references: [id],onDelete: Cascade)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  replyToId String?
+  replyTo   ChatMessage?  @relation("ReplyChain", fields: [replyToId], references: [id])
+  replies   ChatMessage[] @relation("ReplyChain")
 
   createdAt DateTime @default(now())
 

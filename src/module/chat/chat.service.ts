@@ -4,13 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
+import { publicUserSelect } from '../user/dto/publicUserSelect';
+import { safeUserSelect } from '../user/dto/safeUserSelect';
+import { ChatGateway } from './chat.gateway';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { UpdateChatDto } from './dto/update-chat.dto';
-import { PrismaService } from '../../prisma/prisma.service';
-import { ChatGateway } from './chat.gateway';
-import { safeUserSelect } from '../user/dto/safeUserSelect';
-import { publicUserSelect } from '../user/dto/publicUserSelect';
-import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 
 @Injectable()
 export class ChatService {
@@ -146,7 +146,12 @@ export class ChatService {
     }
   }
 
-  async sendMessage(roomId: string, userId: string, content: string) {
+  async sendMessage(
+    roomId: string,
+    userId: string,
+    content: string,
+    replyToId?: string,
+  ) {
     if (!roomId || !userId || !content)
       throw new BadRequestException('roomId, userId, and content are required');
 
@@ -174,10 +179,15 @@ export class ChatService {
 
     try {
       return await this.prisma.chatMessage.create({
-        data: { roomId, userId, content },
+        data: { roomId, userId, content, replyToId },
         include: {
           user: {
             select: publicUserSelect,
+          },
+          replyTo: {
+            include: {
+              user: { select: publicUserSelect },
+            },
           },
         },
       });
@@ -195,6 +205,11 @@ export class ChatService {
         include: {
           user: {
             select: publicUserSelect,
+          },
+          replyTo: {
+            include: {
+              user: { select: publicUserSelect },
+            },
           },
         },
         orderBy: { createdAt: 'desc' },

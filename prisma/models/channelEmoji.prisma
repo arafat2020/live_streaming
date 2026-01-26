@@ -1,0 +1,12 @@
+model ChannelEmoji {
+  id String @id @default(uuid())
+
+  code      String // e.g. :pepe:
+  url       String
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([channelId, code])
+  @@map("channel_emojis")
+}

@@ -1,12 +1,13 @@
 model PlatformBanLog {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
+
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   adminId   String
   banType   BanType
   reason    String?
   expiresAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@map("platform_ban_logs")
 }

@@ -6,16 +6,16 @@ import {
   NotFoundException,
   UseGuards,
 } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { safeUserSelect } from './dto/safeUserSelect';
-import { publicUserSelect } from './dto/publicUserSelect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
 import { R2UploadService } from '../video/r2-upload.service';
+import { publicUserSelect } from './dto/publicUserSelect';
+import { safeUserSelect } from './dto/safeUserSelect';
+import { UpdateMyProfileDto } from './dto/update-myprofile-dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { AcceptTermsDto } from './dto/user-confirmation.dto';
-import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class UserService {
@@ -195,6 +195,19 @@ export class UserService {
       throw new ForbiddenException('Cannot delete an admin user');
     }
     return this.prisma.user.delete({ where: { id: id } });
+  }
+
+  async deleteMyAccount(id: string) {
+    if (!id) {
+      throw new BadRequestException('ID is required');
+    }
+    // Check if user exists
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    // Optional: Add logic to cleanup resources (S3, related data) if cascading delete isn't enough
+    return this.prisma.user.delete({ where: { id } });
   }
 
   // ✅ NEW: Private method to upload profile image to R2

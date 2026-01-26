@@ -1,13 +1,14 @@
 model ChatRoom {
-  id       String  @id @default(uuid())
+  id String @id @default(uuid())
+
   isActive Boolean @default(false) // Set to true when the stream is live
 
   channelId String  @unique // A channel hosts one chat room
-  channel   Channel @relation(fields: [channelId], references: [id],onDelete: Cascade)
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   participants ChatParticipant[]
   chatMessage  ChatMessage[] // messages
 

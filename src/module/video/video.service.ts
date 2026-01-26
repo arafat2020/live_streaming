@@ -469,11 +469,19 @@ export class VideoService {
       });
 
       if (content) {
+        // Calculate duration in seconds
+        const durationSeconds = Math.floor(
+          (Date.now() - content.createdAt.getTime()) / 1000,
+        );
+
         await this.contentService.update(content.id, {
           status: ContentStatus.ENDED,
+          durationSeconds: durationSeconds,
         });
 
-        this.logger.log(` Content ${content.id} marked as ended`);
+        this.logger.log(
+          ` Content ${content.id} marked as ended. Duration: ${durationSeconds}s`,
+        );
       }
 
       // Notify via WebSocket

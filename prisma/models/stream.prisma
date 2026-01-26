@@ -1,11 +1,13 @@
 model Stream {
-  id          String   @id @default(uuid())
+  id String @id @default(uuid())
+
   userId      String
-  inputId     String   @unique
+  inputId     String @unique
   rtmpsUrl    String
   streamKey   String // encrypted in production
   playbackUrl String
-  status      String   @default("ready") // ready | live | ended
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String @default("ready") // ready | live | ended
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
