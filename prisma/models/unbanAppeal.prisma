@@ -7,15 +7,17 @@ enum AppealStatus {
 }
 
 model UnbanAppeal {
-  id            String       @id @default(uuid())
-  userId        String
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  channelId     String
-  channel       Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  reason        String       // User's reason for appeal
+  id String @id @default(uuid())
+
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId String
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  reason        String // User's reason for appeal
   status        AppealStatus @default(PENDING)
-  moderatorNote String?      // Optional note from the moderator
-  handledBy     String?      // ID of the moderator who handled it
+  moderatorNote String? // Optional note from the moderator
+  handledBy     String? // ID of the moderator who handled it
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

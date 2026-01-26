@@ -1,14 +1,15 @@
 model BanUser {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
+
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   channelId String
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   reason    String?
-  bannedBy  String?    // Admin/Moderator who issued the ban
+  bannedBy  String? // Admin/Moderator who issued the ban
   expiresAt DateTime?
-  banType   BanType  @default(PERMANENT)
+  banType   BanType   @default(PERMANENT)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

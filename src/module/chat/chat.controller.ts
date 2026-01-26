@@ -196,6 +196,7 @@ export class ChatController {
       roomId,
       dto.userId,
       dto.content,
+      dto.replyToId,
     );
 
     // Emit socket event: new message in the room

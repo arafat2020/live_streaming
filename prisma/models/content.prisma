@@ -1,18 +1,20 @@
 model Content {
-  id              String        @id @default(uuid())
-  channelId       String?
-  channel         Channel?      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid())
+
+  channelId String?
+  channel   Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
   title           String?
-  description     String?       @db.Text // বড় ডেসক্রিপশনের জন্য Text টাইপ ভালো
-  contentType     ContentType? // VOD || LIVE_STREAM
+  description     String?       @db.Text
+  contentType     ContentType?
   status          ContentStatus @default(PROCESSING) // PROCESSING AVAILABLE FAILED PRIVATE ARCHIVED ENDED
   durationSeconds Int?
   category        String?
 
   // Playback & Storage Refactor
-  playbackUrl      String? // https://pub-xxx.r2.dev/videos/lessonId/index.m3u8
-  r2Prefix         String? // videos/lessonId (সম্পূর্ণ ফোল্ডার পাথ মনে রাখা সহজ)
-  originalFileName String? // আপলোড করা অরিজিনাল ফাইলের নাম (উদা: my_video.mp4)
+  playbackUrl      String?
+  r2Prefix         String?
+  originalFileName String?
   thumbnailUrl     String?
 
   views          Int     @default(0)
@@ -26,6 +28,6 @@ model Content {
   watchHistory WatchHistory[]
   viewTracks   ViewTrack[]
 
-  @@index([channelId]) // কুয়েরি স্পিড বাড়ানোর জন্য ইনডেক্স
+  @@index([channelId])
   @@map("content")
 }

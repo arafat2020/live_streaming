@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -10,24 +12,33 @@ import {
   Query,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ChannelService } from './channel.service';
+import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Response } from 'express';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+import sendResponse from '../../utils/sendResponse';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/guards/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { GetMe } from '../user/dto/request-with-user.interface';
 import { MediaServerService } from '../video/media-server.service';
 import { VideoService } from '../video/video.service';
-import { Response } from 'express';
-import sendResponse from '../../utils/sendResponse';
-import { AuthGuard } from '@nestjs/passport';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/guards/roles.decorator';
-import { UpdateChannelDto } from './dto/update-channel.dto';
-import { GetMe } from '../user/dto/request-with-user.interface';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ChannelService } from './channel.service';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
-import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { UpdateChannelDto } from './dto/update-channel.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')
@@ -273,6 +284,76 @@ export class ChannelManagementController {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'Channel retrieved successfully.',
+      data,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
+  @Post('emoji')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Upload custom channel emoji' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+        code: {
+          type: 'string',
+          example: ':pepe:',
+        },
+      },
+    },
+  })
+  async addEmoji(
+    @Req() req: GetMe,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('code') code: string,
+    @Res() res: Response,
+  ) {
+    if (!file || !code)
+      throw new BadRequestException('File and code are required');
+    const data = await this.channelService.addCustomEmoji(
+      req.user.id,
+      code,
+      file,
+    );
+    return sendResponse(res, {
+      statusCode: HttpStatus.CREATED,
+      success: true,
+      message: 'Emoji uploaded successfully',
+      data,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
+  @Delete('emoji/:id')
+  @ApiOperation({ summary: 'Delete custom channel emoji' })
+  async deleteEmoji(
+    @Req() req: GetMe,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const data = await this.channelService.removeCustomEmoji(req.user.id, id);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Emoji deleted successfully',
+      data,
+    });
+  }
+
+  @Get(':channelId/emojis')
+  @ApiOperation({ summary: 'Get custom emojis for a channel' })
+  async getEmojis(@Param('channelId') channelId: string, @Res() res: Response) {
+    const data = await this.channelService.getCustomEmojis(channelId);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Emojis retrieved successfully',
       data,
     });
   }

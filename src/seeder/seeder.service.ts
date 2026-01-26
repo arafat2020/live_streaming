@@ -10,7 +10,7 @@ export class SeederService implements OnApplicationBootstrap {
   constructor(
     private prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   private readonly logger = new Logger(SeederService.name);
 
@@ -54,16 +54,19 @@ export class SeederService implements OnApplicationBootstrap {
 
     if (user) {
       // If found, ensure role is ADMIN
-      if (user.role !== UserRole.ADMIN) {
+      if (user.role !== UserRole.ADMIN || user.status !== 'ACTIVE') {
         user = await this.prisma.user.update({
           where: { id: user.id },
-          data: { role: UserRole.ADMIN },
+          data: {
+            role: UserRole.ADMIN,
+            status: 'ACTIVE'
+          },
         });
         this.logger.log(
-          `Updated role for existing user ${user.username || user.email} to ADMIN`,
+          `System: Ensured ${user.username || user.email} is ADMIN and ACTIVE`,
         );
       } else {
-        this.logger.log('Admin already exists.');
+        this.logger.log('Admin already exists and is active.');
       }
     } else {
       const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
@@ -77,6 +80,7 @@ export class SeederService implements OnApplicationBootstrap {
           firstName: 'Super',
           lastName: 'Admin',
           role: UserRole.ADMIN,
+          status: 'ACTIVE', // Ensure admin is active by default
 
           // Important flags for admin
           verified: true,

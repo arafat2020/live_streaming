@@ -1,11 +1,12 @@
 model Moderator {
-  id          String   @id @default(uuid())
-  userId          String
-  user            User    @relation(fields: [userId], references: [id],onDelete: Cascade)
-  channelId       String
-  channel         Channel       @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id String @id @default(uuid())
 
-@@map("moderator")
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("moderator")
 }

@@ -12,7 +12,7 @@ export class LiveCommentService {
     private prisma: PrismaService,
     private gateway: LiveCommentGateway,
     private moderatorService: ModeratorService,
-  ) {}
+  ) { }
 
   // ------- GET ALL COMMENTS FOR VIDEO -------
   async getAll(
@@ -74,6 +74,29 @@ export class LiveCommentService {
   async create(userId: string, dto: CreateLiveCommentDto) {
     if (!userId) {
       throw new BadRequestException('userId is required');
+    }
+
+    // 1. Get the content/video to find the associated channel
+    const content = await this.prisma.content.findUnique({
+      where: { id: dto.videoId },
+      include: { channel: true },
+    });
+
+    if (!content || !content.channel) {
+      throw new BadRequestException('Associated channel not found');
+    }
+
+    const channelId = content.channel.id;
+
+    // 2. Check if user is banned from this channel
+    const banStatus = await this.moderatorService.checkUserBan(
+      channelId,
+      userId,
+    );
+    if (banStatus.isBanned) {
+      throw new BadRequestException(
+        `You are banned from this channel. Reason: ${banStatus.reason || 'No reason provided'}`,
+      );
     }
 
     const comment = await this.prisma.liveComment.create({

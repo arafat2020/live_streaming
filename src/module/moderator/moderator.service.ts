@@ -17,7 +17,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 @Injectable()
 export class ModeratorService {
   private readonly logger = new Logger(ModeratorService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   @Cron(CronExpression.EVERY_HOUR)
   async cleanupExpiredBans() {
@@ -547,12 +547,14 @@ export class ModeratorService {
       where: {
         OR: [
           { firstName: { contains: query, mode: 'insensitive' as const } },
+          { username: { contains: query, mode: 'insensitive' as const } },
           { email: { contains: query, mode: 'insensitive' as const } },
         ],
       },
       select: {
         id: true,
         firstName: true,
+        username: true,
         email: true,
         profileImage: true,
         moderator: {
@@ -575,12 +577,13 @@ export class ModeratorService {
     return users.map((user) => {
       const activeBan = user.banUser.find((ban) => {
         if (ban.banType === BanType.PERMANENT) return true;
-        return ban.expiresAt && ban.expiresAt > new Date();
+        return ban.expiresAt && new Date(ban.expiresAt) > new Date();
       });
 
       return {
         id: user.id,
         firstName: user.firstName,
+        username: user.username,
         email: user.email,
         profileImage: user.profileImage,
         isModerator: user.moderator.length > 0,
