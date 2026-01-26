@@ -228,7 +228,8 @@ export class ContentService {
         orderBy: { views: 'desc' },
         include: {
           channel: {
-            include: {
+            select: {
+              ...safeChannelSelect,
               owner: {
                 select: {
                   id: true,
