@@ -1,17 +1,17 @@
 import {
-  Injectable,
   BadRequestException,
-  NotFoundException,
   ForbiddenException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { BanType, UserStatus } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
-import { UpdateChannelDto } from './dto/update-channel.dto';
-import { BanType, UserRole, UserStatus } from '@prisma/client';
-import { GetChannelsDto } from './dto/get-channels-query.dto';
-import { WatchHistoryService } from '../watch-history/watch-history.service';
-import { safeChannelSelect } from './dto/safeChannelSelect';
+import { PrismaService } from '../../prisma/prisma.service';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
+import { WatchHistoryService } from '../watch-history/watch-history.service';
+import { GetChannelsDto } from './dto/get-channels-query.dto';
+import { safeChannelSelect } from './dto/safeChannelSelect';
+import { UpdateChannelDto } from './dto/update-channel.dto';
 
 @Injectable()
 export class ChannelService {
@@ -553,7 +553,7 @@ export class ChannelService {
 
     const exclusionFilter = {
       owner: {
-        role: { not: UserRole.ADMIN },
+        // role: { not: UserRole.ADMIN },
         isBanned: false,
         isShadowBanned: false,
         status: UserStatus.ACTIVE,
