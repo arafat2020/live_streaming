@@ -24,18 +24,19 @@ export class SeederService implements OnApplicationBootstrap {
   }
 
   private async seedAdmin() {
-    const superAdminUsername = this.configService.get<string>(
+    const superAdminUsername = this.configService.getOrThrow<string>(
       'SUPER_ADMIN_USERNAME',
     );
     const superAdminEmail =
-      this.configService.get<string>('SUPER_ADMIN_EMAIL') || 'admin@rappio.tv';
-    const superAdminPassword = this.configService.get<string>(
+      this.configService.getOrThrow<string>('SUPER_ADMIN_EMAIL');
+
+    const superAdminPassword = this.configService.getOrThrow<string>(
       'SUPER_ADMIN_PASSWORD',
     );
 
-    if (!superAdminUsername || !superAdminPassword) {
+    if (!superAdminUsername || !superAdminEmail || !superAdminPassword) {
       this.logger.warn(
-        'SUPER_ADMIN_USERNAME or SUPER_ADMIN_PASSWORD not set. Skipping admin seeding.',
+        'SUPER_ADMIN_USERNAME or SUPER_ADMIN_EMAIL or SUPER_ADMIN_PASSWORD not set. Skipping admin seeding.',
       );
       return;
     }
@@ -49,68 +50,79 @@ export class SeederService implements OnApplicationBootstrap {
       where: { email: superAdminEmail },
     });
 
-    const superAdmin = existingAdminByUsername || existingAdminByEmail;
+    let user = existingAdminByUsername || existingAdminByEmail;
 
-    const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
-
-    if (superAdmin) {
+    if (user) {
       // If found, ensure role is ADMIN
-      if (superAdmin.role !== UserRole.ADMIN) {
-        await this.prisma.user.update({
-          where: { id: superAdmin.id },
+      if (user.role !== UserRole.ADMIN) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
           data: { role: UserRole.ADMIN },
         });
         this.logger.log(
-          `Updated role for existing user ${superAdmin.username || superAdmin.email} to ADMIN`,
+          `Updated role for existing user ${user.username || user.email} to ADMIN`,
         );
       } else {
         this.logger.log('Admin already exists.');
       }
-      return;
+    } else {
+      const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
+
+      // Create new admin user
+      user = await this.prisma.user.create({
+        data: {
+          username: superAdminUsername,
+          email: superAdminEmail, // Required by schema
+          password: hashedPassword,
+          firstName: 'Super',
+          lastName: 'Admin',
+          role: UserRole.ADMIN,
+
+          // Important flags for admin
+          verified: true,
+          ageConfirmed: true,
+          termsAccepted: true,
+          termsAcceptedAt: new Date(),
+          privacyAccepted: true,
+          privacyAcceptedAt: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `✅ Default super admin created: ${superAdminUsername} (${superAdminEmail})`,
+      );
     }
 
-    // Create new admin user
-    const user = await this.prisma.user.create({
-      data: {
-        username: superAdminUsername,
-        email: superAdminEmail, // Required by schema
-        password: hashedPassword,
-        firstName: 'Super',
-        lastName: 'Admin',
-        role: UserRole.ADMIN,
-
-        // Important flags for admin
-        verified: true,
-        ageConfirmed: true,
-        termsAccepted: true,
-        termsAcceptedAt: new Date(),
-        privacyAccepted: true,
-        privacyAcceptedAt: new Date(),
-      },
+    // Check if channel exists for the admin
+    const existingChannel = await this.prisma.channel.findFirst({
+      where: { ownerId: user.id },
     });
 
-    // Create Channel for Admin
-    const handle = superAdminUsername; // Use username as handle since it's unique
-    const isHandleTaken = await this.prisma.channel.findUnique({
-      where: { handle },
-    });
+    if (existingChannel) {
+      this.logger.log(`Channel already exists for admin: ${user.username}`);
+    }
 
-    const finalHandle = isHandleTaken
-      ? `${handle}-${Math.floor(1000 + Math.random() * 9000)}`
-      : handle;
+    if (!existingChannel) {
+      // Create Channel for Admin
+      const handle = user.username!; // Use username as handle since it's unique
+      const isHandleTaken = await this.prisma.channel.findUnique({
+        where: { handle },
+      });
 
-    const channelPayload = {
-      ownerId: user.id,
-      name: user.firstName,
-      handle: finalHandle,
-      description: 'Platform owner',
-      streamKey: this.generateStreamKey(),
-    };
+      const finalHandle = isHandleTaken
+        ? `${handle}-${Math.floor(1000 + Math.random() * 9000)}`
+        : handle;
 
-    await this.prisma.channel.create({ data: channelPayload });
+      const channelPayload = {
+        ownerId: user.id,
+        name: user.firstName,
+        handle: finalHandle,
+        description: 'Platform owner',
+        streamKey: this.generateStreamKey(),
+      };
 
-    this.logger.log(
-      `✅ Default super admin created: ${superAdminUsername} (${superAdminEmail})`,
-    );
+      await this.prisma.channel.create({ data: channelPayload });
+      this.logger.log(`✅ Channel created for admin: ${finalHandle}`);
+    }
   }
 }
