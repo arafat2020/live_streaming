@@ -66,6 +66,11 @@ export class ContentService {
       };
     }
 
+    // Category filter
+    if (query.category) {
+      where.category = query.category;
+    }
+
     // Status filter
     // Status filter: Default to showing ready content (AVAILABLE or ENDED)
     if (query.status) {

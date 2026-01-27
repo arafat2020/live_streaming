@@ -21,7 +21,7 @@ export class ChannelService {
     private prisma: PrismaService,
     private watchHistoryService: WatchHistoryService,
     private readonly r2UploadService: R2UploadService,
-  ) {}
+  ) { }
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }
@@ -268,14 +268,19 @@ export class ChannelService {
     const skip = (page - 1) * limit;
 
     // Build where clause for search
-    const where = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' as const } },
-            { handle: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' as const } },
+        { handle: { contains: search, mode: 'insensitive' as const } },
+      ];
+    }
+
+    if (dto.category) {
+      where.category = dto.category;
+    }
+
 
     // Get total count for pagination
     const total = await this.prisma.channel.count({ where });

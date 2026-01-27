@@ -56,4 +56,14 @@ export class QueryContentDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by category',
+    example: 'IRL',
+    enum: ['IRL', 'JUST_CHATTING', 'CASINO_GAMES'],
+  })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
 }
