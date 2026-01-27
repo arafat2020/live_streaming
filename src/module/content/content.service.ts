@@ -181,6 +181,108 @@ export class ContentService {
       },
     };
   }
+
+  async getHeroBannerContent(userId?: string) {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    // Common where clause for visibility
+    const visibilityWhere: Prisma.ContentWhereInput = {};
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      const isAdmin = user?.role === 'ADMIN';
+
+      visibilityWhere.OR = [
+        {
+          isShadowBanned: false,
+          channel: { owner: { isShadowBanned: false } },
+        },
+        { channel: { ownerId: userId } },
+        ...(isAdmin
+          ? [
+            {
+              OR: [
+                { isShadowBanned: true },
+                { channel: { owner: { isShadowBanned: true } } },
+              ],
+            },
+          ]
+          : []),
+      ];
+    } else {
+      visibilityWhere.isShadowBanned = false;
+      visibilityWhere.channel = { owner: { isShadowBanned: false } };
+    }
+
+    // 1. Top Live Streams (Candidate list)
+    const liveStreams = await this.prisma.content.findMany({
+      where: {
+        status: 'AVAILABLE',
+        contentType: 'LIVE_STREAM',
+        AND: [visibilityWhere]
+      },
+      take: 10,
+      orderBy: { views: 'desc' },
+      include: {
+        channel: {
+          select: {
+            ...safeChannelSelect,
+            owner: {
+              select: {
+                id: true,
+                firstName: true,
+                profileImage: true,
+                username: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Map real-time viewer count and sort
+    const mappedLive = liveStreams.map(item => ({
+      ...item,
+      concurrentViewers: this.watchHistoryService.getActiveViewerCount(item.id)
+    })).sort((a, b) => b.concurrentViewers - a.concurrentViewers).slice(0, 3);
+
+    // 2. Top 3 VODs (Weekly)
+    const topVODs = await this.prisma.content.findMany({
+      where: {
+        status: 'AVAILABLE',
+        contentType: 'VOD',
+        createdAt: { gte: oneWeekAgo },
+        AND: [visibilityWhere]
+      },
+      take: 3,
+      orderBy: { views: 'desc' },
+      include: {
+        channel: {
+          select: {
+            ...safeChannelSelect,
+            owner: {
+              select: {
+                id: true,
+                firstName: true,
+                profileImage: true,
+                username: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      topLiveStreams: mappedLive,
+      topVODs: topVODs
+    };
+  }
+
   async liveOnRappioList(query: QueryContentDto, userId?: string) {
     const page = Math.max(query.page ?? 1, 1);
     const pageSize = Math.min(query.pageSize ?? 20, 100);
