@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateLiveCommentDto {
@@ -17,4 +17,13 @@ export class CreateLiveCommentDto {
   @IsString()
   @IsNotEmpty()
   message: string;
+
+  @ApiProperty({
+    description: 'ID of the comment this is replying to',
+    example: '7a8f9e2b-1c2d-3e4f-5678-90ab12cdef34',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  replyToId?: string;
 }

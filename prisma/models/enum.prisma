@@ -53,16 +53,9 @@ enum BanType {
   TEMPORARY
 }
 
-// User profile category for content type
-enum UserCategory {
-  JUST_CHATTING
+// Stream and Content categories
+enum Category {
   IRL
-  GAMING
-  MUSIC
-  EDUCATION
-  SPORTS
-  GAMBLING
-  TECH
-  IRL_PRO
-  OTHERS
+  JUST_CHATTING
+  CASINO_GAMES
 }

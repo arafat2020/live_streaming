@@ -35,4 +35,14 @@ export class GetChannelsDto {
   @IsInt()
   @Min(1)
   limit?: number = 10;
+
+  @ApiPropertyOptional({
+    description: 'Filter by category',
+    example: 'IRL',
+    enum: ['IRL', 'JUST_CHATTING', 'CASINO_GAMES'],
+  })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
 }

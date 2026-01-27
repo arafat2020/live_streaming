@@ -39,6 +39,7 @@ import { ChannelService } from './channel.service';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
+import { GetChannelContentDto } from './dto/get-channel-content.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')
@@ -47,7 +48,7 @@ export class ChannelManagementController {
     private readonly channelService: ChannelService,
     private readonly mediaServerService: MediaServerService,
     private readonly videoService: VideoService,
-  ) {}
+  ) { }
 
   @ApiOperation({ summary: 'Get real-time stats for my live stream' })
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
@@ -75,9 +76,9 @@ export class ChannelManagementController {
         followerCount: channel.statistics?.totalFollowers || 0,
         currentStream: dbStats?.currentStream
           ? {
-              ...dbStats.currentStream,
-              internalPlaybackUrl, // Faster fallback for creator studio
-            }
+            ...dbStats.currentStream,
+            internalPlaybackUrl, // Faster fallback for creator studio
+          }
           : null,
         realtime: rtStats || { isActive: false },
         // Flatten some useful fields
@@ -95,7 +96,7 @@ export class ChannelManagementController {
   @Get('my-content')
   async getMyContent(
     @Req() req: GetMe,
-    @Query() paginationDto: PaginationDto,
+    @Query() queryDto: GetChannelContentDto,
     @Res() res: Response,
   ) {
     const userId = req.user.id;
@@ -103,13 +104,12 @@ export class ChannelManagementController {
     // Find channel for this user
     const channel = await this.channelService.getPrivateChannel(userId);
 
-    const pageNumber = paginationDto.page || 1;
-    const limitNumber = paginationDto.limit || 10;
-
     const result = await this.channelService.getContentByChannelId(
       channel.id,
-      pageNumber,
-      limitNumber,
+      queryDto.page,
+      queryDto.limit,
+      queryDto.filter,
+      queryDto.sort,
     );
 
     return sendResponse(res, {
@@ -242,25 +242,23 @@ export class ChannelManagementController {
   }
 
   // Controller
-  @Get('/by-content/:contentId')
+  @Get('/by-content/:channelId')
   @ApiOperation({
     summary: 'Get contents by channel ID with pagination.',
     description:
       'This endpoint returns the contents associated with a specific channel ID with pagination support.',
   })
   async getChannelByContent(
-    @Param('contentId') contentId: string, // ✅ Added missing @Param
-    @Query() paginationDto: PaginationDto,
+    @Param('channelId') channelId: string,
+    @Query() queryDto: GetChannelContentDto,
     @Res() res: Response,
   ) {
-    // ✅ Use paginationDto instance, not the class
-    const pageNumber = paginationDto.page || 1;
-    const limitNumber = paginationDto.limit || 10;
-
     const data = await this.channelService.getContentByChannelId(
-      contentId,
-      pageNumber,
-      limitNumber,
+      channelId,
+      queryDto.page || 1,
+      queryDto.limit || 10,
+      queryDto.filter,
+      queryDto.sort,
     );
 
     return sendResponse(res, {

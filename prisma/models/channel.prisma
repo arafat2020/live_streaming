@@ -5,17 +5,23 @@ model Channel {
   ownerId String  @unique
   owner   User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  handle             String   @unique // e.g., @techguru (used for public URL)
+  handle             String    @unique // e.g., @techguru (used for public URL)
   name               String
-  description        String?
-  streamKey          String   @unique // Unique key for OBS authentication (Crucial for Live Streaming)
-  lastHandleUpdate   DateTime @default(now()) // For enforcing the 30-day change limit on handle changes
+  description        String?   @db.Text
+  websiteUrl         String?
+  twitterUrl         String?
+  youtubeUrl         String?
+  discordUrl         String?
+  instagramUrl       String?
+  streamKey          String    @unique // Unique key for OBS authentication (Crucial for Live Streaming)
+  lastHandleUpdate   DateTime  @default(now()) // For enforcing the 30-day change limit on handle changes
+  lastAboutUpdate    DateTime  @default(now()) // For rate-limiting about section edits
   isLive             Boolean?
-  category           String?
+  category           Category? @default(JUST_CHATTING)
   pendingTitle       String?
   pendingDescription String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   // Relations
   content      Content[]
