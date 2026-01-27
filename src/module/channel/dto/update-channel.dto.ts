@@ -1,5 +1,6 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Category } from '@prisma/client';
 
 export class UpdateChannelDto {
   @ApiPropertyOptional({
@@ -30,12 +31,13 @@ export class UpdateChannelDto {
   handle?: string;
 
   @ApiPropertyOptional({
-    example: 'GAMING',
+    enum: Category,
+    example: Category.JUST_CHATTING,
     description: 'Default category for the next live stream',
   })
   @IsOptional()
-  @IsString()
-  category?: string;
+  @IsEnum(Category)
+  category?: Category;
 
   @ApiPropertyOptional({
     example: 'My Awesome Stream',

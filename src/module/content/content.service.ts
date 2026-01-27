@@ -18,7 +18,7 @@ export class ContentService {
   constructor(
     private prisma: PrismaService,
     private readonly watchHistoryService: WatchHistoryService,
-  ) {}
+  ) { }
 
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
@@ -95,13 +95,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                  {
-                    OR: [
-                      { isShadowBanned: true },
-                      { channel: { owner: { isShadowBanned: true } } },
-                    ],
-                  },
-                ]
+                {
+                  OR: [
+                    { isShadowBanned: true },
+                    { channel: { owner: { isShadowBanned: true } } },
+                  ],
+                },
+              ]
               : []),
           ],
         },
@@ -204,13 +204,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                  {
-                    OR: [
-                      { isShadowBanned: true },
-                      { channel: { owner: { isShadowBanned: true } } },
-                    ],
-                  },
-                ]
+                {
+                  OR: [
+                    { isShadowBanned: true },
+                    { channel: { owner: { isShadowBanned: true } } },
+                  ],
+                },
+              ]
               : []),
           ],
         },
@@ -263,6 +263,93 @@ export class ContentService {
       },
     };
   }
+
+  async getHomeCategorizedStreams(userId?: string) {
+    const categories = ['IRL', 'JUST_CHATTING', 'CASINO_GAMES'];
+
+    const categorizedData = await Promise.all(
+      categories.map(async (cat) => {
+        const where: Prisma.ContentWhereInput = {
+          status: 'AVAILABLE',
+          contentType: 'LIVE_STREAM',
+          category: cat as any,
+        };
+
+        // Apply shadow-ban filters
+        if (userId) {
+          const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { role: true },
+          });
+          const isAdmin = user?.role === 'ADMIN';
+
+          where.AND = [
+            {
+              OR: [
+                {
+                  isShadowBanned: false,
+                  channel: { owner: { isShadowBanned: false } },
+                },
+                { channel: { ownerId: userId } },
+                ...(isAdmin
+                  ? [
+                    {
+                      OR: [
+                        { isShadowBanned: true },
+                        { channel: { owner: { isShadowBanned: true } } },
+                      ],
+                    },
+                  ]
+                  : []),
+              ],
+            },
+          ];
+        } else {
+          where.isShadowBanned = false;
+          where.channel = { owner: { isShadowBanned: false } };
+        }
+
+        const streams = await this.prisma.content.findMany({
+          where,
+          take: 12, // Sufficient for a horizontal row
+          orderBy: [{ views: 'desc' }, { createdAt: 'desc' }],
+          include: {
+            channel: {
+              select: {
+                ...safeChannelSelect,
+                owner: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    profileImage: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        const mappedStreams = streams.map((item) => ({
+          ...item,
+          concurrentViewers: this.watchHistoryService.getActiveViewerCount(
+            item.id,
+          ),
+          totalViews: item.views,
+        }));
+
+        // Sort by concurrent viewers primary
+        mappedStreams.sort((a, b) => b.concurrentViewers - a.concurrentViewers);
+
+        return {
+          category: cat,
+          streams: mappedStreams,
+        };
+      }),
+    );
+
+    return categorizedData;
+  }
+
 
   async findOne(id: string, userId?: string) {
     const content = await this.prisma.content.findUnique({
