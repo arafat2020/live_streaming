@@ -3,7 +3,12 @@ model LiveComment {
   userId    String
   videoId   String // or streamId
   message   String
+  depth     Int      @default(0)
   createdAt DateTime @default(now())
+
+  replyToId String?
+  replyTo   LiveComment?  @relation("LiveCommentReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   LiveComment[] @relation("LiveCommentReplies")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

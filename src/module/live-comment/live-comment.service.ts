@@ -35,6 +35,11 @@ export class LiveCommentService {
         user: {
           select: publicUserSelect,
         },
+        replyTo: {
+          include: {
+            user: { select: publicUserSelect }
+          }
+        }
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -99,12 +104,29 @@ export class LiveCommentService {
       );
     }
 
+    // Calculate depth for nesting
+    let depth = 0;
+    if (dto.replyToId) {
+      const parent = await this.prisma.liveComment.findUnique({
+        where: { id: dto.replyToId },
+        select: { depth: true },
+      });
+      if (parent) {
+        depth = (parent.depth || 0) + 1;
+      }
+    }
+
     const comment = await this.prisma.liveComment.create({
-      data: { userId, ...dto },
+      data: { userId, ...dto, depth },
       include: {
         user: {
           select: publicUserSelect,
         },
+        replyTo: {
+          include: {
+            user: { select: publicUserSelect }
+          }
+        }
       },
     });
 
