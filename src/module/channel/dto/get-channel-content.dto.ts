@@ -5,6 +5,7 @@ import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export enum ContentFilter {
     ALL = 'all',
+    LIVE = 'live',
     VIDEOS = 'videos',
     RECORDINGS = 'recordings',
 }

@@ -512,7 +512,7 @@ export class ChannelService {
     channelId: string,
     page: number = 1,
     limit: number = 10,
-    filter: 'all' | 'videos' | 'recordings' = 'all',
+    filter: 'all' | 'live' | 'videos' | 'recordings' = 'all',
     sort: 'newest' | 'most_viewed' = 'newest',
   ) {
     // Validate pagination parameters
@@ -527,10 +527,14 @@ export class ChannelService {
       where.contentType = 'VOD';
       where.status = 'AVAILABLE'; // Standard uploaded videos
     } else if (filter === 'recordings') {
-      where.status = 'ARCHIVED'; // Stream recordings
+      where.contentType = 'LIVE_STREAM';
+      where.status = 'ENDED'; // Past live streams
+    } else if (filter === 'live') {
+      where.contentType = 'LIVE_STREAM';
+      where.status = 'AVAILABLE'; // Ongoing live streams
     } else {
       // 'all' - show anything that is public
-      where.status = { in: ['AVAILABLE', 'ARCHIVED'] };
+      where.status = { in: ['AVAILABLE', 'ENDED', 'ARCHIVED'] };
     }
 
     // Apply sorting
