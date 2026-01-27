@@ -57,13 +57,16 @@ export class LiveCommentService {
       }),
     );
 
+    // Transform to threaded order
+    const threadedData = this.buildThreadedList(commentsWithRoles);
+
     // Calculate pagination metadata
     const totalPages = Math.ceil(totalCount / limit);
     const hasNextPage = page < totalPages;
     const hasPrevPage = page > 1;
 
     return {
-      data: commentsWithRoles,
+      data: threadedData,
       meta: {
         total: totalCount,
         page,
@@ -73,6 +76,47 @@ export class LiveCommentService {
         hasPrevPage,
       },
     };
+  }
+
+  private buildThreadedList(comments: any[]) {
+    const map = new Map<string, any>();
+    comments.forEach((c) => {
+      c.replies = [];
+      map.set(c.id, c);
+    });
+
+    const roots: any[] = [];
+    comments.forEach((c) => {
+      if (c.replyToId && map.has(c.replyToId)) {
+        map.get(c.replyToId).replies.push(c);
+      } else {
+        roots.push(c);
+      }
+    });
+
+    const flatten = (nodes: any[]) => {
+      const result: any[] = [];
+      nodes.forEach((node) => {
+        result.push(node);
+        if (node.replies && node.replies.length > 0) {
+          // Sort replies by time ASC (natural flow within a thread)
+          node.replies.sort(
+            (a: any, b: any) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          );
+          result.push(...flatten(node.replies));
+        }
+      });
+      return result;
+    };
+
+    // Sort roots by time DESC (newest root conversations first)
+    roots.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    return flatten(roots);
   }
 
   // ------- CREATE COMMENT -------
