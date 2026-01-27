@@ -18,17 +18,54 @@ export class UpdateChannelDto {
   })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(5000)
   description?: string;
 
   @ApiPropertyOptional({
-    example: 'techguru',
-    description: 'Public handle (no @). Changing is limited once every 30 days',
+    example: 'https://mywebsite.com',
+    description: 'Channel website URL',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(50)
-  handle?: string;
+  @MaxLength(255)
+  websiteUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://twitter.com/mychannel',
+    description: 'Twitter URL',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  twitterUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://youtube.com/@mychannel',
+    description: 'YouTube URL',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  youtubeUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://discord.gg/mychannel',
+    description: 'Discord URL',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  discordUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://instagram.com/mychannel',
+    description: 'Instagram URL',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  instagramUrl?: string;
+
 
   @ApiPropertyOptional({
     enum: Category,

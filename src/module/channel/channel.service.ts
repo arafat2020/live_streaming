@@ -36,14 +36,20 @@ export class ChannelService {
       throw new BadRequestException('User already owns a channel.');
     }
 
-    // Auto-generate a handle and ensure uniqueness (simple example, would need retry logic in production)
-    const initialHandle = name.toLowerCase().replace(/\s/g, '');
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true },
+    });
+
+    if (!user || !user.username) {
+      throw new NotFoundException('User not found.');
+    }
 
     return this.prisma.channel.create({
       data: {
         ownerId: userId,
         name,
-        handle: initialHandle,
+        handle: user.username,
         streamKey: this.generateStreamKey(),
       },
     });
@@ -186,24 +192,69 @@ export class ChannelService {
         'You are not authorized to updated this channel. Only the channel owner can updated channel.',
       );
     }
-    // // Logic for Handle Change Rate Limit (30 days)
-    // if (data.handle && data.handle !== channel.handle) {
-    //   const thirtyDaysAgo = new Date();
-    //   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    //   if (channel.lastHandleUpdate > thirtyDaysAgo) {
-    //     throw new BadRequestException('Handle can only be changed once every 30 days.');
-    //   }
-    // }
+    // 2. Logic for About Section Rate Limit (5 minutes)
+    const aboutFields = [
+      'description',
+      'websiteUrl',
+      'twitterUrl',
+      'youtubeUrl',
+      'discordUrl',
+      'instagramUrl',
+      'category',
+    ];
+    const isUpdatingAbout = aboutFields.some(
+      (field) => data[field] !== undefined,
+    );
+
+    if (isUpdatingAbout) {
+      const fiveMinutesAgo = new Date();
+      fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
+
+      if (channel.lastAboutUpdate > fiveMinutesAgo) {
+        throw new BadRequestException(
+          'Please wait 5 minutes between profile updates.',
+        );
+      }
+    }
+
+    // 3. Sanitization & URL Validation
+    if (data.description) {
+      // Basic strip HTML/scripts
+      data.description = data.description.replace(/<[^>]*>?/gm, '');
+    }
+
+    const urlFields = [
+      'websiteUrl',
+      'twitterUrl',
+      'youtubeUrl',
+      'discordUrl',
+      'instagramUrl',
+    ];
+    for (const field of urlFields) {
+      if (data[field]) {
+        try {
+          // Add protocol if missing for validation
+          let urlToTest = data[field];
+          if (!urlToTest.startsWith('http')) {
+            urlToTest = 'https://' + urlToTest;
+          }
+          new URL(urlToTest);
+          // Update the data with at least https if it was missing
+          if (!data[field].startsWith('http')) {
+            data[field] = 'https://' + data[field];
+          }
+        } catch (e) {
+          throw new BadRequestException(`Invalid URL format for ${field}`);
+        }
+      }
+    }
 
     return this.prisma.channel.update({
       where: { ownerId: userId },
       data: {
         ...data,
-        lastHandleUpdate:
-          data.handle && data.handle !== channel.handle
-            ? new Date()
-            : channel.lastHandleUpdate,
+        lastAboutUpdate: isUpdatingAbout ? new Date() : channel.lastAboutUpdate,
       },
     });
   }
@@ -461,27 +512,40 @@ export class ChannelService {
     channelId: string,
     page: number = 1,
     limit: number = 10,
+    filter: 'all' | 'videos' | 'recordings' = 'all',
+    sort: 'newest' | 'most_viewed' = 'newest',
   ) {
     // Validate pagination parameters
     const validPage = Math.max(1, page);
     const validLimit = Math.max(1, Math.min(100, limit)); // Max 100 items per page
     const skip = (validPage - 1) * validLimit;
 
-    // Get total count
-    const total = await this.prisma.content.count({
-      where: { channelId: channelId },
-    });
+    const where: any = { channelId: channelId };
 
-    if (total === 0) {
-      throw new NotFoundException('Content not found.');
+    // Apply filters
+    if (filter === 'videos') {
+      where.contentType = 'VOD';
+      where.status = 'AVAILABLE'; // Standard uploaded videos
+    } else if (filter === 'recordings') {
+      where.status = 'ARCHIVED'; // Stream recordings
+    } else {
+      // 'all' - show anything that is public
+      where.status = { in: ['AVAILABLE', 'ARCHIVED'] };
     }
+
+    // Apply sorting
+    const orderBy: any =
+      sort === 'most_viewed' ? { views: 'desc' } : { createdAt: 'desc' };
+
+    // Get total count
+    const total = await this.prisma.content.count({ where });
 
     // Get paginated data
     const contents = await this.prisma.content.findMany({
-      where: { channelId: channelId },
+      where,
       skip: skip,
       take: validLimit,
-      orderBy: { createdAt: 'desc' }, // Optional: order by creation date
+      orderBy,
     });
 
     return {

@@ -7,9 +7,15 @@ model Channel {
 
   handle             String    @unique // e.g., @techguru (used for public URL)
   name               String
-  description        String?
+  description        String?   @db.Text
+  websiteUrl         String?
+  twitterUrl         String?
+  youtubeUrl         String?
+  discordUrl         String?
+  instagramUrl       String?
   streamKey          String    @unique // Unique key for OBS authentication (Crucial for Live Streaming)
   lastHandleUpdate   DateTime  @default(now()) // For enforcing the 30-day change limit on handle changes
+  lastAboutUpdate    DateTime  @default(now()) // For rate-limiting about section edits
   isLive             Boolean?
   category           Category? @default(JUST_CHATTING)
   pendingTitle       String?
