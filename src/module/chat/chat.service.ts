@@ -22,7 +22,7 @@ export class ChatService {
     @Inject(forwardRef(() => ChatGateway))
     private gateway: ChatGateway,
     private moderatorService: ModeratorService,
-  ) {}
+  ) { }
 
   async getByChannelId(channelId: string) {
     if (!channelId) throw new BadRequestException('channelId is required');
@@ -251,6 +251,47 @@ export class ChatService {
     }
   }
 
+  private buildThreadedList(messages: any[]) {
+    const map = new Map<string, any>();
+    messages.forEach((m) => {
+      m.replies = [];
+      map.set(m.id, m);
+    });
+
+    const roots: any[] = [];
+    messages.forEach((m) => {
+      if (m.replyToId && map.has(m.replyToId)) {
+        map.get(m.replyToId).replies.push(m);
+      } else {
+        roots.push(m);
+      }
+    });
+
+    const flatten = (nodes: any[]) => {
+      const result: any[] = [];
+      nodes.forEach((node) => {
+        result.push(node);
+        if (node.replies && node.replies.length > 0) {
+          // Sort replies by time ASC
+          node.replies.sort(
+            (a: any, b: any) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          );
+          result.push(...flatten(node.replies));
+        }
+      });
+      return result;
+    };
+
+    // Sort roots by time DESC (newest at bottom is handled by frontend, but history needs a consistent order)
+    roots.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    return flatten(roots);
+  }
+
   // ------- HELPER: Determine User Role -------
   private async getUserRole(
     userId: string,
@@ -311,12 +352,13 @@ export class ChatService {
 
       // Add userRole to each message
       if (room) {
-        return await Promise.all(
+        const messagesWithRoles = await Promise.all(
           messages.map(async (msg) => {
             const userRole = await this.getUserRole(msg.userId, room.channelId);
             return { ...msg, userRole };
           }),
         );
+        return this.buildThreadedList(messagesWithRoles);
       }
 
       return messages;
