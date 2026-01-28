@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ContentStatus, ContentType } from '@prisma/client';
+import { Category, ContentStatus, ContentType } from '@prisma/client';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -71,6 +71,10 @@ export class VideoService {
 
     if (!channel) throw new NotFoundException('Channel not found');
 
+    // Requirement: Every stream must have exactly one category.
+    // If null or invalid, auto-set to JUST_CHATTING.
+    const streamCategory = channel.category || 'JUST_CHATTING';
+
     // Create the content record FIRST to get a public UUID/identity
     // This allows us to keep the streamKey private
     const content = await this.contentService.create({
@@ -79,7 +83,7 @@ export class VideoService {
       channelId: channel.id,
       contentType: ContentType.LIVE_STREAM,
       status: ContentStatus.AVAILABLE,
-      category: channel.category || undefined,
+      category: streamCategory,
     });
 
     return { contentId: content.id, channel };
@@ -267,7 +271,7 @@ export class VideoService {
     const content = await this.contentService.create({
       title: dto.title || `${channel.name} - Video`,
       description: dto.description,
-      category: dto.category,
+      category: dto.category as Category,
       channelId: channel.id,
       r2Prefix,
       contentType: ContentType.VOD,

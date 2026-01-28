@@ -9,7 +9,7 @@ model Content {
   contentType     ContentType?
   status          ContentStatus @default(PROCESSING) // PROCESSING AVAILABLE FAILED PRIVATE ARCHIVED ENDED
   durationSeconds Int?
-  category        String?
+  category        Category?     @default(JUST_CHATTING)
 
   // Playback & Storage Refactor
   playbackUrl      String?

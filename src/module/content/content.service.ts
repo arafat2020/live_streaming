@@ -66,6 +66,11 @@ export class ContentService {
       };
     }
 
+    // Category filter
+    if (query.category) {
+      where.category = query.category;
+    }
+
     // Status filter
     // Status filter: Default to showing ready content (AVAILABLE or ENDED)
     if (query.status) {
@@ -176,6 +181,113 @@ export class ContentService {
       },
     };
   }
+
+  async getHeroBannerContent(userId?: string) {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    // Common where clause for visibility
+    const visibilityWhere: Prisma.ContentWhereInput = {};
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      const isAdmin = user?.role === 'ADMIN';
+
+      visibilityWhere.OR = [
+        {
+          isShadowBanned: false,
+          channel: { owner: { isShadowBanned: false } },
+        },
+        { channel: { ownerId: userId } },
+        ...(isAdmin
+          ? [
+              {
+                OR: [
+                  { isShadowBanned: true },
+                  { channel: { owner: { isShadowBanned: true } } },
+                ],
+              },
+            ]
+          : []),
+      ];
+    } else {
+      visibilityWhere.isShadowBanned = false;
+      visibilityWhere.channel = { owner: { isShadowBanned: false } };
+    }
+
+    // 1. Top Live Streams (Candidate list)
+    const liveStreams = await this.prisma.content.findMany({
+      where: {
+        status: 'AVAILABLE',
+        contentType: 'LIVE_STREAM',
+        AND: [visibilityWhere],
+      },
+      take: 10,
+      orderBy: { views: 'desc' },
+      include: {
+        channel: {
+          select: {
+            ...safeChannelSelect,
+            owner: {
+              select: {
+                id: true,
+                firstName: true,
+                profileImage: true,
+                username: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Map real-time viewer count and sort
+    const mappedLive = liveStreams
+      .map((item) => ({
+        ...item,
+        concurrentViewers: this.watchHistoryService.getActiveViewerCount(
+          item.id,
+        ),
+      }))
+      .sort((a, b) => b.concurrentViewers - a.concurrentViewers)
+      .slice(0, 3);
+
+    // 2. Top 3 VODs (Weekly)
+    const topVODs = await this.prisma.content.findMany({
+      where: {
+        status: 'AVAILABLE',
+        contentType: 'VOD',
+        createdAt: { gte: oneWeekAgo },
+        AND: [visibilityWhere],
+      },
+      take: 3,
+      orderBy: { views: 'desc' },
+      include: {
+        channel: {
+          select: {
+            ...safeChannelSelect,
+            owner: {
+              select: {
+                id: true,
+                firstName: true,
+                profileImage: true,
+                username: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      topLiveStreams: mappedLive,
+      topVODs: topVODs,
+    };
+  }
+
   async liveOnRappioList(query: QueryContentDto, userId?: string) {
     const page = Math.max(query.page ?? 1, 1);
     const pageSize = Math.min(query.pageSize ?? 20, 100);
@@ -262,6 +374,92 @@ export class ContentService {
         totalPages: Math.ceil(total / pageSize),
       },
     };
+  }
+
+  async getHomeCategorizedStreams(userId?: string) {
+    const categories = ['IRL', 'JUST_CHATTING', 'CASINO_GAMES'];
+
+    const categorizedData = await Promise.all(
+      categories.map(async (cat) => {
+        const where: Prisma.ContentWhereInput = {
+          status: 'AVAILABLE',
+          contentType: 'LIVE_STREAM',
+          category: cat as any,
+        };
+
+        // Apply shadow-ban filters
+        if (userId) {
+          const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { role: true },
+          });
+          const isAdmin = user?.role === 'ADMIN';
+
+          where.AND = [
+            {
+              OR: [
+                {
+                  isShadowBanned: false,
+                  channel: { owner: { isShadowBanned: false } },
+                },
+                { channel: { ownerId: userId } },
+                ...(isAdmin
+                  ? [
+                      {
+                        OR: [
+                          { isShadowBanned: true },
+                          { channel: { owner: { isShadowBanned: true } } },
+                        ],
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ];
+        } else {
+          where.isShadowBanned = false;
+          where.channel = { owner: { isShadowBanned: false } };
+        }
+
+        const streams = await this.prisma.content.findMany({
+          where,
+          take: 12, // Sufficient for a horizontal row
+          orderBy: [{ views: 'desc' }, { createdAt: 'desc' }],
+          include: {
+            channel: {
+              select: {
+                ...safeChannelSelect,
+                owner: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    profileImage: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        const mappedStreams = streams.map((item) => ({
+          ...item,
+          concurrentViewers: this.watchHistoryService.getActiveViewerCount(
+            item.id,
+          ),
+          totalViews: item.views,
+        }));
+
+        // Sort by concurrent viewers primary
+        mappedStreams.sort((a, b) => b.concurrentViewers - a.concurrentViewers);
+
+        return {
+          category: cat,
+          streams: mappedStreams,
+        };
+      }),
+    );
+
+    return categorizedData;
   }
 
   async findOne(id: string, userId?: string) {

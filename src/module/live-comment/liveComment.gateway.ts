@@ -10,6 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
+import { LiveCommentService } from './live-comment.service';
 
 @WebSocketGateway({
   namespace: '/ws/live',
@@ -30,6 +31,8 @@ export class LiveCommentGateway
   constructor(
     @Inject(forwardRef(() => WatchHistoryService))
     private watchHistoryService: WatchHistoryService,
+    @Inject(forwardRef(() => LiveCommentService))
+    private liveCommentService: LiveCommentService,
   ) {}
 
   // Handle client connection
@@ -92,6 +95,37 @@ export class LiveCommentGateway
     this.logger.log(`Client ${client.id} joined video ${videoId}`);
 
     return { joined: videoId };
+  }
+
+  @SubscribeMessage('send_comment')
+  async handleSendComment(
+    @MessageBody()
+    data: {
+      videoId: string;
+      userId: string;
+      message: string;
+      replyToId?: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    this.logger.log(
+      `Client ${client.id} sent comment on video ${data.videoId}: ${data.message}`,
+    );
+    try {
+      const comment = await this.liveCommentService.create(data.userId, {
+        videoId: data.videoId,
+        message: data.message,
+        replyToId: data.replyToId,
+      });
+
+      // Broadcast to everyone in the room
+      this.server.to(`video:${data.videoId}`).emit('new_comment', comment);
+
+      return { success: true, message: 'Comment sent' };
+    } catch (error) {
+      this.logger.error(`Failed to send comment: ${error.message}`);
+      return { success: false, error: error.message };
+    }
   }
 
   // NEW: Start watching (triggers view count)
@@ -234,6 +268,9 @@ export class LiveCommentGateway
   // Comment events (existing functionality)
 
   sendCreate(videoId: string, comment: any) {
+    // Standardized event
+    this.server.to(`video:${videoId}`).emit('new_comment', comment);
+    // Backward compatibility
     this.server.to(`video:${videoId}`).emit('comment.created', comment);
   }
 

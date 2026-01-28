@@ -10,7 +10,7 @@ export class SeederService implements OnApplicationBootstrap {
   constructor(
     private prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   private readonly logger = new Logger(SeederService.name);
 
@@ -59,7 +59,7 @@ export class SeederService implements OnApplicationBootstrap {
           where: { id: user.id },
           data: {
             role: UserRole.ADMIN,
-            status: 'ACTIVE'
+            status: 'ACTIVE',
           },
         });
         this.logger.log(

@@ -8,7 +8,7 @@ import {
   IsUrl,
   IsUUID,
 } from 'class-validator';
-import { ContentType, ContentStatus } from '@prisma/client';
+import { ContentType, ContentStatus, Category } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateContentDto {
@@ -69,10 +69,10 @@ export class CreateContentDto {
   @IsString()
   r2Prefix?: string;
 
-  @ApiPropertyOptional({ example: 'Gaming' })
+  @ApiPropertyOptional({ enum: Category, example: Category.JUST_CHATTING })
   @IsOptional()
-  @IsString()
-  category?: string;
+  @IsEnum(Category)
+  category?: Category;
 
   @ApiProperty({ example: 'b768bfdc-2d0f-4fac-1234-abcdef' })
   @IsString()

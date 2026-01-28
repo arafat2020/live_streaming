@@ -60,6 +60,21 @@ export class ChatController {
     });
   }
 
+  @Get('channel/:channelId')
+  @ApiOperation({ summary: 'Get or create a chat room by Channel ID' })
+  async getByChannelId(
+    @Param('channelId') channelId: string,
+    @Res() res: Response,
+  ) {
+    const data = await this.chatService.getByChannelId(channelId);
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Chat room retrieved successfully.',
+      data,
+    });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a chat room by ID' })
   async findOne(@Param('id') id: string, @Res() res: Response) {
@@ -201,9 +216,10 @@ export class ChatController {
 
     // Emit socket event: new message in the room
     try {
-      this.chatGateway.server?.to(roomId).emit('message', { message: data });
-      // Optionally emit ack channel or per-user
-      this.chatGateway.server?.emit('message:global', { message: data });
+      this.chatGateway.server?.to(roomId).emit('new_message', data);
+      this.chatGateway.server?.to(roomId).emit('message', data);
+      // Optionally emit global update
+      this.chatGateway.server?.emit('new_message:global', data);
     } catch (e) {
       console.error('Failed to emit message', e);
     }

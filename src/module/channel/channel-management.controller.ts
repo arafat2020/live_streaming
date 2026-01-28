@@ -27,7 +27,6 @@ import {
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
-import { PaginationDto } from '../../common/dto/pagination.dto';
 import sendResponse from '../../utils/sendResponse';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/guards/roles.decorator';
@@ -36,6 +35,7 @@ import { GetMe } from '../user/dto/request-with-user.interface';
 import { MediaServerService } from '../video/media-server.service';
 import { VideoService } from '../video/video.service';
 import { ChannelService } from './channel.service';
+import { GetChannelContentDto } from './dto/get-channel-content.dto';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -95,7 +95,7 @@ export class ChannelManagementController {
   @Get('my-content')
   async getMyContent(
     @Req() req: GetMe,
-    @Query() paginationDto: PaginationDto,
+    @Query() queryDto: GetChannelContentDto,
     @Res() res: Response,
   ) {
     const userId = req.user.id;
@@ -103,13 +103,12 @@ export class ChannelManagementController {
     // Find channel for this user
     const channel = await this.channelService.getPrivateChannel(userId);
 
-    const pageNumber = paginationDto.page || 1;
-    const limitNumber = paginationDto.limit || 10;
-
     const result = await this.channelService.getContentByChannelId(
       channel.id,
-      pageNumber,
-      limitNumber,
+      queryDto.page,
+      queryDto.limit,
+      queryDto.filter,
+      queryDto.sort,
     );
 
     return sendResponse(res, {
@@ -242,25 +241,23 @@ export class ChannelManagementController {
   }
 
   // Controller
-  @Get('/by-content/:contentId')
+  @Get('/by-content/:channelId')
   @ApiOperation({
     summary: 'Get contents by channel ID with pagination.',
     description:
       'This endpoint returns the contents associated with a specific channel ID with pagination support.',
   })
   async getChannelByContent(
-    @Param('contentId') contentId: string, // ✅ Added missing @Param
-    @Query() paginationDto: PaginationDto,
+    @Param('channelId') channelId: string,
+    @Query() queryDto: GetChannelContentDto,
     @Res() res: Response,
   ) {
-    // ✅ Use paginationDto instance, not the class
-    const pageNumber = paginationDto.page || 1;
-    const limitNumber = paginationDto.limit || 10;
-
     const data = await this.channelService.getContentByChannelId(
-      contentId,
-      pageNumber,
-      limitNumber,
+      channelId,
+      queryDto.page || 1,
+      queryDto.limit || 10,
+      queryDto.filter,
+      queryDto.sort,
     );
 
     return sendResponse(res, {

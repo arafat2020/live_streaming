@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --ignore-path .prettierignore --check \"**/*.+(js|ts|json)\"",
-    "format:fix": "prettier --ignore-path .prettierignore --write \"**/*.+(js|ts|json)\""
+    "format:fix": "prettier --ignore-path .prettierignore --write \"**/*.+(js|ts|json)\"",
+    "ci:fix": "npm run lint:fix && npm run format:fix"
   },
   "prisma": {
     "schema": "./prisma"

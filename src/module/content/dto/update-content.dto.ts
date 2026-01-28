@@ -8,7 +8,7 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
-import { ContentStatus, ContentType } from '@prisma/client';
+import { ContentStatus, ContentType, Category } from '@prisma/client';
 
 export class UpdateContentDto {
   //   @ApiPropertyOptional({
@@ -37,11 +37,12 @@ export class UpdateContentDto {
 
   @ApiPropertyOptional({
     description: 'Category of the content',
-    example: 'Gaming',
+    enum: Category,
+    example: Category.JUST_CHATTING,
   })
   @IsOptional()
-  @IsString()
-  category?: string;
+  @IsEnum(Category)
+  category?: Category;
 
   //   @ApiPropertyOptional({
   //     description: 'Content type',

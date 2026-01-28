@@ -49,6 +49,34 @@ export class ContentController {
     });
   }
 
+  @ApiOperation({ summary: 'List of categorized Live streams for Home Page' })
+  @Get('home-categories')
+  async getHomeCategorizedStreams(@Req() req: GetMe, @Res() res: Response) {
+    const userId = req.user?.id;
+    const data = await this.contentService.getHomeCategorizedStreams(userId);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Categorized streams retrieved successfully.',
+      data,
+    });
+  }
+
+  @ApiOperation({ summary: 'Get hero banner content (Top Live & Top VODs)' })
+  @Get('hero-banner')
+  async getHeroBannerContent(@Req() req: GetMe, @Res() res: Response) {
+    const userId = req.user?.id;
+    const data = await this.contentService.getHeroBannerContent(userId);
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Hero banner content retrieved successfully.',
+      data,
+    });
+  }
+
   @ApiOperation({
     summary: 'List contents (supports filtering, search and pagination)',
   })

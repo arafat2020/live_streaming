@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  forwardRef,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LiveCommentGateway } from './liveComment.gateway';
 import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
@@ -10,9 +16,10 @@ import { publicUserSelect } from '../user/dto/publicUserSelect';
 export class LiveCommentService {
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => LiveCommentGateway))
     private gateway: LiveCommentGateway,
     private moderatorService: ModeratorService,
-  ) { }
+  ) {}
 
   // ------- GET ALL COMMENTS FOR VIDEO -------
   async getAll(
@@ -35,6 +42,11 @@ export class LiveCommentService {
         user: {
           select: publicUserSelect,
         },
+        replyTo: {
+          include: {
+            user: { select: publicUserSelect },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -52,13 +64,16 @@ export class LiveCommentService {
       }),
     );
 
+    // Transform to threaded order
+    const threadedData = this.buildThreadedList(commentsWithRoles);
+
     // Calculate pagination metadata
     const totalPages = Math.ceil(totalCount / limit);
     const hasNextPage = page < totalPages;
     const hasPrevPage = page > 1;
 
     return {
-      data: commentsWithRoles,
+      data: threadedData,
       meta: {
         total: totalCount,
         page,
@@ -68,6 +83,47 @@ export class LiveCommentService {
         hasPrevPage,
       },
     };
+  }
+
+  private buildThreadedList(comments: any[]) {
+    const map = new Map<string, any>();
+    comments.forEach((c) => {
+      c.replies = [];
+      map.set(c.id, c);
+    });
+
+    const roots: any[] = [];
+    comments.forEach((c) => {
+      if (c.replyToId && map.has(c.replyToId)) {
+        map.get(c.replyToId).replies.push(c);
+      } else {
+        roots.push(c);
+      }
+    });
+
+    const flatten = (nodes: any[]) => {
+      const result: any[] = [];
+      nodes.forEach((node) => {
+        result.push(node);
+        if (node.replies && node.replies.length > 0) {
+          // Sort replies by time ASC (natural flow within a thread)
+          node.replies.sort(
+            (a: any, b: any) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          );
+          result.push(...flatten(node.replies));
+        }
+      });
+      return result;
+    };
+
+    // Sort roots by time DESC (newest root conversations first)
+    roots.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    return flatten(roots);
   }
 
   // ------- CREATE COMMENT -------
@@ -99,17 +155,54 @@ export class LiveCommentService {
       );
     }
 
+    // Calculate depth for nesting
+    let depth = 0;
+    if (dto.replyToId) {
+      const parent = await this.prisma.liveComment.findUnique({
+        where: { id: dto.replyToId },
+        select: { depth: true },
+      });
+      if (parent) {
+        depth = (parent.depth || 0) + 1;
+      }
+    }
+
+    // Determine user role for this video/stream early to check age gate
+    const userRole = await this.getUserRole(userId, dto.videoId);
+
+    // Check account age (15 minutes requirement)
+    // EXCEPTION: Channel owner and Moderators can always chat immediately
+    if (userRole === 'user') {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { createdAt: true },
+      });
+
+      if (user) {
+        const accountAgeMinutes = Math.floor(
+          (Date.now() - user.createdAt.getTime()) / (1000 * 60),
+        );
+        if (accountAgeMinutes < 15) {
+          throw new ForbiddenException(
+            `New accounts must wait 15 minutes before chatting. Please try again in ${15 - accountAgeMinutes} minutes.`,
+          );
+        }
+      }
+    }
+
     const comment = await this.prisma.liveComment.create({
-      data: { userId, ...dto },
+      data: { userId, ...dto, depth },
       include: {
         user: {
           select: publicUserSelect,
         },
+        replyTo: {
+          include: {
+            user: { select: publicUserSelect },
+          },
+        },
       },
     });
-
-    // Determine user role for this video/stream
-    const userRole = await this.getUserRole(userId, dto.videoId);
 
     // Add role to comment object before broadcasting
     const commentWithRole = {
