@@ -240,7 +240,6 @@ export class ChatService {
               user: { select: publicUserSelect },
             },
           },
-          room: true,
         },
       });
 
@@ -326,12 +325,23 @@ export class ChatService {
     }
   }
 
-  async getMessages(roomId: string) {
+  async getMessages(
+    roomId: string,
+    paginationQuery?: { page?: number; limit?: number },
+  ) {
     if (!roomId) throw new BadRequestException('roomId is required');
+    const page = paginationQuery?.page || 1;
+    const limit = paginationQuery?.limit || 30;
+    const skip = (page - 1) * limit;
+
     try {
       const room = await this.prisma.chatRoom.findUnique({
         where: { id: roomId },
         select: { channelId: true },
+      });
+
+      const totalCount = await this.prisma.chatMessage.count({
+        where: { roomId },
       });
 
       const messages = await this.prisma.chatMessage.findMany({
@@ -347,21 +357,34 @@ export class ChatService {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        skip,
+        take: limit,
       });
 
       // Add userRole to each message
+      let data = messages;
       if (room) {
-        const messagesWithRoles = await Promise.all(
+        data = await Promise.all(
           messages.map(async (msg) => {
             const userRole = await this.getUserRole(msg.userId, room.channelId);
             return { ...msg, userRole };
           }),
         );
-        return this.buildThreadedList(messagesWithRoles);
       }
 
-      return messages;
+      const totalPages = Math.ceil(totalCount / limit);
+
+      return {
+        data,
+        meta: {
+          total: totalCount,
+          page,
+          limit,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      };
     } catch (error) {
       console.error(error);
       throw new BadRequestException('Failed to fetch messages');
