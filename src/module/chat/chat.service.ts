@@ -3,6 +3,8 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
@@ -11,13 +13,56 @@ import { safeUserSelect } from '../user/dto/safeUserSelect';
 import { ChatGateway } from './chat.gateway';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { UpdateChatDto } from './dto/update-chat.dto';
+import { ModeratorService } from '../moderator/moderator.service';
 
 @Injectable()
 export class ChatService {
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => ChatGateway))
     private gateway: ChatGateway,
+    private moderatorService: ModeratorService,
   ) {}
+
+  async getByChannelId(channelId: string) {
+    if (!channelId) throw new BadRequestException('channelId is required');
+    try {
+      let room = await this.prisma.chatRoom.findUnique({
+        where: { channelId },
+        include: {
+          participants: {
+            include: {
+              user: { select: publicUserSelect },
+            },
+          },
+          channel: { select: safeChannelSelect },
+        },
+      });
+
+      if (!room) {
+        // Create it if it doesn't exist (24/7 chat)
+        room = await this.prisma.chatRoom.create({
+          data: {
+            channelId,
+            isActive: true, // 24/7 chats are always active
+          },
+          include: {
+            participants: {
+              include: {
+                user: { select: publicUserSelect },
+              },
+            },
+            channel: { select: safeChannelSelect },
+          },
+        });
+      }
+
+      return room;
+    } catch (error) {
+      console.error(error);
+      throw new BadRequestException('Failed to fetch or create chat room');
+    }
+  }
 
   async create(createChatDto: CreateChatDto) {
     try {
@@ -167,18 +212,24 @@ export class ChatService {
     });
     if (!user) throw new NotFoundException(`User ${userId} not found`);
 
+    // Determine user role for this channel chat
+    const userRole = await this.getUserRole(userId, room.channelId);
+
     // Check account age (15 minutes requirement)
-    const accountAgeMinutes = Math.floor(
-      (Date.now() - user.createdAt.getTime()) / (1000 * 60),
-    );
-    if (accountAgeMinutes < 15) {
-      throw new ForbiddenException(
-        `New accounts must wait 15 minutes before chatting. Please try again in ${15 - accountAgeMinutes} minutes.`,
+    // EXCEPTION: Channel owner and Moderators can always chat immediately
+    if (userRole === 'user') {
+      const accountAgeMinutes = Math.floor(
+        (Date.now() - user.createdAt.getTime()) / (1000 * 60),
       );
+      if (accountAgeMinutes < 15) {
+        throw new ForbiddenException(
+          `New accounts must wait 15 minutes before chatting. Please try again in ${15 - accountAgeMinutes} minutes.`,
+        );
+      }
     }
 
     try {
-      return await this.prisma.chatMessage.create({
+      const message = await this.prisma.chatMessage.create({
         data: { roomId, userId, content, replyToId },
         include: {
           user: {
@@ -189,17 +240,59 @@ export class ChatService {
               user: { select: publicUserSelect },
             },
           },
+          room: true,
         },
       });
+
+      return { ...message, userRole };
     } catch (error) {
       console.error(error);
       throw new BadRequestException('Failed to send message');
     }
   }
 
+  // ------- HELPER: Determine User Role -------
+  private async getUserRole(
+    userId: string,
+    channelId: string,
+  ): Promise<'owner' | 'moderator' | 'user'> {
+    try {
+      // Check if user is the channel owner
+      const channel = await this.prisma.channel.findUnique({
+        where: { id: channelId },
+        select: { ownerId: true },
+      });
+
+      if (!channel) return 'user';
+
+      if (userId === channel.ownerId) {
+        return 'owner';
+      }
+
+      // Check if user is a moderator
+      const isModerator = await this.moderatorService.checkIsModerator(
+        userId,
+        channelId,
+      );
+      if (isModerator) {
+        return 'moderator';
+      }
+
+      return 'user';
+    } catch (error) {
+      console.error('Error determining user role:', error);
+      return 'user';
+    }
+  }
+
   async getMessages(roomId: string) {
     if (!roomId) throw new BadRequestException('roomId is required');
     try {
+      const room = await this.prisma.chatRoom.findUnique({
+        where: { id: roomId },
+        select: { channelId: true },
+      });
+
       const messages = await this.prisma.chatMessage.findMany({
         where: { roomId },
         include: {
@@ -213,8 +306,19 @@ export class ChatService {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 50, // Added a reasonable limit since it was missing
+        take: 50,
       });
+
+      // Add userRole to each message
+      if (room) {
+        return await Promise.all(
+          messages.map(async (msg) => {
+            const userRole = await this.getUserRole(msg.userId, room.channelId);
+            return { ...msg, userRole };
+          }),
+        );
+      }
+
       return messages;
     } catch (error) {
       console.error(error);

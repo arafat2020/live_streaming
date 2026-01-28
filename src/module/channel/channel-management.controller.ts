@@ -27,7 +27,6 @@ import {
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
-import { PaginationDto } from '../../common/dto/pagination.dto';
 import sendResponse from '../../utils/sendResponse';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/guards/roles.decorator';
@@ -36,10 +35,10 @@ import { GetMe } from '../user/dto/request-with-user.interface';
 import { MediaServerService } from '../video/media-server.service';
 import { VideoService } from '../video/video.service';
 import { ChannelService } from './channel.service';
+import { GetChannelContentDto } from './dto/get-channel-content.dto';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { GetRecommendedChannelsDto } from './dto/get-recommended-channels.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
-import { GetChannelContentDto } from './dto/get-channel-content.dto';
 
 @ApiTags('Channel Management')
 @Controller('channel')
@@ -48,7 +47,7 @@ export class ChannelManagementController {
     private readonly channelService: ChannelService,
     private readonly mediaServerService: MediaServerService,
     private readonly videoService: VideoService,
-  ) { }
+  ) {}
 
   @ApiOperation({ summary: 'Get real-time stats for my live stream' })
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
@@ -76,9 +75,9 @@ export class ChannelManagementController {
         followerCount: channel.statistics?.totalFollowers || 0,
         currentStream: dbStats?.currentStream
           ? {
-            ...dbStats.currentStream,
-            internalPlaybackUrl, // Faster fallback for creator studio
-          }
+              ...dbStats.currentStream,
+              internalPlaybackUrl, // Faster fallback for creator studio
+            }
           : null,
         realtime: rtStats || { isActive: false },
         // Flatten some useful fields

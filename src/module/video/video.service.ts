@@ -26,7 +26,7 @@ export class VideoService {
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly thumbnailService: ThumbnailService,
-  ) { }
+  ) {}
 
   /**
    * Validate if a stream key exists and belongs to an active channel
@@ -71,7 +71,7 @@ export class VideoService {
 
     if (!channel) throw new NotFoundException('Channel not found');
 
-    // Requirement: Every stream must have exactly one category. 
+    // Requirement: Every stream must have exactly one category.
     // If null or invalid, auto-set to JUST_CHATTING.
     const streamCategory = channel.category || 'JUST_CHATTING';
 
@@ -529,12 +529,12 @@ export class VideoService {
         isLive: channel.isLive,
         currentStream: currentStream
           ? {
-            id: currentStream.id,
-            title: currentStream.title,
-            description: currentStream.description,
-            startedAt: currentStream.createdAt,
-            playbackUrl: currentStream.playbackUrl,
-          }
+              id: currentStream.id,
+              title: currentStream.title,
+              description: currentStream.description,
+              startedAt: currentStream.createdAt,
+              playbackUrl: currentStream.playbackUrl,
+            }
           : null,
       };
     } catch (error) {

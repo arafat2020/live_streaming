@@ -18,7 +18,7 @@ export class ContentService {
   constructor(
     private prisma: PrismaService,
     private readonly watchHistoryService: WatchHistoryService,
-  ) { }
+  ) {}
 
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
@@ -100,13 +100,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                {
-                  OR: [
-                    { isShadowBanned: true },
-                    { channel: { owner: { isShadowBanned: true } } },
-                  ],
-                },
-              ]
+                  {
+                    OR: [
+                      { isShadowBanned: true },
+                      { channel: { owner: { isShadowBanned: true } } },
+                    ],
+                  },
+                ]
               : []),
           ],
         },
@@ -204,13 +204,13 @@ export class ContentService {
         { channel: { ownerId: userId } },
         ...(isAdmin
           ? [
-            {
-              OR: [
-                { isShadowBanned: true },
-                { channel: { owner: { isShadowBanned: true } } },
-              ],
-            },
-          ]
+              {
+                OR: [
+                  { isShadowBanned: true },
+                  { channel: { owner: { isShadowBanned: true } } },
+                ],
+              },
+            ]
           : []),
       ];
     } else {
@@ -223,7 +223,7 @@ export class ContentService {
       where: {
         status: 'AVAILABLE',
         contentType: 'LIVE_STREAM',
-        AND: [visibilityWhere]
+        AND: [visibilityWhere],
       },
       take: 10,
       orderBy: { views: 'desc' },
@@ -245,10 +245,15 @@ export class ContentService {
     });
 
     // Map real-time viewer count and sort
-    const mappedLive = liveStreams.map(item => ({
-      ...item,
-      concurrentViewers: this.watchHistoryService.getActiveViewerCount(item.id)
-    })).sort((a, b) => b.concurrentViewers - a.concurrentViewers).slice(0, 3);
+    const mappedLive = liveStreams
+      .map((item) => ({
+        ...item,
+        concurrentViewers: this.watchHistoryService.getActiveViewerCount(
+          item.id,
+        ),
+      }))
+      .sort((a, b) => b.concurrentViewers - a.concurrentViewers)
+      .slice(0, 3);
 
     // 2. Top 3 VODs (Weekly)
     const topVODs = await this.prisma.content.findMany({
@@ -256,7 +261,7 @@ export class ContentService {
         status: 'AVAILABLE',
         contentType: 'VOD',
         createdAt: { gte: oneWeekAgo },
-        AND: [visibilityWhere]
+        AND: [visibilityWhere],
       },
       take: 3,
       orderBy: { views: 'desc' },
@@ -279,7 +284,7 @@ export class ContentService {
 
     return {
       topLiveStreams: mappedLive,
-      topVODs: topVODs
+      topVODs: topVODs,
     };
   }
 
@@ -311,13 +316,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                {
-                  OR: [
-                    { isShadowBanned: true },
-                    { channel: { owner: { isShadowBanned: true } } },
-                  ],
-                },
-              ]
+                  {
+                    OR: [
+                      { isShadowBanned: true },
+                      { channel: { owner: { isShadowBanned: true } } },
+                    ],
+                  },
+                ]
               : []),
           ],
         },
@@ -400,13 +405,13 @@ export class ContentService {
                 { channel: { ownerId: userId } },
                 ...(isAdmin
                   ? [
-                    {
-                      OR: [
-                        { isShadowBanned: true },
-                        { channel: { owner: { isShadowBanned: true } } },
-                      ],
-                    },
-                  ]
+                      {
+                        OR: [
+                          { isShadowBanned: true },
+                          { channel: { owner: { isShadowBanned: true } } },
+                        ],
+                      },
+                    ]
                   : []),
               ],
             },
@@ -456,7 +461,6 @@ export class ContentService {
 
     return categorizedData;
   }
-
 
   async findOne(id: string, userId?: string) {
     const content = await this.prisma.content.findUnique({

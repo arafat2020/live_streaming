@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  forwardRef,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LiveCommentGateway } from './liveComment.gateway';
 import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
@@ -10,9 +16,10 @@ import { publicUserSelect } from '../user/dto/publicUserSelect';
 export class LiveCommentService {
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => LiveCommentGateway))
     private gateway: LiveCommentGateway,
     private moderatorService: ModeratorService,
-  ) { }
+  ) {}
 
   // ------- GET ALL COMMENTS FOR VIDEO -------
   async getAll(
@@ -37,9 +44,9 @@ export class LiveCommentService {
         },
         replyTo: {
           include: {
-            user: { select: publicUserSelect }
-          }
-        }
+            user: { select: publicUserSelect },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -160,6 +167,29 @@ export class LiveCommentService {
       }
     }
 
+    // Determine user role for this video/stream early to check age gate
+    const userRole = await this.getUserRole(userId, dto.videoId);
+
+    // Check account age (15 minutes requirement)
+    // EXCEPTION: Channel owner and Moderators can always chat immediately
+    if (userRole === 'user') {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { createdAt: true },
+      });
+
+      if (user) {
+        const accountAgeMinutes = Math.floor(
+          (Date.now() - user.createdAt.getTime()) / (1000 * 60),
+        );
+        if (accountAgeMinutes < 15) {
+          throw new ForbiddenException(
+            `New accounts must wait 15 minutes before chatting. Please try again in ${15 - accountAgeMinutes} minutes.`,
+          );
+        }
+      }
+    }
+
     const comment = await this.prisma.liveComment.create({
       data: { userId, ...dto, depth },
       include: {
@@ -168,14 +198,11 @@ export class LiveCommentService {
         },
         replyTo: {
           include: {
-            user: { select: publicUserSelect }
-          }
-        }
+            user: { select: publicUserSelect },
+          },
+        },
       },
     });
-
-    // Determine user role for this video/stream
-    const userRole = await this.getUserRole(userId, dto.videoId);
 
     // Add role to comment object before broadcasting
     const commentWithRole = {

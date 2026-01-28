@@ -66,7 +66,6 @@ export class UpdateChannelDto {
   @MaxLength(255)
   instagramUrl?: string;
 
-
   @ApiPropertyOptional({
     enum: Category,
     example: Category.JUST_CHATTING,
