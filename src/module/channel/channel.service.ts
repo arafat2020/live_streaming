@@ -21,7 +21,7 @@ export class ChannelService {
     private prisma: PrismaService,
     private watchHistoryService: WatchHistoryService,
     private readonly r2UploadService: R2UploadService,
-  ) { }
+  ) {}
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }
@@ -245,6 +245,7 @@ export class ChannelService {
             data[field] = 'https://' + data[field];
           }
         } catch (e) {
+          console.error(e);
           throw new BadRequestException(`Invalid URL format for ${field}`);
         }
       }
@@ -331,7 +332,6 @@ export class ChannelService {
     if (dto.category) {
       where.category = dto.category;
     }
-
 
     // Get total count for pagination
     const total = await this.prisma.channel.count({ where });

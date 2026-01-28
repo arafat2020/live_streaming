@@ -26,7 +26,7 @@ import { UpdateContentDto } from './dto/update-content.dto';
 
 @Controller('content')
 export class ContentController {
-  constructor(private readonly contentService: ContentService) { }
+  constructor(private readonly contentService: ContentService) {}
 
   @ApiOperation({ summary: 'List of Live broadcast on Rappio.TV' })
   @Get('live-broadcast')
@@ -76,8 +76,6 @@ export class ContentController {
       data,
     });
   }
-
-
 
   @ApiOperation({
     summary: 'List contents (supports filtering, search and pagination)',

@@ -17,7 +17,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 @Injectable()
 export class ModeratorService {
   private readonly logger = new Logger(ModeratorService.name);
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   @Cron(CronExpression.EVERY_HOUR)
   async cleanupExpiredBans() {

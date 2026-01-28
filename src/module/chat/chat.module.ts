@@ -4,9 +4,10 @@ import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { ModeratorModule } from '../moderator/moderator.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [PrismaModule, AuthModule, ModeratorModule],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],
   exports: [ChatGateway],

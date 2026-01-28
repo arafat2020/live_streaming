@@ -44,5 +44,4 @@ export class GetChannelsDto {
   @IsOptional()
   @IsString()
   category?: string;
-
 }

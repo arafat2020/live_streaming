@@ -65,5 +65,4 @@ export class QueryContentDto {
   @IsOptional()
   @IsString()
   category?: string;
-
 }
