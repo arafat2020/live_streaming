@@ -18,7 +18,7 @@ export class ContentService {
   constructor(
     private prisma: PrismaService,
     private readonly watchHistoryService: WatchHistoryService,
-  ) { }
+  ) {}
 
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
@@ -100,13 +100,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                {
-                  OR: [
-                    { isShadowBanned: true },
-                    { channel: { owner: { isShadowBanned: true } } },
-                  ],
-                },
-              ]
+                  {
+                    OR: [
+                      { isShadowBanned: true },
+                      { channel: { owner: { isShadowBanned: true } } },
+                    ],
+                  },
+                ]
               : []),
           ],
         },
@@ -204,13 +204,13 @@ export class ContentService {
         { channel: { ownerId: userId } },
         ...(isAdmin
           ? [
-            {
-              OR: [
-                { isShadowBanned: true },
-                { channel: { owner: { isShadowBanned: true } } },
-              ],
-            },
-          ]
+              {
+                OR: [
+                  { isShadowBanned: true },
+                  { channel: { owner: { isShadowBanned: true } } },
+                ],
+              },
+            ]
           : []),
       ];
     } else {
@@ -316,13 +316,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                {
-                  OR: [
-                    { isShadowBanned: true },
-                    { channel: { owner: { isShadowBanned: true } } },
-                  ],
-                },
-              ]
+                  {
+                    OR: [
+                      { isShadowBanned: true },
+                      { channel: { owner: { isShadowBanned: true } } },
+                    ],
+                  },
+                ]
               : []),
           ],
         },
@@ -405,13 +405,13 @@ export class ContentService {
                 { channel: { ownerId: userId } },
                 ...(isAdmin
                   ? [
-                    {
-                      OR: [
-                        { isShadowBanned: true },
-                        { channel: { owner: { isShadowBanned: true } } },
-                      ],
-                    },
-                  ]
+                      {
+                        OR: [
+                          { isShadowBanned: true },
+                          { channel: { owner: { isShadowBanned: true } } },
+                        ],
+                      },
+                    ]
                   : []),
               ],
             },
