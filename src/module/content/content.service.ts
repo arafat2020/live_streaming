@@ -18,7 +18,7 @@ export class ContentService {
   constructor(
     private prisma: PrismaService,
     private readonly watchHistoryService: WatchHistoryService,
-  ) {}
+  ) { }
 
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
@@ -100,13 +100,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                  {
-                    OR: [
-                      { isShadowBanned: true },
-                      { channel: { owner: { isShadowBanned: true } } },
-                    ],
-                  },
-                ]
+                {
+                  OR: [
+                    { isShadowBanned: true },
+                    { channel: { owner: { isShadowBanned: true } } },
+                  ],
+                },
+              ]
               : []),
           ],
         },
@@ -204,13 +204,13 @@ export class ContentService {
         { channel: { ownerId: userId } },
         ...(isAdmin
           ? [
-              {
-                OR: [
-                  { isShadowBanned: true },
-                  { channel: { owner: { isShadowBanned: true } } },
-                ],
-              },
-            ]
+            {
+              OR: [
+                { isShadowBanned: true },
+                { channel: { owner: { isShadowBanned: true } } },
+              ],
+            },
+          ]
           : []),
       ];
     } else {
@@ -253,7 +253,7 @@ export class ContentService {
         ),
       }))
       .sort((a, b) => b.concurrentViewers - a.concurrentViewers)
-      .slice(0, 3);
+      .slice(0, 5);
 
     // 2. Top 3 VODs (Weekly)
     const topVODs = await this.prisma.content.findMany({
@@ -263,7 +263,7 @@ export class ContentService {
         createdAt: { gte: oneWeekAgo },
         AND: [visibilityWhere],
       },
-      take: 3,
+      take: 5,
       orderBy: { views: 'desc' },
       include: {
         channel: {
@@ -316,13 +316,13 @@ export class ContentService {
             { channel: { ownerId: userId } },
             ...(isAdmin
               ? [
-                  {
-                    OR: [
-                      { isShadowBanned: true },
-                      { channel: { owner: { isShadowBanned: true } } },
-                    ],
-                  },
-                ]
+                {
+                  OR: [
+                    { isShadowBanned: true },
+                    { channel: { owner: { isShadowBanned: true } } },
+                  ],
+                },
+              ]
               : []),
           ],
         },
@@ -405,13 +405,13 @@ export class ContentService {
                 { channel: { ownerId: userId } },
                 ...(isAdmin
                   ? [
-                      {
-                        OR: [
-                          { isShadowBanned: true },
-                          { channel: { owner: { isShadowBanned: true } } },
-                        ],
-                      },
-                    ]
+                    {
+                      OR: [
+                        { isShadowBanned: true },
+                        { channel: { owner: { isShadowBanned: true } } },
+                      ],
+                    },
+                  ]
                   : []),
               ],
             },
