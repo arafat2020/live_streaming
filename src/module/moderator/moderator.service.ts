@@ -57,7 +57,6 @@ export class ModeratorService {
             id: true,
             firstName: true,
             lastName: true,
-            email: true,
             profileImage: true,
           },
         },
@@ -209,7 +208,6 @@ export class ModeratorService {
           select: {
             id: true,
             firstName: true,
-            email: true,
             profileImage: true,
           },
         },
@@ -421,7 +419,6 @@ export class ModeratorService {
             select: {
               id: true,
               firstName: true,
-              email: true,
               profileImage: true,
             },
           },
@@ -555,7 +552,6 @@ export class ModeratorService {
         id: true,
         firstName: true,
         username: true,
-        email: true,
         profileImage: true,
         moderator: {
           where: { channelId },
@@ -584,7 +580,6 @@ export class ModeratorService {
         id: user.id,
         firstName: user.firstName,
         username: user.username,
-        email: user.email,
         profileImage: user.profileImage,
         isModerator: user.moderator.length > 0,
         isBanned: !!activeBan,

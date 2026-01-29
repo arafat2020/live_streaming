@@ -30,9 +30,14 @@ export class ChatController {
     private readonly chatGateway: ChatGateway, // inject gateway
   ) {}
 
+  @UseGuards(JwtAuthGuard)
   @Post()
   @ApiOperation({ summary: 'Create a chat room' })
-  async create(@Body() dto: CreateChatDto, @Res() res: Response) {
+  async create(
+    @Req() req: GetMe,
+    @Body() dto: CreateChatDto,
+    @Res() res: Response,
+  ) {
     const data = await this.chatService.create(dto);
 
     // Emit socket event: new room created
@@ -90,9 +95,11 @@ export class ChatController {
     });
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   @ApiOperation({ summary: 'Update a chat room' })
   async update(
+    @Req() req: GetMe,
     @Param('id') id: string,
     @Body() dto: UpdateChatDto,
     @Res() res: Response,
