@@ -390,4 +390,43 @@ export class ChatService {
       throw new BadRequestException('Failed to fetch messages');
     }
   }
+
+  async deleteMessage(messageId: string, userId: string) {
+    if (!messageId || !userId)
+      throw new BadRequestException('messageId and userId are required');
+
+    const message = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+      include: {
+        room: {
+          select: { id: true, channelId: true }
+        }
+      }
+    });
+
+    if (!message) throw new NotFoundException('Message not found');
+
+    const room = message.room;
+    if (!room) throw new NotFoundException('Chat room not found');
+
+    // Check permissions
+    // Allow if user is author
+    if (message.userId === userId) {
+      // Allowed
+    } else {
+      // Check if moderator/owner
+      const userRole = await this.getUserRole(userId, room.channelId);
+      if (userRole !== 'owner' && userRole !== 'moderator') {
+        throw new ForbiddenException('You are not authorized to delete this message');
+      }
+    }
+
+    try {
+      await this.prisma.chatMessage.delete({ where: { id: messageId } });
+      return { id: messageId, roomId: room.id };
+    } catch (error) {
+      console.error(error);
+      throw new BadRequestException('Failed to delete message');
+    }
+  }
 }
