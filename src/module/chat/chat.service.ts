@@ -22,7 +22,7 @@ export class ChatService {
     @Inject(forwardRef(() => ChatGateway))
     private gateway: ChatGateway,
     private moderatorService: ModeratorService,
-  ) { }
+  ) {}
 
   async getByChannelId(channelId: string) {
     if (!channelId) throw new BadRequestException('channelId is required');
@@ -399,9 +399,9 @@ export class ChatService {
       where: { id: messageId },
       include: {
         room: {
-          select: { id: true, channelId: true }
-        }
-      }
+          select: { id: true, channelId: true },
+        },
+      },
     });
 
     if (!message) throw new NotFoundException('Message not found');
@@ -417,7 +417,9 @@ export class ChatService {
       // Check if moderator/owner
       const userRole = await this.getUserRole(userId, room.channelId);
       if (userRole !== 'owner' && userRole !== 'moderator') {
-        throw new ForbiddenException('You are not authorized to delete this message');
+        throw new ForbiddenException(
+          'You are not authorized to delete this message',
+        );
       }
     }
 
