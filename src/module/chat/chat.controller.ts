@@ -18,6 +18,9 @@ import { CreateChatDto } from './dto/create-chat.dto';
 import { CreateParticipantDto } from './dto/create-participant.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateChatDto } from './dto/update-chat.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GetMe } from '../user/dto/request-with-user.interface';
+import { Req, UseGuards } from '@nestjs/common';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -25,7 +28,7 @@ export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly chatGateway: ChatGateway, // inject gateway
-  ) {}
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a chat room' })
@@ -241,6 +244,32 @@ export class ChatController {
       success: true,
       message: 'Messages retrieve successfully.',
       data,
+    });
+  }
+
+  @Delete('messages/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Delete a message' })
+  async deleteMessage(
+    @Param('id') id: string,
+    @Req() req: GetMe,
+    @Res() res: Response,
+  ) {
+    const userId = req.user.id;
+    const result = await this.chatService.deleteMessage(id, userId);
+
+    // Emit socket event: message deleted
+    try {
+      this.chatGateway.server?.to(result.roomId).emit('message.deleted', { id });
+    } catch (e) {
+      console.error('Failed to emit message.deleted', e);
+    }
+
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: 'Message deleted successfully.',
+      data: result,
     });
   }
 }
