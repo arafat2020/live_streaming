@@ -28,7 +28,7 @@ export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly chatGateway: ChatGateway, // inject gateway
-  ) { }
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a chat room' })
@@ -260,7 +260,9 @@ export class ChatController {
 
     // Emit socket event: message deleted
     try {
-      this.chatGateway.server?.to(result.roomId).emit('message.deleted', { id });
+      this.chatGateway.server
+        ?.to(result.roomId)
+        .emit('message.deleted', { id });
     } catch (e) {
       console.error('Failed to emit message.deleted', e);
     }
