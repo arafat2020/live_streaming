@@ -50,6 +50,7 @@ export class StreamsController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':inputId/status')
   @ApiOperation({ summary: 'Get status of a live stream' })
   @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
@@ -63,11 +64,15 @@ export class StreamsController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post(':inputId/delete')
   @ApiOperation({ summary: 'Delete a live stream and revoke its stream key' })
   @ApiParam({ name: 'inputId', description: 'Cloudflare live input ID' })
   @ApiResponse({ status: 200 })
-  async deleteStream(@Req() req, @Param('inputId') inputId: string) {
+  async deleteStream(
+    @Req() req: RequestWithUser,
+    @Param('inputId') inputId: string,
+  ) {
     const userId = req.user.id;
     console.log('userId--------->', userId);
     await this.cfService.deleteLiveInput(inputId);
