@@ -1,10 +1,27 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import * as express from 'express';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { setupSwagger } from './swagger/swagger.setup';
+
+// 🛡️ Global Process Error Handlers - PREVENT CRASH
+process.on('uncaughtException', (err) => {
+  console.error('🔥 CRITICAL: Uncaught Exception:', err);
+  // Intentionally NOT exiting process to keep server alive
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error(
+    '⚠️ CRITICAL: Unhandled Rejection at:',
+    promise,
+    'reason:',
+    reason,
+  );
+  // Intentionally NOT exiting process to keep server alive
+});
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -35,6 +52,9 @@ async function bootstrap() {
         'http://localhost:5173',
         'https://rappio-tv.netlify.app',
         'https://rappio.tv',
+        'https://www.rappio.tv',
+        'https://rappio.com',
+        'https://www.rappio.com',
       ];
       // Allow requests with no origin (like mobile apps or curl)
       if (
@@ -75,6 +95,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // 🛡️ Apply Global Exception Filter
+  const httpAdapter = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new AllExceptionsFilter(httpAdapter));
 
   setupSwagger(app);
   const port = process.env.PORT || 8000;

@@ -21,7 +21,7 @@ export class ChannelService {
     private prisma: PrismaService,
     private watchHistoryService: WatchHistoryService,
     private readonly r2UploadService: R2UploadService,
-  ) { }
+  ) {}
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }

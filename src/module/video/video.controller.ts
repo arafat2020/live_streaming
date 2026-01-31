@@ -247,14 +247,15 @@ export class VideoController {
       .then(async (result) => {
         this.logger.log(
           `✅ Processing complete for ${lessonId}. Updating content status...`,
-          JSON.stringify(result)
+          JSON.stringify(result),
         );
         // Update content to AVAILABLE with playback URL and thumbnail
-        const updateResult = await this.videoService.updateContentAfterProcessing(
-          contentId,
-          result.playbackUrl,
-          result.thumbnailUrl,
-        );
+        const updateResult =
+          await this.videoService.updateContentAfterProcessing(
+            contentId,
+            result.playbackUrl,
+            result.thumbnailUrl,
+          );
 
         this.logger.log(
           `✅ Upload complete. Processing started for content: ${contentId}`,

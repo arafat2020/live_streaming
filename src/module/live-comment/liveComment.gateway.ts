@@ -59,7 +59,7 @@ export class LiveCommentGateway
         );
       } catch (error) {
         this.logger.error(
-          `Error in stopWatching during disconnect: ${error.message}`,
+          `Error in stopWatching during disconnect: ${(error as any)?.message || error}`,
         );
       }
 
@@ -123,8 +123,9 @@ export class LiveCommentGateway
 
       return { success: true, message: 'Comment sent' };
     } catch (error) {
-      this.logger.error(`Failed to send comment: ${error.message}`);
-      return { success: false, error: error.message };
+      const msg = (error as any)?.message || String(error);
+      this.logger.error(`Failed to send comment: ${msg}`);
+      return { success: false, error: msg };
     }
   }
 
@@ -155,7 +156,9 @@ export class LiveCommentGateway
         ipAddress,
       );
     } catch (error) {
-      this.logger.error(`Error in startWatching: ${error.message}`);
+      this.logger.error(
+        `Error in startWatching: ${(error as any)?.message || error}`,
+      );
     }
 
     this.server.emit('viewer.joined', { contentId, userId: userId || null });
@@ -193,7 +196,9 @@ export class LiveCommentGateway
         userId || client.id,
       );
     } catch (error) {
-      this.logger.error(`Error in stopWatching: ${error.message}`);
+      this.logger.error(
+        `Error in stopWatching: ${(error as any)?.message || error}`,
+      );
     }
 
     this.server.emit('viewer.left', { contentId, userId: userId || null });
