@@ -32,18 +32,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
           : (exception as any)?.message || 'Internal server error';
 
       const responseBody = {
+        success: false,
         statusCode: httpStatus,
         timestamp: new Date().toISOString(),
         path: httpAdapter.getRequestUrl(ctx.getRequest()),
         message: message,
       };
 
+      const response = message ? message : responseBody;
+
       this.logger.error(
         `HTTP Exception: ${JSON.stringify(message)}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
 
-      httpAdapter.reply(ctx.getResponse(), responseBody, httpStatus);
+      httpAdapter.reply(ctx.getResponse(), response, httpStatus);
     } else if (type === 'ws') {
       const ctx = host.switchToWs();
       const client = ctx.getClient();
@@ -56,8 +59,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
       // Prevent crash by just logging. You might want to emit an error to the client.
       try {
-        client.emit('error', {
+        client.emit('error', (exception as any)?.message ? exception : {
           message: (exception as any)?.message || 'Internal server error',
+          success: false,
         });
       } catch (e) {
         this.logger.error('Failed to emit error to WS client', e);
