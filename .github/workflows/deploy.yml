@@ -51,7 +51,7 @@ jobs:
           command_timeout: 60m
           script: |
             cd server 
+            docker compose pull
             docker compose down --remove-orphans
             docker compose rm -f
-            docker compose pull
             docker compose up -d

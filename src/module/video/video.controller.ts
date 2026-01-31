@@ -89,7 +89,7 @@ export class VideoController {
   // NEW CHUNKED UPLOAD ENDPOINTS
   // =====================================================
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-  @Roles(UserRole.CREATOR, UserRole.ADMIN)
+  @Roles(UserRole.USER, UserRole.CREATOR, UserRole.ADMIN)
   @Post('upload/init')
   @ApiOperation({ summary: 'Initialize chunked video upload' })
   async initChunkedUpload(
@@ -101,12 +101,8 @@ export class VideoController {
     @Body('description') description?: string,
     @Body('category') category?: string,
   ) {
-    // Log to debug
-    this.logger.log(`📊 Received params:`);
-    this.logger.log(`  fileName: ${fileName}`);
-    this.logger.log(`  fileSize: ${fileSize}`);
-    this.logger.log(`  totalChunks: ${totalChunks}`);
-    this.logger.log(`  streamKey: ${streamKey}`);
+    // Optional: log at debug level if needed
+    // this.logger.debug(`📊 Received params: fileName=${fileName}, fileSize=${fileSize}, totalChunks=${totalChunks}, streamKey=${streamKey}`);
 
     // Validation
     if (!fileName || fileName.trim() === '') {
@@ -128,7 +124,8 @@ export class VideoController {
 
     const uploadId = uuidv4();
 
-    this.logger.log(`🚀 Initializing upload: ${uploadId}`);
+    // Optional: debug log for initialization
+    // this.logger.debug(`🚀 Initializing upload: ${uploadId}`);
 
     await this.chunkService.initializeSession({
       uploadId,
@@ -150,7 +147,7 @@ export class VideoController {
 
   // Step 2: Upload chunk
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-  @Roles(UserRole.CREATOR, UserRole.ADMIN)
+  @Roles(UserRole.USER, UserRole.CREATOR, UserRole.ADMIN)
   @Post('upload/chunk')
   @ApiOperation({ summary: 'Upload a single chunk' })
   @ApiConsumes('multipart/form-data')
@@ -198,7 +195,7 @@ export class VideoController {
 
   // Step 3: Complete
   @UseGuards(JwtAuthGuard, RolesGuard, TermsAcceptedGuard)
-  @Roles(UserRole.CREATOR, UserRole.ADMIN)
+  @Roles(UserRole.USER, UserRole.CREATOR, UserRole.ADMIN)
   @Post('upload/complete')
   @ApiOperation({ summary: 'Complete chunked upload and start processing' })
   async completeChunkedUpload(@Body('uploadId') uploadId: string) {
@@ -243,17 +240,25 @@ export class VideoController {
         mergedFilePath, // Pass file path
       );
 
+    this.logger.log(`🎥 Processing started for ${lessonId}: ${contentId}`);
+
     // Handle processing completion in background
     processingPromise
       .then(async (result) => {
         this.logger.log(
           `✅ Processing complete for ${lessonId}. Updating content status...`,
+          JSON.stringify(result)
         );
         // Update content to AVAILABLE with playback URL and thumbnail
-        await this.videoService.updateContentAfterProcessing(
+        const updateResult = await this.videoService.updateContentAfterProcessing(
           contentId,
           result.playbackUrl,
           result.thumbnailUrl,
+        );
+
+        this.logger.log(
+          `✅ Upload complete. Processing started for content: ${contentId}`,
+          JSON.stringify(updateResult),
         );
       })
       .catch((err) => {
@@ -263,10 +268,6 @@ export class VideoController {
       });
 
     await this.chunkService.cleanupSession(uploadId);
-
-    this.logger.log(
-      `✅ Upload complete. Processing started for content: ${contentId}`,
-    );
 
     return {
       success: true,
