@@ -21,7 +21,7 @@ export class ChannelService {
     private prisma: PrismaService,
     private watchHistoryService: WatchHistoryService,
     private readonly r2UploadService: R2UploadService,
-  ) {}
+  ) { }
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
   }
@@ -347,6 +347,7 @@ export class ChannelService {
         _count: {
           select: {
             content: true,
+            follow: true,
           },
         },
       },
@@ -376,6 +377,7 @@ export class ChannelService {
     const data = channels.map((channel) => ({
       ...channel,
       totalViews: viewsMap.get(channel.id) ?? 0,
+      followersCount: channel._count.follow,
     }));
 
     return {

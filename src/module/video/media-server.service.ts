@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { VideoService } from '../video/video.service';
 import { ThumbnailService } from './thumbnail.service';
+import { VIDEO_RENDITIONS } from '../../common/video.constants';
 
 import NodeMediaServer from 'node-media-server';
 
@@ -31,7 +32,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly videoService: VideoService,
     private readonly thumbnailService: ThumbnailService,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     this.initializeMediaServer();
@@ -264,71 +265,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     const masterPlaylistName = 'master.m3u8';
 
-    const renditions = [
-      {
-        name: '144p',
-        width: 256,
-        height: 144,
-        vBitrate: '200k',
-        maxrate: '240k',
-        bufsize: '400k',
-        aBitrate: '64k',
-      },
-      {
-        name: '240p',
-        width: 426,
-        height: 240,
-        vBitrate: '400k',
-        maxrate: '480k',
-        bufsize: '800k',
-        aBitrate: '64k',
-      },
-      {
-        name: '360p',
-        width: 640,
-        height: 360,
-        vBitrate: '800k',
-        maxrate: '960k',
-        bufsize: '1400k',
-        aBitrate: '96k',
-      },
-      {
-        name: '480p',
-        width: 854,
-        height: 480,
-        vBitrate: '1400k',
-        maxrate: '1680k',
-        bufsize: '2400k',
-        aBitrate: '128k',
-      },
-      {
-        name: '720p',
-        width: 1280,
-        height: 720,
-        vBitrate: '2800k',
-        maxrate: '3360k',
-        bufsize: '4800k',
-        aBitrate: '128k',
-      },
-      {
-        name: '1080p',
-        width: 1920,
-        height: 1080,
-        vBitrate: '5000k',
-        maxrate: '6720k',
-        bufsize: '8000k',
-        aBitrate: '192k',
-      },
-      {
-        name: '2160p',
-        width: 3840,
-        height: 2160,
-        vBitrate: '10000k',
-        maxrate: '13440k',
-        bufsize: '16000k',
-        aBitrate: '256k',
-      },
-    ];
+    const renditions = VIDEO_RENDITIONS;
 
     for (const r of renditions) {
       const dir = path.join(liveDir, r.name);
@@ -394,8 +331,8 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       '-var_stream_map',
       varStreamMap,
       '-hls_segment_filename',
-      path.join('%v', '%03d.ts'),
-      path.join('%v', 'index.m3u8'),
+      `${path.join('%v', '%03d.ts').replace(/\\/g, '/')}`,
+      `${path.join('%v', 'index.m3u8').replace(/\\/g, '/')}`,
     );
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs, {

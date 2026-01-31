@@ -15,6 +15,7 @@ import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { R2UploadService } from './r2-upload.service';
 import { ThumbnailService } from './thumbnail.service';
+import { VIDEO_RENDITIONS } from '../../common/video.constants';
 
 @Injectable()
 export class VideoService {
@@ -241,53 +242,7 @@ export class VideoService {
 
         // ABR ladder (keep moderate by default)
         // Note: bitrates are targets; actual may vary.
-        const renditions = [
-          {
-            name: '144p',
-            width: 256,
-            height: 144,
-            vBitrate: '200k',
-            maxrate: '240k',
-            bufsize: '400k',
-            aBitrate: '64k',
-          },
-          {
-            name: '240p',
-            width: 426,
-            height: 240,
-            vBitrate: '400k',
-            maxrate: '480k',
-            bufsize: '800k',
-            aBitrate: '64k',
-          },
-          {
-            name: '360p',
-            width: 640,
-            height: 360,
-            vBitrate: '800k',
-            maxrate: '960k',
-            bufsize: '1400k',
-            aBitrate: '96k',
-          },
-          {
-            name: '480p',
-            width: 854,
-            height: 480,
-            vBitrate: '1400k',
-            maxrate: '1680k',
-            bufsize: '2400k',
-            aBitrate: '128k',
-          },
-          {
-            name: '720p',
-            width: 1280,
-            height: 720,
-            vBitrate: '2800k',
-            maxrate: '3360k',
-            bufsize: '4800k',
-            aBitrate: '128k',
-          },
-        ];
+        const renditions = VIDEO_RENDITIONS;
 
         // Ensure per-rendition folders exist
         for (const r of renditions) {
@@ -372,8 +327,8 @@ export class VideoService {
           '-var_stream_map',
           varStreamMap,
           '-hls_segment_filename',
-          path.join('%v', '%03d.ts'),
-          path.join('%v', 'index.m3u8'),
+          path.join('%v', '%03d.ts').replace(/\\/g, '/'),
+          path.join('%v', 'index.m3u8').replace(/\\/g, '/'),
         );
 
         if (!inputHasAudio) {

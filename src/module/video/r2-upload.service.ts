@@ -129,6 +129,8 @@ export class R2UploadService {
 
     this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
 
+    const lastPlaylistUpload = new Map<string, number>();
+
     const interval = setInterval(async () => {
       try {
         if (!fs.existsSync(localDir)) {
@@ -183,8 +185,22 @@ export class R2UploadService {
 
         for (const playlistFilePath of m3u8Files) {
           try {
+            // Throttle playlist uploads to every 2 seconds unless it's the master
+            const now = Date.now();
+            const lastUpload = lastPlaylistUpload.get(playlistFilePath) || 0;
+            const isMaster = path.basename(playlistFilePath) === 'master.m3u8';
+
+            if (now - lastUpload < 2000) {
+              continue;
+            }
+
             const r2Key = getR2KeyFromLocalPath(playlistFilePath);
             await this.uploadPlaylist(playlistFilePath, r2Key);
+            lastPlaylistUpload.set(playlistFilePath, now);
+
+            if (isMaster) {
+              this.logger.log(`✅ Master Playlist Uploaded: ${r2Key}`);
+            }
           } catch (err) {
             this.logger.warn(
               `Failed to upload playlist ${playlistFilePath}: ${err.message}`,
