@@ -34,14 +34,13 @@ export class R2UploadService {
   }
 
   /**
-   * Upload a single file to R2
-   * ✅ OPTIMIZED: Added cache control headers
+   * Upload a single file to R2 (no retries for live streams to prevent crashes)
    */
   async uploadFile(
     localPath: string,
     r2Key: string,
     contentType: string,
-  ): Promise<string> {
+  ): Promise<string | null> {
     try {
       if (!fs.existsSync(localPath)) {
         throw new Error(`File not found: ${localPath}`);
@@ -54,7 +53,6 @@ export class R2UploadService {
           Key: r2Key,
           Body: fs.createReadStream(localPath),
           ContentType: contentType,
-          // ✅ OPTIMIZED: Cache video segments forever (they're immutable)
           CacheControl: 'public, max-age=31536000, immutable',
         },
       });
@@ -63,17 +61,16 @@ export class R2UploadService {
 
       const url = `${R2_PUBLIC_URL}/${r2Key}`;
       this.logger.debug(`✅ Uploaded: ${r2Key}`);
-
       return url;
     } catch (error) {
+      // Log but don't throw for live streams to prevent crashes
       this.logger.error(`Failed to upload ${r2Key}: ${error.message}`);
-      throw error;
+      return null;
     }
   }
 
   /**
-   * Upload playlist file to R2
-   * Keep no-cache for playlists (they change frequently)
+   * Upload playlist file to R2 (no retries for live streams to prevent crashes)
    */
   async uploadPlaylist(
     localPath: string,
@@ -93,17 +90,16 @@ export class R2UploadService {
           Key: r2Key,
           Body: content,
           ContentType: 'application/vnd.apple.mpegurl',
-          // Keep no-cache for playlists - they update frequently
           CacheControl: 'no-cache, no-store, must-revalidate',
         }),
       );
 
       this.logger.debug(`✅ Uploaded playlist: ${r2Key}`);
-
       return `${R2_PUBLIC_URL}/${r2Key}`;
     } catch (error) {
+      // Log but don't throw for live streams to prevent crashes
       this.logger.error(`Failed to upload playlist: ${error.message}`);
-      throw error;
+      return null;
     }
   }
 
@@ -157,7 +153,16 @@ export class R2UploadService {
               }
 
               const r2Key = getR2KeyFromLocalPath(filePath);
-              await this.uploadFile(filePath, r2Key, 'video/mp2t');
+              const result = await this.uploadFile(
+                filePath,
+                r2Key,
+                'video/mp2t',
+              );
+              if (!result) {
+                this.logger.warn(`Skipped upload due to failure: ${r2Key}`);
+                uploading.delete(filePath);
+                return;
+              }
 
               uploaded.add(filePath);
               uploading.delete(filePath);
@@ -195,7 +200,13 @@ export class R2UploadService {
             }
 
             const r2Key = getR2KeyFromLocalPath(playlistFilePath);
-            await this.uploadPlaylist(playlistFilePath, r2Key);
+            const result = await this.uploadPlaylist(playlistFilePath, r2Key);
+            if (!result) {
+              this.logger.warn(
+                `Skipped playlist upload due to failure: ${r2Key}`,
+              );
+              continue;
+            }
             lastPlaylistUpload.set(playlistFilePath, now);
 
             if (isMaster) {
@@ -259,12 +270,14 @@ export class R2UploadService {
     r2Key: string,
     contentType: string,
     maxRetries = 3,
-  ): Promise<string> {
+  ): Promise<string | null> {
     let lastError: Error;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        return await this.uploadFile(localPath, r2Key, contentType);
+        const result = await this.uploadFile(localPath, r2Key, contentType);
+        if (result) return result;
+        throw new Error('Upload returned null');
       } catch (error) {
         lastError = error;
         this.logger.warn(
