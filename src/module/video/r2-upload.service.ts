@@ -127,7 +127,11 @@ export class R2UploadService {
 
     const lastPlaylistUpload = new Map<string, number>();
 
+    let isProcessing = false;
     const interval = setInterval(async () => {
+      if (isProcessing) return;
+      isProcessing = true;
+
       try {
         if (!fs.existsSync(localDir)) {
           this.logger.warn(`Directory disappeared: ${localDir}`);
@@ -201,13 +205,16 @@ export class R2UploadService {
 
             const r2Key = getR2KeyFromLocalPath(playlistFilePath);
             const result = await this.uploadPlaylist(playlistFilePath, r2Key);
+
+            // Always set last upload time to prevent rapid-fire retries on failure
+            lastPlaylistUpload.set(playlistFilePath, Date.now());
+
             if (!result) {
               this.logger.warn(
                 `Skipped playlist upload due to failure: ${r2Key}`,
               );
               continue;
             }
-            lastPlaylistUpload.set(playlistFilePath, now);
 
             if (isMaster) {
               this.logger.log(`✅ Master Playlist Uploaded: ${r2Key}`);
@@ -220,6 +227,8 @@ export class R2UploadService {
         }
       } catch (err) {
         this.logger.warn(`Watcher error: ${err.message}`);
+      } finally {
+        isProcessing = false;
       }
     }, 300);
 

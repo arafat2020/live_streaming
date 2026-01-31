@@ -35,9 +35,15 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
-    this.initializeMediaServer();
-    this.startStatsBroadcast();
-    await this.videoService.resetStaleStreams();
+    if (process.env.ENABLE_MEDIA_SERVER === 'true') {
+      this.initializeMediaServer();
+      this.startStatsBroadcast();
+      await this.videoService.resetStaleStreams();
+    } else {
+      this.logger.log(
+        'ℹ️ Media Server disabled (ENABLE_MEDIA_SERVER is not true)',
+      );
+    }
   }
 
   async onModuleDestroy() {
