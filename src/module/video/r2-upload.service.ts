@@ -15,6 +15,24 @@ import { R2_BUCKET, R2_PUBLIC_URL, r2Client } from '../../config/r2.config';
 export class R2UploadService {
   private readonly logger = new Logger(R2UploadService.name);
 
+  private listFilesRecursive(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const files: string[] = [];
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...this.listFilesRecursive(fullPath));
+      } else if (entry.isFile()) {
+        files.push(fullPath);
+      }
+    }
+
+    return files;
+  }
+
   /**
    * Upload a single file to R2
    * ✅ OPTIMIZED: Added cache control headers
@@ -103,7 +121,11 @@ export class R2UploadService {
   watchAndUpload(localDir: string, r2Prefix: string): { stop: () => void } {
     const uploaded = new Set<string>();
     const uploading = new Set<string>();
-    const playlistPath = path.join(localDir, 'index.m3u8');
+
+    const getR2KeyFromLocalPath = (localPath: string) => {
+      const relative = path.relative(localDir, localPath).replace(/\\/g, '/');
+      return `${r2Prefix}/${relative}`;
+    };
 
     this.logger.log(`👀 Watching: ${localDir} → ${r2Prefix}`);
 
@@ -114,62 +136,60 @@ export class R2UploadService {
           return;
         }
 
-        const files = fs.readdirSync(localDir).filter((f) => f.endsWith('.ts'));
+        const allFiles = this.listFilesRecursive(localDir);
+        const tsFiles = allFiles.filter((f) => f.endsWith('.ts'));
+        const m3u8Files = allFiles.filter((f) => f.endsWith('.m3u8'));
 
-        // Upload segments in parallel
-        const uploadPromises = files
-          .filter((file) => !uploaded.has(file) && !uploading.has(file))
-          .map(async (file) => {
-            uploading.add(file);
-
-            const localPath = path.join(localDir, file);
+        const segmentUploadPromises = tsFiles
+          .filter(
+            (filePath) => !uploaded.has(filePath) && !uploading.has(filePath),
+          )
+          .map(async (filePath) => {
+            uploading.add(filePath);
 
             try {
-              await this.waitForFileReady(localPath, 1000);
-
-              if (!fs.existsSync(localPath)) {
-                uploading.delete(file);
+              await this.waitForFileReady(filePath, 1000);
+              if (!fs.existsSync(filePath)) {
+                uploading.delete(filePath);
                 return;
               }
 
-              // Upload segment
-              await this.uploadFile(
-                localPath,
-                `${r2Prefix}/${file}`,
-                'video/mp2t',
-              );
+              const r2Key = getR2KeyFromLocalPath(filePath);
+              await this.uploadFile(filePath, r2Key, 'video/mp2t');
 
-              uploaded.add(file);
-              uploading.delete(file);
+              uploaded.add(filePath);
+              uploading.delete(filePath);
 
-              this.logger.log(
-                `📤 ${R2_PUBLIC_URL}/${r2Prefix}/${file} uploaded`,
-              );
+              this.logger.log(`📤 ${R2_PUBLIC_URL}/${r2Key} uploaded`);
 
-              // ✅ DELETE LOCAL FILE AFTER SUCCESSFUL UPLOAD (Except 000.ts which we need for thumbnail)
               try {
-                if (file !== '000.ts') {
-                  fs.unlinkSync(localPath);
-                  this.logger.log(`🗑️ Deleted local: ${file}`);
-                } else {
-                  this.logger.log(
-                    `ℹ️ Preserving ${file} for thumbnail generation`,
-                  );
+                const shouldPreserveForThumbnail =
+                  path.basename(filePath) === '000.ts';
+                if (!shouldPreserveForThumbnail) {
+                  fs.unlinkSync(filePath);
                 }
               } catch (delErr) {
-                this.logger.warn(`Failed to delete ${file}: ${delErr.message}`);
+                this.logger.warn(
+                  `Failed to delete ${filePath}: ${delErr.message}`,
+                );
               }
             } catch (err) {
-              uploading.delete(file);
-              this.logger.error(`Failed to upload ${file}: ${err.message}`);
+              uploading.delete(filePath);
+              this.logger.error(`Failed to upload ${filePath}: ${err.message}`);
             }
           });
 
-        await Promise.all(uploadPromises);
+        await Promise.all(segmentUploadPromises);
 
-        // Upload playlist after segments
-        if (fs.existsSync(playlistPath)) {
-          await this.uploadPlaylist(playlistPath, `${r2Prefix}/index.m3u8`);
+        for (const playlistFilePath of m3u8Files) {
+          try {
+            const r2Key = getR2KeyFromLocalPath(playlistFilePath);
+            await this.uploadPlaylist(playlistFilePath, r2Key);
+          } catch (err) {
+            this.logger.warn(
+              `Failed to upload playlist ${playlistFilePath}: ${err.message}`,
+            );
+          }
         }
       } catch (err) {
         this.logger.warn(`Watcher error: ${err.message}`);

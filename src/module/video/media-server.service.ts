@@ -176,7 +176,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
       // Step 3.6: Generate thumbnail asynchronously from the first local segment
       const r2Prefix = `live/${contentId}`;
-      const firstSegmentPath = path.join(liveDir, '000.ts');
+      const firstSegmentPath = path.join(liveDir, '144p', '000.ts');
 
       this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
     } catch (error) {
@@ -262,58 +262,145 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     this.logger.log(`🎬 FFmpeg connecting to: ${rtmpUrl}`);
 
-    const ffmpeg = spawn(
-      'ffmpeg',
-      [
-        '-i',
-        rtmpUrl,
-        '-c:v',
-        'copy',
-        '-c:a',
-        'aac',
-        '-b:a',
-        '128k',
-        '-f',
-        'hls',
+    const masterPlaylistName = 'master.m3u8';
 
-        // ✅ OPTIMIZED: 2-second segments for faster playback start
-        '-hls_time',
-        '2',
-
-        // ✅ OPTIMIZED: Keep 10 segments (20 seconds of video)
-        '-hls_list_size',
-        '10',
-
-        // ✅ OPTIMIZED: Better flags for live streaming
-        '-hls_flags',
-        'delete_segments+independent_segments+program_date_time',
-
-        // ✅ OPTIMIZED: Event playlist type for live streams
-        '-hls_playlist_type',
-        'event',
-
-        // ✅ OPTIMIZED: Start numbering from 0
-        '-start_number',
-        '0',
-
-        // ✅ OPTIMIZED: GOP size for 2-second segments (48 frames at 24fps)
-        '-g',
-        '48',
-        '-keyint_min',
-        '48',
-
-        // ✅ OPTIMIZED: Disable scene change detection for consistent segments
-        '-sc_threshold',
-        '0',
-
-        '-hls_segment_filename',
-        '%03d.ts',
-        'index.m3u8',
-      ],
+    const renditions = [
       {
-        cwd: liveDir,
+        name: '144p',
+        width: 256,
+        height: 144,
+        vBitrate: '200k',
+        maxrate: '240k',
+        bufsize: '400k',
+        aBitrate: '64k',
       },
+      {
+        name: '240p',
+        width: 426,
+        height: 240,
+        vBitrate: '400k',
+        maxrate: '480k',
+        bufsize: '800k',
+        aBitrate: '64k',
+      },
+      {
+        name: '360p',
+        width: 640,
+        height: 360,
+        vBitrate: '800k',
+        maxrate: '960k',
+        bufsize: '1400k',
+        aBitrate: '96k',
+      },
+      {
+        name: '480p',
+        width: 854,
+        height: 480,
+        vBitrate: '1400k',
+        maxrate: '1680k',
+        bufsize: '2400k',
+        aBitrate: '128k',
+      },
+      {
+        name: '720p',
+        width: 1280,
+        height: 720,
+        vBitrate: '2800k',
+        maxrate: '3360k',
+        bufsize: '4800k',
+        aBitrate: '128k',
+      },
+      {
+        name: '1080p',
+        width: 1920,
+        height: 1080,
+        vBitrate: '5000k',
+        maxrate: '6720k',
+        bufsize: '8000k',
+        aBitrate: '192k',
+      },
+      {
+        name: '2160p',
+        width: 3840,
+        height: 2160,
+        vBitrate: '10000k',
+        maxrate: '13440k',
+        bufsize: '16000k',
+        aBitrate: '256k',
+      },
+    ];
+
+    for (const r of renditions) {
+      const dir = path.join(liveDir, r.name);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const filterParts = renditions
+      .map((r, idx) => {
+        const scale = `scale=w=${r.width}:h=${r.height}:force_original_aspect_ratio=decrease,pad=${r.width}:${r.height}:(ow-iw)/2:(oh-ih)/2`;
+        return `[0:v]${scale}[v${idx}]`;
+      })
+      .join(';');
+
+    const varStreamMap = renditions
+      .map((r, idx) => `v:${idx},a:${idx},name:${r.name}`)
+      .join(' ');
+
+    const ffmpegArgs: string[] = [
+      '-i',
+      rtmpUrl,
+      '-filter_complex',
+      filterParts,
+    ];
+
+    renditions.forEach((_r, idx) => {
+      ffmpegArgs.push('-map', `[v${idx}]`);
+      ffmpegArgs.push('-map', '0:a:0?');
+    });
+
+    renditions.forEach((r, idx) => {
+      ffmpegArgs.push(`-c:v:${idx}`, 'libx264');
+      ffmpegArgs.push(`-preset`, 'veryfast');
+      ffmpegArgs.push(`-profile:v:${idx}`, 'main');
+      ffmpegArgs.push(`-pix_fmt`, 'yuv420p');
+      ffmpegArgs.push(`-b:v:${idx}`, r.vBitrate);
+      ffmpegArgs.push(`-maxrate:v:${idx}`, r.maxrate);
+      ffmpegArgs.push(`-bufsize:v:${idx}`, r.bufsize);
+      ffmpegArgs.push(`-g:${idx}`, '48');
+      ffmpegArgs.push(`-keyint_min:${idx}`, '48');
+      ffmpegArgs.push(`-sc_threshold:${idx}`, '0');
+
+      ffmpegArgs.push(`-c:a:${idx}`, 'aac');
+      ffmpegArgs.push(`-b:a:${idx}`, r.aBitrate);
+      ffmpegArgs.push(`-ac:${idx}`, '2');
+      ffmpegArgs.push(`-ar:${idx}`, '44100');
+    });
+
+    ffmpegArgs.push(
+      '-f',
+      'hls',
+      '-hls_time',
+      '2',
+      '-hls_list_size',
+      '10',
+      '-hls_flags',
+      'delete_segments+independent_segments+program_date_time',
+      '-hls_playlist_type',
+      'event',
+      '-start_number',
+      '0',
+      '-master_pl_name',
+      masterPlaylistName,
+      '-var_stream_map',
+      varStreamMap,
+      '-hls_segment_filename',
+      path.join('%v', '%03d.ts'),
+      path.join('%v', 'index.m3u8'),
     );
+
+    const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
+      cwd: liveDir,
+    });
 
     // Log FFmpeg output for debugging
     ffmpeg.stderr.on('data', (data) => {
@@ -399,20 +486,24 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Finalize the manifest locally so the watcher picks it up
-      const playlistPath = path.join(session.liveDir, 'index.m3u8');
-      if (fs.existsSync(playlistPath)) {
+      const maybeFinalizePlaylist = async (playlistPath: string) => {
+        if (!fs.existsSync(playlistPath)) return;
         try {
           const content = fs.readFileSync(playlistPath, 'utf-8');
           if (!content.includes('#EXT-X-ENDLIST')) {
             fs.appendFileSync(playlistPath, '\n#EXT-X-ENDLIST\n');
-            this.logger.log(`🏁 Finalized manifest for ${streamKey}`);
+            this.logger.log(
+              `🏁 Finalized manifest (${path.basename(playlistPath)}) for ${streamKey}`,
+            );
             // Give the watcher one more cycle to upload the finalized manifest
             await new Promise((resolve) => setTimeout(resolve, 2000));
           }
         } catch (err) {
           this.logger.error(`Failed to finalize manifest: ${err.message}`);
         }
-      }
+      };
+
+      await maybeFinalizePlaylist(path.join(session.liveDir, 'master.m3u8'));
 
       // Stop R2 upload watcher
       if (session.watcher) {
@@ -484,7 +575,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     if (!session) return '';
 
     const publicUrl = process.env.PUBLIC_URL || process.env.HTTP_BASE_URL;
-    return `${publicUrl}/media/live/${session.contentId}/index.m3u8`;
+    return `${publicUrl}/media/live/${session.contentId}/master.m3u8`;
   }
 
   /**

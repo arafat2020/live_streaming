@@ -20,13 +20,71 @@ import { ThumbnailService } from './thumbnail.service';
 export class VideoService {
   private readonly logger = new Logger(VideoService.name);
 
+  private async getInputMetadata(inputPath: string): Promise<{ hasAudio: boolean; duration: number }> {
+    return new Promise((resolve) => {
+      const ffprobe = spawn('ffprobe', [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'json',
+        inputPath,
+      ]);
+
+      let out = '';
+      ffprobe.stdout?.on('data', (d) => {
+        out += d.toString();
+      });
+
+      ffprobe.on('close', (code) => {
+        if (code !== 0) {
+          resolve({ hasAudio: false, duration: 0 });
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(out);
+          const streams = parsed?.streams || [];
+          const hasAudio = streams.some((s: any) => s.codec_type === 'audio');
+          const duration = parseFloat(parsed?.format?.duration || '0');
+          resolve({ hasAudio, duration });
+        } catch {
+          resolve({ hasAudio: false, duration: 0 });
+        }
+      });
+
+      ffprobe.on('error', () => resolve({ hasAudio: false, duration: 0 }));
+    });
+  }
+
+  private listFilesRecursive(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const files: string[] = [];
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...this.listFilesRecursive(fullPath));
+      } else if (entry.isFile()) {
+        files.push(fullPath);
+      }
+    }
+
+    return files;
+  }
+
   constructor(
     private readonly r2UploadService: R2UploadService,
     private readonly contentService: ContentService,
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly thumbnailService: ThumbnailService,
-  ) {}
+  ) { }
 
   /**
    * Validate if a stream key exists and belongs to an active channel
@@ -165,65 +223,199 @@ export class VideoService {
       // Continue without thumbnail - not critical
     }
 
-    // FFmpeg generation for VOD
+    // FFmpeg generation for VOD (ABR HLS)
     const processingPromise = (async () => {
       try {
         this.logger.log(`🎬 Starting FFmpeg for: ${lessonId}`);
 
-        // Construct FFmpeg command
-        const ffmpeg = spawn('ffmpeg', [
-          '-y', // Overwrite output files without asking
+        const { hasAudio: inputHasAudio, duration } = await this.getInputMetadata(
+          finalInputPath,
+        );
+        if (!inputHasAudio) {
+          this.logger.warn(
+            `⚠️ No audio stream detected for ${lessonId}. Injecting silent audio track for HLS packaging.`,
+          );
+        }
+
+        const masterPlaylistName = 'master.m3u8';
+
+        // ABR ladder (keep moderate by default)
+        // Note: bitrates are targets; actual may vary.
+        const renditions = [
+          {
+            name: '144p',
+            width: 256,
+            height: 144,
+            vBitrate: '200k',
+            maxrate: '240k',
+            bufsize: '400k',
+            aBitrate: '64k',
+          },
+          {
+            name: '240p',
+            width: 426,
+            height: 240,
+            vBitrate: '400k',
+            maxrate: '480k',
+            bufsize: '800k',
+            aBitrate: '64k',
+          },
+          {
+            name: '360p',
+            width: 640,
+            height: 360,
+            vBitrate: '800k',
+            maxrate: '960k',
+            bufsize: '1400k',
+            aBitrate: '96k',
+          },
+          {
+            name: '480p',
+            width: 854,
+            height: 480,
+            vBitrate: '1400k',
+            maxrate: '1680k',
+            bufsize: '2400k',
+            aBitrate: '128k',
+          },
+          {
+            name: '720p',
+            width: 1280,
+            height: 720,
+            vBitrate: '2800k',
+            maxrate: '3360k',
+            bufsize: '4800k',
+            aBitrate: '128k',
+          },
+        ];
+
+        // Ensure per-rendition folders exist
+        for (const r of renditions) {
+          const dir = path.join(outputDir, r.name);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        }
+
+        const filterParts = renditions
+          .map((r, idx) => {
+            const scale = `scale=w=${r.width}:h=${r.height}:force_original_aspect_ratio=decrease,pad=${r.width}:${r.height}:(ow-iw)/2:(oh-ih)/2`;
+            // Reset timestamps to start from 0 to prevent synchronization issues with generated audio
+            return `[0:v]setpts=PTS-STARTPTS,${scale}[v${idx}]`;
+          })
+          .join(';');
+
+        const varStreamMap = renditions
+          .map((r, idx) => `v:${idx},a:${idx},name:${r.name}`)
+          .join(' ');
+
+        const ffmpegArgs: string[] = [
+          '-y',
           '-i',
           finalInputPath,
           '-err_detect',
-          'ignore_err', // Ignore errors in input
+          'ignore_err',
           '-fflags',
-          '+genpts', // Generate presentation timestamps
-          '-codec:v',
-          'libx264',
-          '-preset',
-          'fast', // Faster encoding
-          '-profile:v',
-          'main',
-          '-level',
-          '3.1',
-          '-pix_fmt',
-          'yuv420p', // Ensure compatible pixel format
-          '-codec:a',
-          'aac',
-          '-ar',
-          '44100',
-          '-ac',
-          '2',
-          '-b:a',
-          '128k', // Audio bitrate
+          '+genpts',
+          ...(inputHasAudio
+            ? []
+            : [
+              '-f',
+              'lavfi',
+              ...(duration > 0 ? ['-t', duration.toString()] : []),
+              '-i',
+              'anullsrc=channel_layout=stereo:sample_rate=44100',
+            ]),
+          '-filter_complex',
+          filterParts,
+        ];
 
-          // ✅ OPTIMAL FOR WEB: 4-second segments
-          '-start_number',
-          '0',
-          '-hls_time',
-          '4',
-          '-hls_list_size',
-          '0',
-          '-hls_segment_type',
-          'mpegts',
+        // Map video/audio for each rendition
+        renditions.forEach((_r, idx) => {
+          ffmpegArgs.push('-map', `[v${idx}]`);
+          ffmpegArgs.push('-map', inputHasAudio ? '0:a:0?' : '1:a:0');
+        });
+
+        // Per-stream encoding settings
+        renditions.forEach((r, idx) => {
+          ffmpegArgs.push(`-c:v:${idx}`, 'libx264');
+          ffmpegArgs.push(`-preset`, 'fast');
+          ffmpegArgs.push(`-profile:v:${idx}`, 'main');
+          ffmpegArgs.push(`-pix_fmt`, 'yuv420p');
+          ffmpegArgs.push(`-b:v:${idx}`, r.vBitrate);
+          ffmpegArgs.push(`-maxrate:v:${idx}`, r.maxrate);
+          ffmpegArgs.push(`-bufsize:v:${idx}`, r.bufsize);
+          ffmpegArgs.push(`-g:${idx}`, '48');
+          ffmpegArgs.push(`-keyint_min:${idx}`, '48');
+          ffmpegArgs.push(`-sc_threshold:${idx}`, '0');
+
+          ffmpegArgs.push(`-c:a:${idx}`, 'aac');
+          ffmpegArgs.push(`-b:a:${idx}`, r.aBitrate);
+          ffmpegArgs.push(`-ac:${idx}`, '2');
+          ffmpegArgs.push(`-ar:${idx}`, '44100');
+        });
+
+        // HLS options
+        ffmpegArgs.push(
           '-f',
           'hls',
-          path.join(outputDir, 'index.m3u8'),
-        ]);
+          '-hls_time',
+          '2',
+          '-hls_list_size',
+          '10',
+          '-hls_flags',
+          'delete_segments+independent_segments+program_date_time',
+          '-hls_playlist_type',
+          'event',
+          '-start_number',
+          '0',
+          '-master_pl_name',
+          masterPlaylistName,
+          '-var_stream_map',
+          varStreamMap,
+          '-hls_segment_filename',
+          path.join('%v', '%03d.ts'),
+          path.join('%v', 'index.m3u8'),
+        );
+
+        if (!inputHasAudio) {
+          // Ensure the generated silent audio doesn't outlive the video
+          ffmpegArgs.push('-shortest');
+          if (duration > 0) {
+            ffmpegArgs.push('-t', duration.toString());
+          }
+        }
+
+        this.logger.log(
+          `🎬 FFmpeg args (${lessonId}): ${['ffmpeg', ...ffmpegArgs].join(' ')}`,
+        );
+
+        const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
+          // Important: output paths use "%v/..." (relative), so run FFmpeg inside outputDir
+          cwd: outputDir,
+        });
 
         // Capture FFmpeg output for debugging
         let ffmpegOutput = '';
         let ffmpegError = '';
+        let lastProgressLogAt = 0;
 
         ffmpeg.stdout?.on('data', (data) => {
           ffmpegOutput += data.toString();
         });
 
-        this.logger.log(`FFmpeg output:\n${ffmpegOutput.slice(-500)}`); // Last 500 chars
-
         ffmpeg.stderr?.on('data', (data) => {
-          ffmpegError += data.toString();
+          const msg = data.toString();
+          ffmpegError += msg;
+
+          // Throttled progress logging (FFmpeg emits lines like: time=00:00:10.00)
+          if (msg.includes('time=')) {
+            const now = Date.now();
+            if (now - lastProgressLogAt > 30000) {
+              lastProgressLogAt = now;
+              this.logger.log(
+                `⏳ FFmpeg progress (${lessonId}): ${msg.trim().slice(-200)}`,
+              );
+            }
+          }
         });
 
         return new Promise<{ playbackUrl: string; thumbnailUrl: string }>(
@@ -232,18 +424,24 @@ export class VideoService {
               if (code === 0) {
                 this.logger.log(`✅ Transcoding done: ${lessonId}`);
 
-                // Upload result to R2
+                // Upload ABR output to R2 (recursive)
                 const playbackUrl = await this.uploadToR2(outputDir, r2Prefix);
 
                 // Cleanup local files
                 this.cleanupLocalFiles(outputDir);
+
+                this.logger.log(
+                  `✅ Upload complete. Processing started for content: ${playbackUrl}`,
+                  JSON.stringify({ playbackUrl, thumbnailUrl }),
+                );
 
                 resolve({ playbackUrl, thumbnailUrl });
               } else {
                 this.logger.error(
                   `❌ FFmpeg failed for ${lessonId} with code ${code}`,
                 );
-                this.logger.error(`FFmpeg stderr: ${ffmpegError.slice(-500)}`); // Last 500 chars
+                const stderrTail = ffmpegError.slice(-4000);
+                this.logger.error(`FFmpeg stderr (tail): ${stderrTail}`);
                 reject(new Error(`FFmpeg failed with code ${code}`));
               }
             });
@@ -288,23 +486,44 @@ export class VideoService {
     localDir: string,
     r2Prefix: string,
   ): Promise<string> {
-    const files = fs.readdirSync(localDir);
-    const m3u8File = files.find((f) => f.endsWith('.m3u8'));
+    const allFiles = this.listFilesRecursive(localDir);
 
-    for (const file of files) {
-      const fullPath = path.join(localDir, file);
-      const contentType = file.endsWith('.m3u8')
-        ? 'application/vnd.apple.mpegurl'
-        : 'video/mp2t';
+    const getR2KeyFromLocalPath = (localPath: string) => {
+      const relative = path.relative(localDir, localPath).replace(/\\/g, '/');
+      return `${r2Prefix}/${relative}`;
+    };
 
+    // Upload segments first
+    const tsFiles = allFiles.filter((f) => f.endsWith('.ts'));
+    for (const filePath of tsFiles) {
       await this.r2UploadService.uploadFile(
-        fullPath,
-        `${r2Prefix}/${file}`,
-        contentType,
+        filePath,
+        getR2KeyFromLocalPath(filePath),
+        'video/mp2t',
       );
     }
 
-    return `${R2_PUBLIC_URL}/${r2Prefix}/${m3u8File}`;
+    // Then playlists
+    const m3u8Files = allFiles.filter((f) => f.endsWith('.m3u8'));
+    for (const filePath of m3u8Files) {
+      await this.r2UploadService.uploadPlaylist(
+        filePath,
+        getR2KeyFromLocalPath(filePath),
+      );
+    }
+
+    const masterLocalPath = path.join(localDir, 'master.m3u8');
+    const masterR2Key = `${r2Prefix}/master.m3u8`;
+    if (fs.existsSync(masterLocalPath)) {
+      return `${R2_PUBLIC_URL}/${masterR2Key}`;
+    }
+
+    // Fallback: if master isn't present, keep legacy behavior
+    const anyM3u8 = m3u8Files[0];
+    if (!anyM3u8) {
+      throw new Error('No HLS playlist (.m3u8) generated');
+    }
+    return `${R2_PUBLIC_URL}/${getR2KeyFromLocalPath(anyM3u8)}`;
   }
 
   /**
@@ -371,7 +590,7 @@ export class VideoService {
     try {
       // Use contentId for the R2 prefix to keep streamKey secret
       const r2Prefix = `live/${contentId}`;
-      const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/index.m3u8`;
+      const playbackUrl = `${R2_PUBLIC_URL}/${r2Prefix}/master.m3u8`;
 
       // 1. Start R2 upload watcher immediately so it can begin uploading segments/manifest
       const watcher = this.r2UploadService.watchAndUpload(liveDir, r2Prefix);
@@ -382,7 +601,7 @@ export class VideoService {
         `⏳ Waiting for manifest to be available on R2: ${playbackUrl}`,
       );
 
-      const manifestKey = `${r2Prefix}/index.m3u8`;
+      const manifestKey = `${r2Prefix}/master.m3u8`;
       let isAvailable = false;
       let attempts = 0;
       const maxAttempts = 100; // Total 20 seconds timeout (100 * 200ms)
@@ -529,12 +748,12 @@ export class VideoService {
         isLive: channel.isLive,
         currentStream: currentStream
           ? {
-              id: currentStream.id,
-              title: currentStream.title,
-              description: currentStream.description,
-              startedAt: currentStream.createdAt,
-              playbackUrl: currentStream.playbackUrl,
-            }
+            id: currentStream.id,
+            title: currentStream.title,
+            description: currentStream.description,
+            startedAt: currentStream.createdAt,
+            playbackUrl: currentStream.playbackUrl,
+          }
           : null,
       };
     } catch (error) {
@@ -635,7 +854,7 @@ export class VideoService {
         ...(thumbnailUrl && { thumbnailUrl }),
       });
       this.logger.log(
-        `✅ Content ${contentId} updated to AVAILABLE with playback URL${thumbnailUrl ? ' and thumbnail' : ''}`,
+        `✅ Content ${contentId} updated to AVAILABLE with playback URL ${playbackUrl ? ' and thumbnail' : `${thumbnailUrl}`}`,
       );
     } catch (error) {
       this.logger.error(
