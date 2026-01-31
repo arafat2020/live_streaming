@@ -59,10 +59,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
       // Prevent crash by just logging. You might want to emit an error to the client.
       try {
-        client.emit('error', (exception as any)?.message ? exception : {
-          message: (exception as any)?.message || 'Internal server error',
-          success: false,
-        });
+        client.emit(
+          'error',
+          (exception as any)?.message
+            ? exception
+            : {
+                message: (exception as any)?.message || 'Internal server error',
+                success: false,
+              },
+        );
       } catch (e) {
         this.logger.error('Failed to emit error to WS client', e);
       }

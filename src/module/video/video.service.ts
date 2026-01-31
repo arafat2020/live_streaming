@@ -458,7 +458,7 @@ export class VideoService {
         filePath,
         getR2KeyFromLocalPath(filePath),
         'video/mp2t',
-      );
+      ); // Ignore null for live streams
     }
 
     // Then playlists

@@ -174,9 +174,8 @@ export class VideoController {
       throw new BadRequestException('chunkIndex is required');
     }
 
-    this.logger.log(
-      `📦 Chunk received: uploadId=${uploadId}, index=${chunkIndex}, size=${file.size}`,
-    );
+    // Optional: debug chunk received
+    // this.logger.debug(`📦 Chunk received: uploadId=${uploadId}, index=${chunkIndex}, size=${file.size}`);
 
     const result = await this.chunkService.saveChunk(
       uploadId,
@@ -202,8 +201,6 @@ export class VideoController {
     if (!uploadId) {
       throw new BadRequestException('uploadId is required');
     }
-
-    this.logger.log(`🎬 Completing upload: ${uploadId}`);
 
     const lessonId = uuidv4();
     const tempOutputDir = path.resolve(
@@ -240,32 +237,30 @@ export class VideoController {
         mergedFilePath, // Pass file path
       );
 
-    this.logger.log(`🎥 Processing started for ${lessonId}: ${contentId}`);
+    // Optional: debug processing start
+    // this.logger.debug(`🎥 Processing started for ${lessonId}: ${contentId}`);
 
     // Handle processing completion in background
     processingPromise
       .then(async (result) => {
         this.logger.log(
-          `✅ Processing complete for ${lessonId}. Updating content status...`,
-          JSON.stringify(result),
+          `✅ Processing complete for ${lessonId}. Updating content status... ${JSON.stringify(result)}`,
         );
         // Update content to AVAILABLE with playback URL and thumbnail
-        const updateResult =
-          await this.videoService.updateContentAfterProcessing(
-            contentId,
-            result.playbackUrl,
-            result.thumbnailUrl,
-          );
-
+        await this.videoService.updateContentAfterProcessing(
+          contentId,
+          result.playbackUrl,
+          result.thumbnailUrl,
+        );
         this.logger.log(
-          `✅ Upload complete. Processing started for content: ${contentId}`,
-          JSON.stringify(updateResult),
+          `✅ Content ${contentId} marked AVAILABLE. Playback: ${result.playbackUrl}`,
         );
       })
       .catch((err) => {
         this.logger.error(
           `❌ Background processing failed for ${lessonId}: ${err.message}`,
         );
+        this.logger.error(`Full error:`, err.stack);
       });
 
     await this.chunkService.cleanupSession(uploadId);
