@@ -8,6 +8,7 @@ import { Category, ContentStatus, ContentType } from '@prisma/client';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { VIDEO_RENDITIONS } from '../../common/video.constants';
 import { R2_PUBLIC_URL } from '../../config/r2.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContentService } from '../content/content.service';
@@ -15,13 +16,14 @@ import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { R2UploadService } from './r2-upload.service';
 import { ThumbnailService } from './thumbnail.service';
-import { VIDEO_RENDITIONS } from '../../common/video.constants';
 
 @Injectable()
 export class VideoService {
   private readonly logger = new Logger(VideoService.name);
 
-  private async getInputMetadata(inputPath: string): Promise<{ hasAudio: boolean; duration: number }> {
+  private async getInputMetadata(
+    inputPath: string,
+  ): Promise<{ hasAudio: boolean; duration: number }> {
     return new Promise((resolve) => {
       const ffprobe = spawn('ffprobe', [
         '-v',
@@ -85,7 +87,7 @@ export class VideoService {
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly thumbnailService: ThumbnailService,
-  ) { }
+  ) {}
 
   /**
    * Validate if a stream key exists and belongs to an active channel
@@ -229,9 +231,8 @@ export class VideoService {
       try {
         this.logger.log(`🎬 Starting FFmpeg for: ${lessonId}`);
 
-        const { hasAudio: inputHasAudio, duration } = await this.getInputMetadata(
-          finalInputPath,
-        );
+        const { hasAudio: inputHasAudio, duration } =
+          await this.getInputMetadata(finalInputPath);
         if (!inputHasAudio) {
           this.logger.warn(
             `⚠️ No audio stream detected for ${lessonId}. Injecting silent audio track for HLS packaging.`,
@@ -273,12 +274,12 @@ export class VideoService {
           ...(inputHasAudio
             ? []
             : [
-              '-f',
-              'lavfi',
-              ...(duration > 0 ? ['-t', duration.toString()] : []),
-              '-i',
-              'anullsrc=channel_layout=stereo:sample_rate=44100',
-            ]),
+                '-f',
+                'lavfi',
+                ...(duration > 0 ? ['-t', duration.toString()] : []),
+                '-i',
+                'anullsrc=channel_layout=stereo:sample_rate=44100',
+              ]),
           '-filter_complex',
           filterParts,
         ];
@@ -356,6 +357,8 @@ export class VideoService {
         ffmpeg.stdout?.on('data', (data) => {
           ffmpegOutput += data.toString();
         });
+
+        this.logger.log(`FFmpeg output: ${ffmpegOutput}`);
 
         ffmpeg.stderr?.on('data', (data) => {
           const msg = data.toString();
@@ -703,12 +706,12 @@ export class VideoService {
         isLive: channel.isLive,
         currentStream: currentStream
           ? {
-            id: currentStream.id,
-            title: currentStream.title,
-            description: currentStream.description,
-            startedAt: currentStream.createdAt,
-            playbackUrl: currentStream.playbackUrl,
-          }
+              id: currentStream.id,
+              title: currentStream.title,
+              description: currentStream.description,
+              startedAt: currentStream.createdAt,
+              playbackUrl: currentStream.playbackUrl,
+            }
           : null,
       };
     } catch (error) {

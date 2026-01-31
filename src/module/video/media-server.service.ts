@@ -7,9 +7,9 @@ import {
 import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { VIDEO_RENDITIONS } from '../../common/video.constants';
 import { VideoService } from '../video/video.service';
 import { ThumbnailService } from './thumbnail.service';
-import { VIDEO_RENDITIONS } from '../../common/video.constants';
 
 import NodeMediaServer from 'node-media-server';
 
@@ -32,7 +32,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly videoService: VideoService,
     private readonly thumbnailService: ThumbnailService,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     this.initializeMediaServer();
@@ -182,7 +182,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
     } catch (error) {
       this.logger.error(
-        `❌ Failed to start stream ${streamKey}: ${error.stack || error.message}`,
+        `❌ Failed to start stream ${streamKey}: ${(error as any)?.message || error}`,
       );
       await this.cleanupSession(streamKey);
     }
@@ -230,7 +230,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       this.logger.error(
-        `❌ Thumbnail generation failed for ${streamKey}: ${err.message}`,
+        `❌ Thumbnail generation failed for ${streamKey}: ${(err as any)?.message || err}`,
       );
     }
   }
@@ -345,8 +345,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     });
 
     ffmpeg.on('error', (error) => {
-      this.logger.error(`❌ FFmpeg error for ${streamKey}: ${error.message}`);
-      if (error.message.includes('ENOENT')) {
+      const msg = (error as any)?.message || String(error);
+      this.logger.error(`❌ FFmpeg error for ${streamKey}: ${msg}`);
+      if (msg.includes('ENOENT')) {
         this.logger.error(
           'CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.',
         );
@@ -397,7 +398,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error) {
       this.logger.error(
-        `❌ Error stopping stream ${streamKey}: ${error.message}`,
+        `❌ Error stopping stream ${streamKey}: ${(error as any)?.message || error}`,
       );
     }
   }
@@ -436,7 +437,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
             await new Promise((resolve) => setTimeout(resolve, 2000));
           }
         } catch (err) {
-          this.logger.error(`Failed to finalize manifest: ${err.message}`);
+          this.logger.error(
+            `Failed to finalize manifest: ${(err as any)?.message || err}`,
+          );
         }
       };
 
@@ -457,7 +460,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
           }
         } catch (err) {
           this.logger.error(
-            `Failed to delete directory ${session.liveDir}: ${err.message}`,
+            `Failed to delete directory ${session.liveDir}: ${(err as any)?.message || err}`,
           );
         }
       }, 15000); // ✅ Increased to 15 seconds delay for R2 upload completion
@@ -466,7 +469,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       this.activeSessions.delete(streamKey);
     } catch (error) {
       this.logger.error(
-        `Error cleaning up session ${streamKey}: ${error.message}`,
+        `Error cleaning up session ${streamKey}: ${(error as any)?.message || error}`,
       );
     }
   }
@@ -500,7 +503,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`🚫 Connection rejected: ${id}`);
       }
     } catch (error) {
-      this.logger.error(`Failed to reject stream: ${error.message}`);
+      this.logger.error(
+        `Failed to reject stream: ${(error as any)?.message || error}`,
+      );
     }
   }
 
