@@ -1,22 +1,22 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
   Req,
   UseGuards,
-  Query,
 } from '@nestjs/common';
-import { LiveCommentService } from './live-comment.service';
-import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
-import { UpdateLiveCommentDto } from './dto/update-live-comment.dto';
-import { PaginationQueryDto } from './dto/pagination-query.dto';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetMe } from '../user/dto/request-with-user.interface';
+import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
+import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { UpdateLiveCommentDto } from './dto/update-live-comment.dto';
+import { LiveCommentService } from './live-comment.service';
 
 @ApiTags('live-comments')
 @Controller('live-comments')
@@ -53,15 +53,21 @@ export class LiveCommentController {
     return this.service.create(userId, body);
   }
 
-  // PATCH /live-comments/:id
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateLiveCommentDto) {
-    return this.service.update(id, dto);
+  async update(
+    @Req() req: GetMe,
+    @Param('id') id: string,
+    @Body() dto: UpdateLiveCommentDto,
+  ) {
+    const userId = req.user.id;
+    return this.service.update(id, dto, userId);
   }
 
-  // DELETE /live-comments/:id
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  async remove(@Req() req: GetMe, @Param('id') id: string) {
+    const userId = req.user.id;
+    return this.service.remove(id, userId);
   }
 }

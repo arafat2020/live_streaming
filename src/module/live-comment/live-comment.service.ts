@@ -6,11 +6,11 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LiveCommentGateway } from './liveComment.gateway';
-import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
-import { UpdateLiveCommentDto } from './dto/update-live-comment.dto';
 import { ModeratorService } from '../moderator/moderator.service';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
+import { CreateLiveCommentDto } from './dto/create-live-comment.dto';
+import { UpdateLiveCommentDto } from './dto/update-live-comment.dto';
+import { LiveCommentGateway } from './liveComment.gateway';
 
 @Injectable()
 export class LiveCommentService {
@@ -257,8 +257,17 @@ export class LiveCommentService {
   }
 
   // ------- UPDATE COMMENT -------
-  async update(id: string, dto: UpdateLiveCommentDto) {
-    const comment = await this.prisma.liveComment.update({
+  async update(id: string, dto: UpdateLiveCommentDto, userId: string) {
+    // Check if user is the author of the comment
+    const comment = await this.prisma.liveComment.findUnique({
+      where: { id },
+      select: { userId: true, videoId: true },
+    });
+    if (!comment || comment.userId !== userId) {
+      throw new ForbiddenException('You are not the author of this comment');
+    }
+
+    await this.prisma.liveComment.update({
       where: { id },
       data: dto,
       include: {
@@ -274,11 +283,16 @@ export class LiveCommentService {
   }
 
   // ------- DELETE COMMENT -------
-  async remove(id: string) {
+  async remove(id: string, userId: string) {
     const comment = await this.prisma.liveComment.findUnique({
       where: { id },
     });
     if (!comment) return null;
+
+    // Check if user is the author of the comment
+    if (comment.userId !== userId) {
+      throw new ForbiddenException('You are not the author of this comment');
+    }
 
     await this.prisma.liveComment.delete({ where: { id } });
 

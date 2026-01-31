@@ -1,11 +1,21 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { v4 as uuidv4 } from 'uuid';
-import { R2Service } from './r2-worker.service';
-import { InitiateR2Dto } from './dto/initiate-r2.dto';
-import { CompleteR2Dto } from './dto/complete-r2.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AbortR2Dto } from './dto/abort-r2.dto';
+import { CompleteR2Dto } from './dto/complete-r2.dto';
+import { InitiateR2Dto } from './dto/initiate-r2.dto';
+import { R2Service } from './r2-worker.service';
 
+@ApiTags('R2 Storage')
 @Controller('r2')
+@UseGuards(JwtAuthGuard)
 export class R2Controller {
   constructor(private readonly r2: R2Service) {}
 

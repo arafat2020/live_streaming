@@ -53,10 +53,12 @@ export class ModeratorController {
     return this.moderatorService.create(createModeratorDto, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   findAll() {
     return this.moderatorService.findAll();
   }
+  @UseGuards(JwtAuthGuard)
   @Get('ban/check')
   async checkUserBan(
     @Query('channelId') channelId: string,
@@ -70,11 +72,13 @@ export class ModeratorController {
     return this.moderatorService.findByChannel(channelId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('user/:userId')
   findByUser(@Param('userId') userId: string) {
     return this.moderatorService.findByUser(userId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('check')
   async checkIsModerator(
     @Query('userId') userId: string,
