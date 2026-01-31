@@ -255,7 +255,7 @@ export class ContentService {
       .sort((a, b) => b.concurrentViewers - a.concurrentViewers)
       .slice(0, 3);
 
-    // 2. Top 3 VODs (Weekly)
+    // 2. Top 5 VODs (Weekly)
     const topVODs = await this.prisma.content.findMany({
       where: {
         status: 'AVAILABLE',
@@ -263,7 +263,7 @@ export class ContentService {
         createdAt: { gte: oneWeekAgo },
         AND: [visibilityWhere],
       },
-      take: 3,
+      take: 5,
       orderBy: { views: 'desc' },
       include: {
         channel: {
