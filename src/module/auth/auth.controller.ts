@@ -18,6 +18,7 @@ import {
   ResetPasswordDto,
   VerifyResetCodeDto,
 } from './dto/create-auth.dto';
+import { GoogleLoginDto, GoogleSignupDto } from './dto/google-auth.dto';
 import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import sendResponse from 'src/utils/sendResponse';
@@ -25,7 +26,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
@@ -153,14 +154,29 @@ export class AuthController {
   }
 
   @Post('google-login')
-  @ApiOperation({ summary: 'Google Login with ID Token' })
+  @ApiOperation({ summary: 'Google Login with ID Token (existing users only)' })
   @ApiResponse({ status: 200, description: 'User LoggedIn successfully.' })
-  async googleLogin(@Body('idToken') idToken: string, @Res() res: Response) {
-    const data = await this.authService.googleLoginWithIdToken(idToken);
+  @ApiBody({ type: GoogleLoginDto })
+  async googleLogin(@Body() dto: GoogleLoginDto, @Res() res: Response) {
+    const data = await this.authService.googleLogin(dto.idToken);
     return sendResponse(res, {
       statusCode: HttpStatus.OK,
       success: true,
       message: 'User LoggedIn successfully.',
+      data,
+    });
+  }
+
+  @Post('google-signup')
+  @ApiOperation({ summary: 'Google Signup with ID Token (new users)' })
+  @ApiResponse({ status: 201, description: 'User registered successfully.' })
+  @ApiBody({ type: GoogleSignupDto })
+  async googleSignup(@Body() dto: GoogleSignupDto, @Res() res: Response) {
+    const data = await this.authService.googleSignup(dto);
+    return sendResponse(res, {
+      statusCode: HttpStatus.CREATED,
+      success: true,
+      message: 'User registered successfully.',
       data,
     });
   }
