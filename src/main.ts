@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import * as express from 'express';
 import * as fs from 'fs';
@@ -100,11 +100,22 @@ async function bootstrap() {
   const httpAdapter = app.get(HttpAdapterHost);
   app.useGlobalFilters(new AllExceptionsFilter(httpAdapter));
 
-  setupSwagger(app);
-  const port = process.env.PORT || 8000;
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`🚀 Server running on http://localhost:${port}`);
-  });
+  const logger = new Logger('Bootstrap');
+
+  const isApiEnabled = process.env.ENABLE_API !== 'false';
+  if (isApiEnabled) {
+    setupSwagger(app);
+    const port = process.env.PORT || 8000;
+    await app.listen(port, '0.0.0.0', () => {
+      logger.log(`🚀 API Server running on http://localhost:${port}`);
+    });
+  } else {
+    // Keep the process alive for Media Server if API is disabled
+    logger.log(
+      'ℹ️ API Server disabled (ENABLE_API=false). Media Server only mode.',
+    );
+    await app.init();
+  }
 }
 
 bootstrap().catch((err) => {

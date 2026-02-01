@@ -35,9 +35,15 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
-    this.initializeMediaServer();
-    this.startStatsBroadcast();
-    await this.videoService.resetStaleStreams();
+    if (process.env.ENABLE_MEDIA_SERVER === 'true') {
+      this.initializeMediaServer();
+      this.startStatsBroadcast();
+      await this.videoService.resetStaleStreams();
+    } else {
+      this.logger.log(
+        'ℹ️ Media Server disabled (ENABLE_MEDIA_SERVER is not true)',
+      );
+    }
   }
 
   async onModuleDestroy() {
@@ -177,7 +183,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
       // Step 3.6: Generate thumbnail asynchronously from the first local segment
       const r2Prefix = `live/${contentId}`;
-      const firstSegmentPath = path.join(liveDir, '144p', '000.ts');
+      const firstSegmentPath = path.join(liveDir, '480p', '000.ts');
 
       this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
     } catch (error) {

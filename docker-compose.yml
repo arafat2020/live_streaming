@@ -4,7 +4,7 @@ services:
     container_name: rappio_db
     restart: always
     ports:
-      - "5433:5432"
+      - '127.0.0.1:5432:5432'
     environment:
       POSTGRES_USER: murmur_user
       POSTGRES_PASSWORD: murmur_pass
@@ -12,44 +12,57 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U murmur_user -d rappio_db"]
+      test: ['CMD-SHELL', 'pg_isready -U rappio_db']
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - rappio_network
 
   app:
-    build: .
+    image: softvence/rappio-server:latest
     container_name: rappio_app
+    restart: always
     ports:
-      - "8000:8000"   # NestJS API
-      - "8001:8001"   # Media HTTP (HLS)
-      - "1935:1935"   # RTMP
+      - '8000:8000'
     env_file:
       - .env
     environment:
-      # This overrides any DATABASE_URL in your .env to ensure Docker connectivity
-      - DATABASE_URL=postgresql://murmur_user:murmur_pass@db:5432/rappio_db?schema=public
+      - ENABLE_MEDIA_SERVER=false
+      - ENABLE_API=true
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - rappio_network
     command: >
       sh -c "
-      echo 'Waiting for database to be fully functional...' &&
-      sleep 3 &&
-      npx prisma migrate deploy &&
+      echo '⏳ Waiting for DB...' &&
+      npx prisma migrate deploy || echo '⚠️ Migration skipped' &&
       node dist/main.js
       "
     volumes:
       - ./uploads:/app/uploads
       - ./media:/app/media
 
-networks:
-  rappio_network:
-    driver: bridge
-
+  media:
+    image: softvence/rappio-server:latest
+    container_name: rappio_media_worker
+    restart: always
+    ports:
+      - '8001:8001' # Media HTTP (HLS)
+      - '1935:1935' # RTMP
+    env_file:
+      - .env
+    environment:
+      - ENABLE_MEDIA_SERVER=true
+      - ENABLE_API=false
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+      - ./media:/app/media
 volumes:
   pg_data:
