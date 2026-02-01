@@ -37,10 +37,75 @@ export class AuthService {
     this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
   }
 
-  async googleLoginWithIdToken(idToken: string) {
+  /**
+   * Google Login - Only for existing users
+   * If user exists (via email/password or previous Google signup), log them in
+   * If user doesn't exist, throw error directing them to signup
+   */
+  async googleLogin(idToken: string) {
     try {
       const ticket = await this.googleClient.verifyIdToken({
         idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+
+      const googlePayload = ticket.getPayload();
+      if (!googlePayload) {
+        throw new BadRequestException('Invalid google token');
+      }
+
+      const { email, sub: googleId } = googlePayload;
+
+      if (!email) {
+        throw new BadRequestException('Email not provided by Google');
+      }
+
+      // Check if user exists
+      let user = await this.prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (!user) {
+        // User doesn't exist - direct them to signup
+        throw new NotFoundException(
+          'No account found with this email. Please sign up first.',
+        );
+      }
+
+      // If user exists but doesn't have googleId linked, link it
+      if (!user.googleId) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { googleId },
+        });
+      }
+
+      // Generate tokens
+      return this.generateAuthTokens(user);
+    } catch (error) {
+      console.error('Google login error:', error);
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedException('Google authentication failed');
+    }
+  }
+
+  /**
+   * Google Signup - Only for new users
+   * Requires username and dateOfBirth
+   */
+  async googleSignup(dto: {
+    idToken: string;
+    username: string;
+    dateOfBirth: string;
+  }) {
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: dto.idToken,
         audience: process.env.GOOGLE_CLIENT_ID,
       });
 
@@ -55,100 +120,121 @@ export class AuthService {
         throw new BadRequestException('Email not provided by Google');
       }
 
-      let user = await this.prisma.user.findUnique({
+      // Check if user already exists
+      const existingUser = await this.prisma.user.findUnique({
         where: { email },
       });
 
-      if (!user) {
-        // Generate unique username from email using utility function
-        const username = await generateUniqueUsername(email, this.prisma);
-
-        user = await this.prisma.user.create({
-          data: {
-            email,
-            username: username,
-            firstName: username, // Always set firstName to username
-            lastName: family_name || '',
-            profileImage: picture,
-            googleId,
-            role: UserRole.CREATOR,
-            status: UserStatus.ACTIVE,
-          },
-        });
-
-        // Create channel for new user
-        const channelPayload = {
-          ownerId: user.id,
-          name: user.username, // Use username (which is now same as firstName)
-          handle: user.username!,
-          description: null,
-          streamKey: this.generateStreamKey(),
-        } as any; // Type assertion to bypass strict typing
-        await this.prisma.channel.create({ data: channelPayload });
-      } else if (!user.googleId) {
-        // Link existing user with Google account if not linked
-        user = await this.prisma.user.update({
-          where: { id: user.id },
-          data: { googleId },
-        });
+      if (existingUser) {
+        throw new ConflictException(
+          'An account with this email already exists. Please use login instead.',
+        );
       }
 
-      // Generate tokens
-      const payloadBase = {
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-      };
-
-      const accessToken = this.jwtService.sign(
-        { ...payloadBase, tf: true },
-        {
-          secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
-          expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
-        },
-      );
-
-      const refreshToken = this.jwtService.sign(
-        { ...payloadBase, tf: true },
-        {
-          secret:
-            process.env.JWT_REFRESH_SECRET ||
-            process.env.JWT_SECRET ||
-            'replace_with_a_strong_secret',
-          expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
-        },
-      );
-
-      const hashedRefreshToken = await bcrypt.hash(
-        refreshToken,
-        parseInt(process.env.SALT_ROUND!),
-      );
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken: hashedRefreshToken, lastLogin: new Date() },
+      // Normalize and check username availability
+      const normalizedUsername = dto.username.toLowerCase();
+      const existingUsername = await this.prisma.user.findUnique({
+        where: { username: normalizedUsername },
       });
 
-      const {
-        password,
-        twoFactorSecret,
-        passwordResetToken,
-        passwordResetExpires,
-        ...rest
-      } = user;
-      void password;
-      void twoFactorSecret;
-      void passwordResetToken;
-      void passwordResetExpires;
+      if (existingUsername) {
+        throw new ConflictException('Username is already taken.');
+      }
 
-      return {
-        user: rest,
-        accessToken,
-        refreshToken,
-      };
+      // Create new user
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          username: normalizedUsername,
+          firstName: normalizedUsername,
+          lastName: family_name || '',
+          profileImage: picture,
+          googleId,
+          dateOfBirth: new Date(dto.dateOfBirth),
+          role: UserRole.CREATOR,
+          status: UserStatus.ACTIVE,
+        },
+      });
+
+      // Create channel for new user
+      const channelPayload = {
+        ownerId: user.id,
+        name: user.username,
+        handle: user.username!,
+        description: null,
+        streamKey: this.generateStreamKey(),
+      } as any;
+      await this.prisma.channel.create({ data: channelPayload });
+
+      // Generate tokens
+      return this.generateAuthTokens(user);
     } catch (error) {
-      console.error('Google login error:', error);
-      throw new UnauthorizedException('Google authentication failed');
+      console.error('Google signup error:', error);
+      if (
+        error instanceof ConflictException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Google signup failed');
     }
+  }
+
+  /**
+   * Helper method to generate auth tokens for a user
+   */
+  private async generateAuthTokens(user: any) {
+    const payloadBase = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const accessToken = this.jwtService.sign(
+      { ...payloadBase, tf: true },
+      {
+        secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
+        expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
+      },
+    );
+
+    const refreshToken = this.jwtService.sign(
+      { ...payloadBase, tf: true },
+      {
+        secret:
+          process.env.JWT_REFRESH_SECRET ||
+          process.env.JWT_SECRET ||
+          'replace_with_a_strong_secret',
+        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+      },
+    );
+
+    const hashedRefreshToken = await bcrypt.hash(
+      refreshToken,
+      parseInt(process.env.SALT_ROUND!),
+    );
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: hashedRefreshToken, lastLogin: new Date() },
+    });
+
+    const {
+      password,
+      twoFactorSecret,
+      passwordResetToken,
+      passwordResetExpires,
+      ...rest
+    } = user;
+    void password;
+    void twoFactorSecret;
+    void passwordResetToken;
+    void passwordResetExpires;
+
+    return {
+      user: rest,
+      accessToken,
+      refreshToken,
+    };
   }
   private generateStreamKey(): string {
     return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
@@ -778,107 +864,5 @@ export class AuthService {
       data: { password: hashed, verified: false },
     });
     return { message: 'Password reset successful' };
-  }
-
-  async googleLogin(req: any) {
-    if (!req.user) {
-      throw new BadRequestException('No user from google');
-    }
-
-    let user = await this.prisma.user.findUnique({
-      where: { email: req.user.email },
-    });
-
-    if (!user) {
-      // Generate unique username from email using utility function
-      const username = await generateUniqueUsername(
-        req.user.email,
-        this.prisma,
-      );
-
-      user = await this.prisma.user.create({
-        data: {
-          email: req.user.email,
-          username: username,
-          firstName: username, // Always set firstName to username
-          lastName: req.user.lastName,
-          profileImage: req.user.picture,
-          googleId: req.user.googleId,
-          role: UserRole.CREATOR,
-          status: UserStatus.ACTIVE,
-        },
-      });
-
-      // Create channel for new user
-      const channelPayload = {
-        ownerId: user.id,
-        name: user.username, // Use username (which is now same as firstName)
-        handle: user.username!,
-        description: null,
-        streamKey: this.generateStreamKey(),
-      } as any; // Type assertion to bypass strict typing
-      await this.prisma.channel.create({ data: channelPayload });
-    } else if (!user.googleId) {
-      // Link existing user with Google account if not linked
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { googleId: req.user.googleId },
-      });
-    }
-
-    // Generate tokens
-    const payloadBase = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
-
-    const accessToken = this.jwtService.sign(
-      { ...payloadBase, tf: true },
-      {
-        secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
-        expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
-      },
-    );
-
-    const refreshToken = this.jwtService.sign(
-      { ...payloadBase, tf: true },
-      {
-        secret:
-          process.env.JWT_REFRESH_SECRET ||
-          process.env.JWT_SECRET ||
-          'replace_with_a_strong_secret',
-        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
-      },
-    );
-
-    const hashedRefreshToken = await bcrypt.hash(
-      refreshToken,
-      parseInt(process.env.SALT_ROUND!),
-    );
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: hashedRefreshToken, lastLogin: new Date() },
-    });
-
-    const {
-      password,
-      refreshToken: _,
-      twoFactorSecret,
-      passwordResetToken,
-      passwordResetExpires,
-      ...rest
-    } = user;
-    void password;
-    void _;
-    void twoFactorSecret;
-    void passwordResetToken;
-    void passwordResetExpires;
-
-    return {
-      user: rest,
-      accessToken,
-      refreshToken,
-    };
   }
 }
