@@ -1,12 +1,13 @@
 import { MailerModule } from '@nestjs-modules/mailer';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TermsAcceptedGuard } from './common/guards/terms-accepted.guard';
+import { createMailConfig } from './config/mail.config';
 import { AdminDashboardModule } from './module/admin-dashboard/admin-dashboard.module';
 import { AuthModule } from './module/auth/auth.module';
 import { BanGuard } from './module/auth/guards/ban.guard';
@@ -41,27 +42,7 @@ import { SeederService } from './seeder/seeder.service';
       isGlobal: true, // makes ConfigService available everywhere
       envFilePath: '.env', // optional, default is .env
     }),
-    MailerModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        transport: {
-          host: config.get<string>('SMTP_HOST'),
-          port: Number(config.get<string>('SMTP_PORT') || 587),
-          secure: Number(config.get<string>('SMTP_PORT') || 587) === 465,
-          auth: {
-            user: config.get<string>('SMTP_USER'),
-            pass: config.get<string>('SMTP_PASS'),
-          },
-        },
-        defaults: {
-          from:
-            config.get<string>('SMTP_FROM') ||
-            config.get<string>('SMTP_USER') ||
-            'SoftVence Newsletter <noreply@softvence.com>',
-        },
-      }),
-    }),
+    MailerModule.forRoot(createMailConfig()),
     PrismaModule,
     UserModule,
     AuthModule,
@@ -87,15 +68,15 @@ import { SeederService } from './seeder/seeder.service';
     SeederService,
     {
       provide: APP_GUARD,
-      useClass: TermsAcceptedGuard, // ✅ Applied globally
+      useClass: TermsAcceptedGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: BanGuard, // ✅ Applied globally
+      useClass: BanGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard, // ✅ Applied globally
+      useClass: ThrottlerGuard,
     },
   ],
 })

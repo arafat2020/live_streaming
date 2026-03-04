@@ -48,14 +48,15 @@ async function bootstrap() {
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      const allowedOrigins = [
+      // Read from env (comma-separated) with sensible defaults
+      const allowedOrigins = (process.env.CORS_ORIGINS || [
         'http://localhost:5173',
         'https://rappio-tv.netlify.app',
         'https://rappio.tv',
         'https://www.rappio.tv',
         'https://rappio.com',
         'https://www.rappio.com',
-      ];
+      ].join(',')).split(',').map((o) => o.trim()).filter(Boolean);
       // Allow requests with no origin (like mobile apps or curl)
       if (
         !origin ||

@@ -1,10 +1,20 @@
+/**
+ * @fileoverview Streams Service
+ *
+ * Placeholder service for stream management operations.
+ * Currently a stub — actual stream management is handled by
+ * `ChannelService` (stream key rotation/validation) and
+ * `VideoService` (live stream processing).
+ *
+ * @module StreamsService
+ * @todo Implement dedicated stream management features (e.g., categories, tags, scheduling).
+ */
+
 import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class StreamsService {
-  // create(createStreamDto: CreateStreamDto) {
-  //   return 'This action adds a new stream';
-  // }
+  /** @todo Implement stream creation. */
 
   findAll() {
     return `This action returns all streams`;
@@ -14,9 +24,7 @@ export class StreamsService {
     return `This action returns a #${id} stream`;
   }
 
-  // update(id: number, updateStreamDto: UpdateStreamDto) {
-  //   return `This action updates a #${id} stream`;
-  // }
+  /** @todo Implement stream update. */
 
   remove(id: number) {
     return `This action removes a #${id} stream`;

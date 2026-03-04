@@ -1,87 +1,22 @@
-// import { Injectable, Logger } from '@nestjs/common';
-// import fetch from 'node-fetch';
-//
-// @Injectable()
-// export class R2WorkerService {
-//   private readonly logger = new Logger(R2WorkerService.name);
-//   private workerBase: string;
-//   private workerSecret: string;
-//
-//   constructor() {
-//     this.workerBase = process.env.R2_WORKER_URL || '';
-//     this.workerSecret = process.env.R2_WORKER_SECRET || '';
-//     if (!this.workerBase) {
-//       this.logger.warn('R2_WORKER_URL is not set. R2 Worker calls will fail.');
-//     }
-//     if (!this.workerSecret) {
-//       this.logger.warn('R2_WORKER_SECRET is not set. R2 Worker calls will fail.');
-//     }
-//   }
-//
-//   private authHeaders(json = true) {
-//     return {
-//       Authorization: `Bearer ${this.workerSecret}`,
-//       ...(json ? { 'Content-Type': 'application/json' } : {}),
-//     };
-//   }
-//
-//   async initiate(key: string) {
-//     const url = `${this.workerBase.replace(/\/$/, '')}/multipart/initiate`;
-//     const res = await fetch(url, {
-//       method: 'POST',
-//       headers: this.authHeaders(),
-//       body: JSON.stringify({ key }),
-//     });
-//     if (!res.ok) {
-//       const txt = await res.text();
-//       throw new Error(`Worker initiate failed ${res.status} ${txt}`);
-//     }
-//     return res.json(); // { uploadId, key }
-//   }
-//
-//   // Proxy chunk to worker - chunk is Buffer
-//   async uploadPart(uploadId: string, partNumber: number, chunk: Buffer) {
-//     const urlObj = new URL(`${this.workerBase.replace(/\/$/, '')}/multipart/part`);
-//     urlObj.searchParams.set('uploadId', uploadId);
-//     urlObj.searchParams.set('partNumber', String(partNumber));
-//
-//     const res = await fetch(urlObj.toString(), {
-//       method: 'PUT',
-//       headers: { Authorization: `Bearer ${this.workerSecret}` },
-//       body: chunk,
-//     });
-//
-//     if (!res.ok) {
-//       const txt = await res.text();
-//       throw new Error(`Worker uploadPart failed ${res.status} ${txt}`);
-//     }
-//     return res.json(); // { etag }
-//   }
-//
-//   async complete(uploadId: string, key: string, parts: Array<{ PartNumber: number; ETag: string }>) {
-//     const url = `${this.workerBase.replace(/\/$/, '')}/multipart/complete`;
-//     const res = await fetch(url, {
-//       method: 'POST',
-//       headers: this.authHeaders(),
-//       body: JSON.stringify({ uploadId, key, parts }),
-//     });
-//     if (!res.ok) {
-//       const txt = await res.text();
-//       throw new Error(`Worker complete failed ${res.status} ${txt}`);
-//     }
-//     return res.json();
-//   }
-// }
-// src/r2/r2.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+/**
+ * @fileoverview R2 Upload Service
+ *
+ * Provides S3-compatible multipart upload functionality for Cloudflare R2.
+ * Supports creating presigned URLs for client-side uploads, completing
+ * multipart uploads, and aborting failed uploads.
+ *
+ * @module R2Service
+ */
+
 import {
-  S3Client,
-  CreateMultipartUploadCommand,
-  CompleteMultipartUploadCommand,
-  AbortMultipartUploadCommand,
-  UploadPartCommand,
+    AbortMultipartUploadCommand,
+    CompleteMultipartUploadCommand,
+    CreateMultipartUploadCommand,
+    S3Client,
+    UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Injectable, Logger } from '@nestjs/common';
 
 @Injectable()
 export class R2Service {
@@ -110,13 +45,19 @@ export class R2Service {
     });
   }
 
-  // create multipart upload and generate presigned urls for `partsCount` parts
+  /**
+   * Creates a multipart upload and generates presigned URLs for each part.
+   *
+   * @param key        - R2 object key (file path in bucket).
+   * @param partSize   - Size of each upload part in bytes.
+   * @param partsCount - Number of parts the client will upload.
+   * @returns Upload ID, key, and array of presigned URLs.
+   */
   async createMultipartPresigned(
     key: string,
     partSize: number,
     partsCount: number,
   ) {
-    // 1) create multipart upload
     const createCmd = new CreateMultipartUploadCommand({
       Bucket: this.bucket,
       Key: key,
@@ -125,7 +66,6 @@ export class R2Service {
     const uploadId = createRes.UploadId;
     if (!uploadId) throw new Error('Failed to create multipart upload');
 
-    // 2) generate presigned URLs for each part (1..partsCount)
     const urls: string[] = [];
     for (let partNumber = 1; partNumber <= partsCount; partNumber++) {
       const uploadPartCmd = new UploadPartCommand({
@@ -143,7 +83,14 @@ export class R2Service {
     return { uploadId, key, urls };
   }
 
-  // complete multipart
+  /**
+   * Completes a multipart upload by assembling all uploaded parts.
+   *
+   * @param uploadId - Upload session ID from `createMultipartPresigned`.
+   * @param key      - R2 object key.
+   * @param parts    - Array of part numbers and ETags from client uploads.
+   * @returns R2 completion response.
+   */
   async completeMultipart(
     uploadId: string,
     key: string,
@@ -157,11 +104,16 @@ export class R2Service {
         Parts: parts,
       },
     });
-    const res = await this.s3.send(cmd);
-    return res;
+    return this.s3.send(cmd);
   }
 
-  // abort multipart
+  /**
+   * Aborts a multipart upload, cleaning up any uploaded parts.
+   *
+   * @param uploadId - Upload session ID to abort.
+   * @param key      - R2 object key.
+   * @returns R2 abort response.
+   */
   async abortMultipart(uploadId: string, key: string) {
     const cmd = new AbortMultipartUploadCommand({
       Bucket: this.bucket,

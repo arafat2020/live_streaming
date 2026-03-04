@@ -1,8 +1,8 @@
 import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
+    BadRequestException,
+    Injectable,
+    Logger,
+    NotFoundException,
 } from '@nestjs/common';
 import { Category, ContentStatus, ContentType } from '@prisma/client';
 import { spawn } from 'child_process';
@@ -316,11 +316,11 @@ export class VideoService {
           '-hls_time',
           '2',
           '-hls_list_size',
-          '10',
+          '0',
           '-hls_flags',
-          'delete_segments+independent_segments+program_date_time',
+          'independent_segments+program_date_time',
           '-hls_playlist_type',
-          'event',
+          'vod',
           '-start_number',
           '0',
           '-master_pl_name',
