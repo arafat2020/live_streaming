@@ -1,19 +1,27 @@
+/**
+ * @fileoverview Channel Service
+ *
+ * Manages channel CRUD operations, stream key management, content retrieval,
+ * ban management, custom emojis, and recommendation algorithms.
+ *
+ * @module ChannelService
+ */
+
 import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
 } from '@nestjs/common';
 import { BanType, UserStatus } from '@prisma/client';
-import { v4 as uuidv4 } from 'uuid';
+import { generateStreamKey } from '../../common/helpers/stream-key.helper';
 import { PrismaService } from '../../prisma/prisma.service';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
+import { R2UploadService } from '../video/r2-upload.service';
 import { WatchHistoryService } from '../watch-history/watch-history.service';
 import { GetChannelsDto } from './dto/get-channels-query.dto';
 import { safeChannelSelect } from './dto/safeChannelSelect';
 import { UpdateChannelDto } from './dto/update-channel.dto';
-
-import { R2UploadService } from '../video/r2-upload.service';
 
 @Injectable()
 export class ChannelService {
@@ -22,11 +30,16 @@ export class ChannelService {
     private watchHistoryService: WatchHistoryService,
     private readonly r2UploadService: R2UploadService,
   ) {}
-  private generateStreamKey(): string {
-    return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
-  }
 
-  /**Creates a channel for a new CREATOR user.*/
+  /**
+   * Creates a channel for a new CREATOR user.
+   *
+   * @param userId - ID of the user who will own the channel.
+   * @param name   - Display name for the channel.
+   * @returns The newly created channel record.
+   * @throws {BadRequestException} If user already owns a channel.
+   * @throws {NotFoundException} If user is not found.
+   */
   async createChannelForCreator(userId: string, name: string) {
     const existingChannel = await this.prisma.channel.findUnique({
       where: { ownerId: userId },
@@ -50,49 +63,27 @@ export class ChannelService {
         ownerId: userId,
         name,
         handle: user.username,
-        streamKey: this.generateStreamKey(),
+        streamKey: generateStreamKey(),
       },
     });
   }
 
-  /**Retrieves channel profile and content for public view.*/
-  // async getPublicChannel(handle: string) {
-  //   const channel = await this.prisma.channel.findUnique({
-  //     where: { handle },
-  //     include: {
-  //       content: {
-  //         where: { status: 'AVAILABLE', contentType: { not: 'LIVE_STREAM' } }, // Only show VODs
-  //         orderBy: { createdAt: 'desc' },
-  //       },
-  //       Following: { select: { followerId: true } }, // Get list of followers for count
-  //     },
-  //   });
-  //
-  //   if (!channel) {
-  //     throw new NotFoundException(`Channel ${handle} not found.`);
-  //   }
-  //
-  //   return {
-  //     id: channel.id,
-  //     name: channel.name,
-  //     handle: channel.handle,
-  //     description: channel.description,
-  //     ownerId: channel.ownerId,
-  //     contentCount: channel.content.length,
-  //     followerCount: channel.follow.length,
-  //     content: channel.content,
-  //   };
-  // }
+  /**
+   * Retrieves channel profile and content for public view.
+   *
+   * @param handle - Channel handle (unique identifier).
+   * @returns Channel details with content list and follower count.
+   * @throws {NotFoundException} If channel is not found.
+   */
   async getPublicChannel(handle: string) {
     const channel = await this.prisma.channel.findUnique({
       where: { handle },
       include: {
         content: {
-          where: { status: 'AVAILABLE', contentType: { not: 'LIVE_STREAM' } }, // Only show VODs
+          where: { status: 'AVAILABLE', contentType: { not: 'LIVE_STREAM' } },
           orderBy: { createdAt: 'desc' },
         },
-        // FIX: Changed 'Following' to 'follow' to match the schema field name
-        follow: { select: { followerId: true } }, // Get list of followers for count
+        follow: { select: { followerId: true } },
       },
     });
 
@@ -106,15 +97,19 @@ export class ChannelService {
       handle: channel.handle,
       description: channel.description,
       ownerId: channel.ownerId,
-      // FIX: The included relation 'content' is now correctly recognized
       contentCount: channel.content.length,
-      // FIX: The included relation 'follow' is now correctly recognized
       followerCount: channel.follow.length,
       content: channel.content,
     };
   }
-  /**Retrieves full private channel details for the owner/creator.*/
-  // channel.service.ts
+  /**
+   * Retrieves full private channel details for the owner/creator.
+   * Includes aggregated statistics (total views, content count, follower count).
+   *
+   * @param userId - Owner's user ID.
+   * @returns Channel data with statistics.
+   * @throws {NotFoundException} If the user's channel is not found.
+   */
   async getPrivateChannel(userId: string) {
     const channel = await this.prisma.channel.findUnique({
       where: { ownerId: userId },
@@ -129,8 +124,8 @@ export class ChannelService {
         },
         _count: {
           select: {
-            content: true, // Total content count
-            follow: true, // Total followers
+            content: true,
+            follow: true,
           },
         },
       },
@@ -140,32 +135,11 @@ export class ChannelService {
       throw new NotFoundException('Creator channel not found.');
     }
 
-    //  Calculate total views (sum of all content views)
     const totalViews = await this.prisma.content.aggregate({
-      where: {
-        channelId: channel.id,
-      },
-      _sum: {
-        views: true,
-      },
+      where: { channelId: channel.id },
+      _sum: { views: true },
     });
 
-    // Get additional statistics
-    await this.prisma.content.count({
-      where: {
-        channelId: channel.id,
-        contentType: 'LIVE_STREAM',
-      },
-    });
-
-    await this.prisma.content.count({
-      where: {
-        channelId: channel.id,
-        contentType: 'VOD',
-      },
-    });
-
-    // Destructure _count and restructure response
     const { _count, ...channelData } = channel;
 
     return {
@@ -178,7 +152,17 @@ export class ChannelService {
     };
   }
 
-  /**Allows channel owner to update name, description, and handle (with rate limit).*/
+  /**
+   * Updates the channel's profile and about section.
+   * Enforces a 5-minute rate limit on about-section fields and validates URLs.
+   *
+   * @param userId - ID of the authenticated user (must be owner).
+   * @param data   - Fields to update.
+   * @returns Updated channel record.
+   * @throws {NotFoundException} If channel is not found.
+   * @throws {ForbiddenException} If user is not the channel owner.
+   * @throws {BadRequestException} If rate limit exceeded or invalid URL.
+   */
   async updateChannel(userId: string, data: UpdateChannelDto) {
     const channel = await this.prisma.channel.findUnique({
       where: { ownerId: userId },
@@ -186,10 +170,9 @@ export class ChannelService {
     if (!channel) {
       throw new NotFoundException('Channel not found.');
     }
-    const isOwner = channel.ownerId === userId;
-    if (!isOwner) {
+    if (channel.ownerId !== userId) {
       throw new ForbiddenException(
-        'You are not authorized to updated this channel. Only the channel owner can updated channel.',
+        'You are not authorized to update this channel. Only the channel owner can update it.',
       );
     }
 
@@ -260,48 +243,42 @@ export class ChannelService {
     });
   }
 
-  /**Security critical: Generates a new stream key for the channel owner.*/
-  // async rotateStreamKey(userId: string): Promise<{ streamKey: string }> {
-  //   const newKey = this.generateStreamKey();
-  //
-  //   await this.prisma.channel.update({
-  //     // where: { ownerId: userId },
-  //     // data: { streamKey: newKey },
-  //     where: { ownerId: userId }, // <-- This is the lookup criteria
-  //     data: { streamKey: newKey },
-  //   });
-  //
-  //   // Future: Log this security event
-  //
-  //   return { streamKey: newKey };
-  // }
+  /**
+   * Generates a new stream key for the channel owner.
+   * This is a security-critical operation — the old key is permanently invalidated.
+   *
+   * @param userId - ID of the channel owner.
+   * @returns Object containing the new stream key.
+   * @throws {NotFoundException} If channel is not found.
+   */
   async rotateStreamKey(userId: string): Promise<{ streamKey: string }> {
-    // FIX: Select the channel ID and check for existence
     const channel = await this.prisma.channel.findUnique({
       where: { ownerId: userId },
       select: { id: true },
     });
 
     if (!channel) {
-      // This exception should be hit if the channel record is missing
       throw new NotFoundException(
         'Channel not found. Cannot rotate key without a channel record.',
       );
     }
 
-    const newKey = this.generateStreamKey();
+    const newKey = generateStreamKey();
 
-    // FIX: Using the retrieved primary key (id) for the update
     await this.prisma.channel.update({
       where: { id: channel.id },
       data: { streamKey: newKey },
     });
 
-    // Future: Log this security event
-
     return { streamKey: newKey };
   }
-  /**Internal function used by the RTMP server to authenticate the stream.*/
+  /**
+   * Validates a stream key for RTMP authentication.
+   * Returns `true` only if the key exists and the channel owner is ACTIVE.
+   *
+   * @param key - Stream key to validate.
+   * @returns `true` if the stream key is valid.
+   */
   async validateStreamKey(key: string): Promise<boolean> {
     const channel = await this.prisma.channel.findUnique({
       where: { streamKey: key },
@@ -315,6 +292,12 @@ export class ChannelService {
     return channel.owner.status === 'ACTIVE';
   }
 
+  /**
+   * Retrieves a paginated, searchable list of channels.
+   *
+   * @param dto - Query parameters (search, page, limit, category).
+   * @returns Paginated channel list with owner info and statistics.
+   */
   async getChannels(dto: GetChannelsDto) {
     const { search, page = 1, limit = 10 } = dto;
     const skip = (page - 1) * limit;
@@ -393,6 +376,14 @@ export class ChannelService {
     };
   }
 
+  /**
+   * Retrieves a channel by its ID with full statistics.
+   *
+   * @param channelId - Channel UUID.
+   * @returns Channel data with latest stream and statistics.
+   * @throws {NotFoundException} If channel is not found.
+   * @throws {ForbiddenException} If channel owner is not active.
+   */
   async getChannelById(channelId: string) {
     // Get channel with all details and counts
     const channel = await this.prisma.channel.findUnique({
@@ -445,21 +436,7 @@ export class ChannelService {
       },
     });
 
-    //  Get content breakdown by type
-    await Promise.all([
-      this.prisma.content.count({
-        where: {
-          channelId: channel.id,
-          contentType: 'LIVE_STREAM',
-        },
-      }),
-      this.prisma.content.count({
-        where: {
-          channelId: channel.id,
-          contentType: 'VOD',
-        },
-      }),
-    ]);
+
 
     // Destructure _count and content, then restructure response
     const { _count, content, ...channelData } = channel;
@@ -479,6 +456,14 @@ export class ChannelService {
     };
   }
 
+  /**
+   * Retrieves a channel by username or handle.
+   * First attempts lookup by username, then falls back to handle.
+   *
+   * @param usernameOrHandle - Username or channel handle.
+   * @returns Full channel data with statistics.
+   * @throws {NotFoundException} If no matching channel is found.
+   */
   async getChannelByUsername(usernameOrHandle: string) {
     const user = await this.prisma.user.findUnique({
       where: { username: usernameOrHandle },
@@ -510,6 +495,16 @@ export class ChannelService {
     return this.getChannelById(channelByHandle.id);
   }
 
+  /**
+   * Retrieves paginated content belonging to a channel with filtering and sorting.
+   *
+   * @param channelId - Channel UUID.
+   * @param page      - Page number (default: 1).
+   * @param limit     - Items per page (default: 10, max: 100).
+   * @param filter    - Content type filter ('all', 'live', 'videos', 'recordings').
+   * @param sort      - Sort order ('newest' or 'most_viewed').
+   * @returns Paginated content list.
+   */
   async getContentByChannelId(
     channelId: string,
     page: number = 1,
@@ -611,7 +606,15 @@ export class ChannelService {
     return { deleted: result.count };
   }
 
-  // Get recommended channels for a user
+  /**
+   * Gets recommended channels for a user based on a scoring algorithm.
+   * Considers follower count, content count, live status, and total views.
+   * Excludes channels the user already follows.
+   *
+   * @param userId - Authenticated user ID (null for anonymous).
+   * @param limit  - Maximum channels to return (default: 5).
+   * @returns Scored and sorted list of recommended channels.
+   */
   async getRecommendedChannels(userId: string | null, limit: number = 5) {
     let followedChannelIds: string[] = [];
 
@@ -855,8 +858,16 @@ export class ChannelService {
     return mappedChannels.slice(0, limit);
   }
 
-  // --- Custom Emojis ---
-
+  /**
+   * Adds a custom emoji to the channel owner's channel.
+   *
+   * @param userId - ID of the channel owner.
+   * @param code   - Emoji shortcode (e.g. 'pepe').
+   * @param file   - Uploaded image file (JPG, PNG, WEBP, GIF; max 512KB).
+   * @returns Created emoji record.
+   * @throws {NotFoundException} If channel is not found.
+   * @throws {BadRequestException} If code already exists or file is invalid.
+   */
   async addCustomEmoji(
     userId: string,
     code: string,
@@ -892,6 +903,15 @@ export class ChannelService {
     });
   }
 
+  /**
+   * Removes a custom emoji from the channel owner's channel.
+   *
+   * @param userId  - ID of the channel owner.
+   * @param emojiId - ID of the emoji to remove.
+   * @returns Deleted emoji record.
+   * @throws {NotFoundException} If channel or emoji is not found.
+   * @throws {ForbiddenException} If emoji doesn't belong to user's channel.
+   */
   async removeCustomEmoji(userId: string, emojiId: string) {
     const channel = await this.prisma.channel.findUnique({
       where: { ownerId: userId },
@@ -908,6 +928,12 @@ export class ChannelService {
     return this.prisma.channelEmoji.delete({ where: { id: emojiId } });
   }
 
+  /**
+   * Retrieves all custom emojis for a channel.
+   *
+   * @param channelId - Channel UUID.
+   * @returns Array of emoji records.
+   */
   async getCustomEmojis(channelId: string) {
     return this.prisma.channelEmoji.findMany({ where: { channelId } });
   }

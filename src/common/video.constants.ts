@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Video Rendition Constants
+ *
+ * Defines the available video transcoding renditions (quality levels)
+ * for HLS adaptive bitrate streaming. Renditions are ordered with
+ * 720p first as the default starting quality.
+ */
+
 export interface VideoRendition {
   name: string;
   width: number;
@@ -8,7 +16,7 @@ export interface VideoRendition {
   aBitrate: string;
 }
 
-// Ordered to prioritize 720p as the default start quality
+/** Active renditions for video transcoding, ordered by priority (720p default). */
 export const VIDEO_RENDITIONS: VideoRendition[] = [
   {
     name: '720p',
@@ -28,15 +36,6 @@ export const VIDEO_RENDITIONS: VideoRendition[] = [
     bufsize: '9000k',
     aBitrate: '192k',
   },
-  // {
-  //   name: '2160p',
-  //   width: 3840,
-  //   height: 2160,
-  //   vBitrate: '15000k',
-  //   maxrate: '18000k',
-  //   bufsize: '22000k',
-  //   aBitrate: '256k',
-  // },
   {
     name: '480p',
     width: 854,
@@ -46,31 +45,4 @@ export const VIDEO_RENDITIONS: VideoRendition[] = [
     bufsize: '2400k',
     aBitrate: '128k',
   },
-  // {
-  //   name: '360p',
-  //   width: 640,
-  //   height: 360,
-  //   vBitrate: '800k',
-  //   maxrate: '960k',
-  //   bufsize: '1400k',
-  //   aBitrate: '96k',
-  // },
-  // {
-  //   name: '240p',
-  //   width: 426,
-  //   height: 240,
-  //   vBitrate: '400k',
-  //   maxrate: '480k',
-  //   bufsize: '800k',
-  //   aBitrate: '64k',
-  // },
-  // {
-  //   name: '144p',
-  //   width: 256,
-  //   height: 144,
-  //   vBitrate: '200k',
-  //   maxrate: '240k',
-  //   bufsize: '400k',
-  //   aBitrate: '64k',
-  // },
 ];

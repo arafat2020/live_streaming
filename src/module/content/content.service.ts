@@ -1,10 +1,21 @@
+/**
+ * @fileoverview Content Service
+ *
+ * Manages content lifecycle (VOD, live streams) including CRUD operations,
+ * discovery feeds (hero banner, categorized streams, live listings),
+ * shadow-ban visibility filtering, and admin operations.
+ *
+ * @module ContentService
+ */
+
 import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { buildShadowBanFilter } from '../../common/helpers/shadow-ban-filter.helper';
 import { PrismaService } from '../../prisma/prisma.service';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
@@ -20,6 +31,12 @@ export class ContentService {
     private readonly watchHistoryService: WatchHistoryService,
   ) {}
 
+  /**
+   * Creates a new content record (VOD or live stream).
+   *
+   * @param dto - Content creation data.
+   * @returns The created content record.
+   */
   async create(dto: CreateContentDto) {
     const content = await this.prisma.content.create({
       data: {
@@ -31,7 +48,6 @@ export class ContentService {
         playbackUrl: dto.playbackUrl,
         thumbnailUrl: dto.thumbnailUrl,
         isPremium: dto.isPremium ?? false,
-        // r2ObjectKey এর বদলে r2Prefix ব্যবহার করুন (Align with Schema)
         r2Prefix: dto.r2Prefix,
         category: dto.category,
         channel: { connect: { id: dto.channelId } },
@@ -41,6 +57,14 @@ export class ContentService {
     return content;
   }
 
+  /**
+   * Retrieves a paginated, filterable list of content.
+   * Respects shadow-ban visibility rules and excludes banned channel content.
+   *
+   * @param query  - Pagination, search, and filter parameters.
+   * @param userId - Authenticated user's ID (optional, for visibility rules).
+   * @returns Paginated content with channel info and concurrent viewer counts.
+   */
   async findAll(query: QueryContentDto, userId?: string) {
     const page = Math.max(query.page ?? 1, 1);
     const pageSize = Math.min(query.pageSize ?? 20, 100);
@@ -79,42 +103,17 @@ export class ContentService {
       where.status = { in: ['AVAILABLE', 'ENDED'] as any };
     }
 
-    // Shadow-ban filter: Exclude if content is shadow-banned OR channel owner is shadow-banned
-    // Exception: Owner and Admin can see it
+    // Shadow-ban visibility filter
     if (userId) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { role: true },
       });
-
       const isAdmin = user?.role === 'ADMIN';
-
-      where.AND = [
-        ...(where.AND || []),
-        {
-          OR: [
-            {
-              isShadowBanned: false,
-              channel: { owner: { isShadowBanned: false } },
-            },
-            { channel: { ownerId: userId } },
-            ...(isAdmin
-              ? [
-                  {
-                    OR: [
-                      { isShadowBanned: true },
-                      { channel: { owner: { isShadowBanned: true } } },
-                    ],
-                  },
-                ]
-              : []),
-          ],
-        },
-      ];
+      const shadowFilter = buildShadowBanFilter(userId, isAdmin);
+      where.AND = [...(where.AND || []), shadowFilter];
     } else {
-      // Anonymous user: only non-shadow-banned content
-      where.isShadowBanned = false;
-      where.channel = { owner: { isShadowBanned: false } };
+      Object.assign(where, buildShadowBanFilter());
     }
 
     //  EXCLUDE content from channels where user is banned
@@ -182,40 +181,27 @@ export class ContentService {
     };
   }
 
+  /**
+   * Retrieves hero banner content: top live streams and top weekly VODs.
+   *
+   * @param userId - Authenticated user's ID (optional, for visibility rules).
+   * @returns Top live streams and top VODs for the hero section.
+   */
   async getHeroBannerContent(userId?: string) {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    // Common where clause for visibility
-    const visibilityWhere: Prisma.ContentWhereInput = {};
-
+    // Build visibility filter
+    let visibilityWhere: Prisma.ContentWhereInput;
     if (userId) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { role: true },
       });
       const isAdmin = user?.role === 'ADMIN';
-
-      visibilityWhere.OR = [
-        {
-          isShadowBanned: false,
-          channel: { owner: { isShadowBanned: false } },
-        },
-        { channel: { ownerId: userId } },
-        ...(isAdmin
-          ? [
-              {
-                OR: [
-                  { isShadowBanned: true },
-                  { channel: { owner: { isShadowBanned: true } } },
-                ],
-              },
-            ]
-          : []),
-      ];
+      visibilityWhere = buildShadowBanFilter(userId, isAdmin);
     } else {
-      visibilityWhere.isShadowBanned = false;
-      visibilityWhere.channel = { owner: { isShadowBanned: false } };
+      visibilityWhere = buildShadowBanFilter();
     }
 
     // 1. Top Live Streams (Candidate list)
@@ -288,6 +274,13 @@ export class ContentService {
     };
   }
 
+  /**
+   * Retrieves a paginated list of currently live streams.
+   *
+   * @param query  - Pagination parameters.
+   * @param userId - Authenticated user's ID (optional, for visibility rules).
+   * @returns Paginated live stream content with viewer counts.
+   */
   async liveOnRappioList(query: QueryContentDto, userId?: string) {
     const page = Math.max(query.page ?? 1, 1);
     const pageSize = Math.min(query.pageSize ?? 20, 100);
@@ -298,38 +291,17 @@ export class ContentService {
       contentType: 'LIVE_STREAM',
     };
 
+    // Shadow-ban visibility filter
     if (userId) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { role: true },
       });
-
       const isAdmin = user?.role === 'ADMIN';
-
-      where.AND = [
-        {
-          OR: [
-            {
-              isShadowBanned: false,
-              channel: { owner: { isShadowBanned: false } },
-            },
-            { channel: { ownerId: userId } },
-            ...(isAdmin
-              ? [
-                  {
-                    OR: [
-                      { isShadowBanned: true },
-                      { channel: { owner: { isShadowBanned: true } } },
-                    ],
-                  },
-                ]
-              : []),
-          ],
-        },
-      ];
+      const shadowFilter = buildShadowBanFilter(userId, isAdmin);
+      where.AND = [shadowFilter];
     } else {
-      where.isShadowBanned = false;
-      where.channel = { owner: { isShadowBanned: false } };
+      Object.assign(where, buildShadowBanFilter());
     }
 
     const [content, total] = await this.prisma.$transaction([
@@ -376,6 +348,12 @@ export class ContentService {
     };
   }
 
+  /**
+   * Retrieves live streams grouped by category for the home page.
+   *
+   * @param userId - Authenticated user's ID (optional, for visibility rules).
+   * @returns Array of category objects, each with a list of live streams.
+   */
   async getHomeCategorizedStreams(userId?: string) {
     const categories = ['IRL', 'JUST_CHATTING', 'CASINO_GAMES'];
 
@@ -387,38 +365,17 @@ export class ContentService {
           category: cat as any,
         };
 
-        // Apply shadow-ban filters
+        // Shadow-ban visibility filter
         if (userId) {
           const user = await this.prisma.user.findUnique({
             where: { id: userId },
             select: { role: true },
           });
           const isAdmin = user?.role === 'ADMIN';
-
-          where.AND = [
-            {
-              OR: [
-                {
-                  isShadowBanned: false,
-                  channel: { owner: { isShadowBanned: false } },
-                },
-                { channel: { ownerId: userId } },
-                ...(isAdmin
-                  ? [
-                      {
-                        OR: [
-                          { isShadowBanned: true },
-                          { channel: { owner: { isShadowBanned: true } } },
-                        ],
-                      },
-                    ]
-                  : []),
-              ],
-            },
-          ];
+          const shadowFilter = buildShadowBanFilter(userId, isAdmin);
+          where.AND = [shadowFilter];
         } else {
-          where.isShadowBanned = false;
-          where.channel = { owner: { isShadowBanned: false } };
+          Object.assign(where, buildShadowBanFilter());
         }
 
         const streams = await this.prisma.content.findMany({
@@ -462,6 +419,15 @@ export class ContentService {
     return categorizedData;
   }
 
+  /**
+   * Retrieves a single content item with full channel and watch history details.
+   * Enforces shadow-ban visibility for direct access.
+   *
+   * @param id     - Content UUID.
+   * @param userId - Authenticated user's ID (optional).
+   * @returns Content with channel info and concurrent viewer count.
+   * @throws {NotFoundException} If content is not found or shadow-banned from view.
+   */
   async findOne(id: string, userId?: string) {
     const content = await this.prisma.content.findUnique({
       where: { id },
@@ -521,6 +487,14 @@ export class ContentService {
     };
   }
 
+  /**
+   * Updates a content record.
+   *
+   * @param id  - Content UUID.
+   * @param dto - Fields to update.
+   * @returns Updated content record.
+   * @throws {NotFoundException} If content is not found.
+   */
   async update(id: string, dto: UpdateContentDto) {
     // ensure content exists
     if (!id) {
@@ -549,6 +523,16 @@ export class ContentService {
     return updated;
   }
 
+  /**
+   * Deletes a content record. Only the channel owner or an admin can delete.
+   *
+   * @param id       - Content UUID.
+   * @param userId   - ID of the requesting user.
+   * @param userRole - Role of the requesting user.
+   * @returns Success message.
+   * @throws {NotFoundException} If content is not found.
+   * @throws {ForbiddenException} If user is not authorized to delete.
+   */
   async remove(id: string, userId: string, userRole?: string) {
     // Find the content with channel owner info
     const content = await this.prisma.content.findUnique({
@@ -589,6 +573,12 @@ export class ContentService {
       message: 'Content deleted successfully',
     };
   }
+  /**
+   * Admin-only: Retrieves all content without shadow-ban filtering.
+   *
+   * @param query - Pagination and filter parameters.
+   * @returns Paginated content list with channel info.
+   */
   async adminFindAll(query: QueryContentDto) {
     const page = Math.max(query.page ?? 1, 1);
     const pageSize = Math.min(query.pageSize ?? 20, 100);
@@ -653,6 +643,14 @@ export class ContentService {
     };
   }
 
+  /**
+   * Toggles content visibility (public/private).
+   *
+   * @param id       - Content UUID.
+   * @param isHidden - Whether to hide the content.
+   * @returns Updated content record.
+   * @throws {NotFoundException} If content is not found.
+   */
   async toggleVisibility(id: string, isHidden: boolean) {
     const content = await this.prisma.content.findUnique({ where: { id } });
     if (!content) throw new NotFoundException('Content not found');
@@ -665,6 +663,15 @@ export class ContentService {
     });
   }
 
+  /**
+   * Toggles shadow-ban status on a content item.
+   * Adjusts the content's status based on type and channel live state.
+   *
+   * @param id              - Content UUID.
+   * @param isShadowBanned  - New shadow-ban state.
+   * @returns Updated content record.
+   * @throws {NotFoundException} If content is not found.
+   */
   async toggleShadowBan(id: string, isShadowBanned: boolean) {
     const shadowBanValue =
       String(isShadowBanned) === 'true' || isShadowBanned === true;
@@ -713,6 +720,14 @@ export class ContentService {
     return result;
   }
 
+  /**
+   * Force-ends a live stream (admin action).
+   *
+   * @param id - Content UUID.
+   * @returns Updated content record.
+   * @throws {NotFoundException} If content is not found.
+   * @throws {BadRequestException} If content is not a live stream.
+   */
   async forceEndStream(id: string) {
     const content = await this.prisma.content.findUnique({ where: { id } });
     if (!content) throw new NotFoundException('Content not found');
@@ -727,7 +742,14 @@ export class ContentService {
     });
   }
 
-  // optional: increment view count safely
+  /**
+   * Increments the view count for a content item and records watch history.
+   *
+   * @param id        - Content UUID.
+   * @param userId    - Viewer's user ID (optional).
+   * @param ipAddress - Viewer's IP address (optional).
+   * @returns Updated watch history record.
+   */
   async incrementViews(id: string, userId?: string, ipAddress?: string) {
     return this.watchHistoryService.incrementViews(id, userId, ipAddress);
   }

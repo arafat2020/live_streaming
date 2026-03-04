@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Notification Service
+ *
+ * Handles notification creation, retrieval, and broadcasting.
+ * Supports per-user notification preferences and real-time delivery
+ * via WebSocket gateway.
+ *
+ * @module NotificationService
+ */
+
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 
 import { NotificationType, Prisma } from '@prisma/client';
@@ -14,21 +24,25 @@ export class NotificationService {
     private gateway: NotificationGateway,
   ) {}
 
-  // async create(dto: Prisma.NotificationCreateInput) {
-  //   return this.prisma.notification.create({ data: dto });
-  // }
+  /**
+   * Creates a notification and broadcasts it in real-time.
+   *
+   * @param dto - Notification creation data.
+   * @returns The created notification record.
+   */
   async create(dto: Prisma.NotificationCreateInput) {
-    // 1️ Save notification to DB
     const notification = await this.prisma.notification.create({ data: dto });
-
-    // 2️ Broadcast to all users in real-time
     this.gateway.broadcast('notification', notification);
-
     return notification;
   }
 
+  /**
+   * Retrieves all notifications, optionally filtered by user.
+   *
+   * @param userId - User ID to filter by (optional).
+   * @returns Array of notification records.
+   */
   async findAll(userId?: string) {
-    //console.log("userId-------->", userId);
     return this.prisma.notification.findMany({
       where: userId ? { userId } : {},
       orderBy: { createdAt: 'desc' },
@@ -51,7 +65,15 @@ export class NotificationService {
     return this.prisma.notification.count({ where: { userId, isRead: false } });
   }
 
-  // single send respecting user preferences
+  /**
+   * Sends a notification to a single user, respecting their notification preferences.
+   *
+   * @param userId    - Target user ID.
+   * @param type      - Notification type.
+   * @param message   - Notification message.
+   * @param contentId - Optional related content ID.
+   * @returns The created notification record.
+   */
   public async sendNotification(
     userId: string,
     type: NotificationType,
@@ -75,8 +97,7 @@ export class NotificationService {
       } as any;
       const shouldEmit = pref ? (pref[map[type as string]] ?? true) : true;
       if (shouldEmit) {
-        //const unreadCount = await this.getUnreadCount(userId);
-        //this.gateway.sendToUser(userId, 'notification', { notification, unreadCount });
+        // TODO: Re-enable real-time emit when gateway sendToUser is ready
       }
     } catch (err) {
       this.logger.warn('Emit failed', err as any);
@@ -84,7 +105,16 @@ export class NotificationService {
     return notification;
   }
 
-  // broadcast to many users (createMany + emit lite payload)
+  /**
+   * Broadcasts a notification to multiple users, respecting each user's
+   * notification preferences. Creates notifications in batches for efficiency.
+   *
+   * @param userIds   - Array of target user IDs.
+   * @param type      - Notification type.
+   * @param message   - Notification message.
+   * @param contentId - Optional related content ID.
+   * @returns Object with count of created and emitted notifications.
+   */
   public async broadcastToUsers(
     userIds: string[],
     type: NotificationType,
@@ -125,7 +155,7 @@ export class NotificationService {
       }
     }
 
-    // load prefs
+    // Load user preferences for real-time emit filtering
     const prefs = await this.prisma.userNotificationPreference.findMany({
       where: { userId: { in: userIds } },
       select: {
@@ -137,7 +167,7 @@ export class NotificationService {
     });
     const prefMap = new Map(prefs.map((p) => [p.userId, p]));
 
-    const emitted = 0;
+    let emitted = 0;
     for (const userId of userIds) {
       try {
         const pref = prefMap.get(userId);
@@ -151,21 +181,9 @@ export class NotificationService {
 
         if (!shouldEmit) continue;
 
-        const unreadCount = await this.getUnreadCount(userId);
-
-        const notificationLite = {
-          id: null,
-          userId,
-          type,
-          message,
-          contentId,
-          isRead: false,
-          createdAt: new Date(),
-        };
-
-        this.logger.debug(`Emit to ${userId}`, notificationLite, unreadCount);
-
-        // this.gateway.sendToUser(userId, 'notification', { notification: notificationLite, unreadCount });
+        // TODO: Re-enable real-time emit when gateway sendToUser is ready
+        // const unreadCount = await this.getUnreadCount(userId);
+        // this.gateway.sendToUser(userId, 'notification', { notification, unreadCount });
         // emitted++;
       } catch (err) {
         this.logger.warn(`Emit to ${userId} failed`, err);
@@ -175,6 +193,14 @@ export class NotificationService {
     return { created: rows.length, attemptedEmits: emitted };
   }
 
+  /**
+   * Broadcasts a notification to ALL users in the system.
+   *
+   * @param type      - Notification type.
+   * @param message   - Notification message.
+   * @param contentId - Optional related content ID.
+   * @returns Object with count of created and emitted notifications.
+   */
   public async broadcastToAll(
     type: NotificationType,
     message: string,

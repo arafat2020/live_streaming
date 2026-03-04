@@ -1,8 +1,8 @@
 import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
+    Injectable,
+    Logger,
+    OnModuleDestroy,
+    OnModuleInit,
 } from '@nestjs/common';
 import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
@@ -328,8 +328,6 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       '10',
       '-hls_flags',
       'delete_segments+independent_segments+program_date_time',
-      '-hls_playlist_type',
-      'event',
       '-start_number',
       '0',
       '-master_pl_name',

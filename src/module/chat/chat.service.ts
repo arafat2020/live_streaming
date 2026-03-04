@@ -1,22 +1,35 @@
+/**
+ * @fileoverview Chat Service
+ *
+ * Manages chat rooms, participants, and messages. Supports threaded
+ * replies, role-based permissions (owner/moderator/user), and
+ * account-age restrictions for new users.
+ *
+ * @module ChatService
+ */
+
 import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-  Inject,
-  forwardRef,
+    BadRequestException,
+    ForbiddenException,
+    Inject,
+    Injectable,
+    Logger,
+    NotFoundException,
+    forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { safeChannelSelect } from '../channel/dto/safeChannelSelect';
+import { ModeratorService } from '../moderator/moderator.service';
 import { publicUserSelect } from '../user/dto/publicUserSelect';
 import { safeUserSelect } from '../user/dto/safeUserSelect';
 import { ChatGateway } from './chat.gateway';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { UpdateChatDto } from './dto/update-chat.dto';
-import { ModeratorService } from '../moderator/moderator.service';
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     private prisma: PrismaService,
     @Inject(forwardRef(() => ChatGateway))
@@ -59,7 +72,7 @@ export class ChatService {
 
       return room;
     } catch (error) {
-      console.error(error);
+      this.logger.error('Failed to fetch or create chat room', error);
       throw new BadRequestException('Failed to fetch or create chat room');
     }
   }
@@ -68,7 +81,7 @@ export class ChatService {
     try {
       return await this.prisma.chatRoom.create({ data: createChatDto });
     } catch (error) {
-      console.error(error);
+      this.logger.error('Failed to create chat room', error);
       throw new BadRequestException(
         error.message || 'Failed to create chat room',
       );
@@ -93,7 +106,7 @@ export class ChatService {
         },
       });
     } catch (error) {
-      console.error(error);
+      this.logger.error('Failed to fetch chat rooms', error);
       throw new BadRequestException('Failed to fetch chat rooms');
     }
   }
@@ -120,7 +133,7 @@ export class ChatService {
       if (!room) throw new NotFoundException(`ChatRoom ${id} not found`);
       return room;
     } catch (error) {
-      console.error(error);
+      this.logger.error(`Failed to fetch chat room ${id}`, error);
       throw new BadRequestException('Failed to fetch chat room');
     }
   }
@@ -133,7 +146,7 @@ export class ChatService {
         data: updateChatDto,
       });
     } catch (error) {
-      console.error(error);
+      this.logger.error(`Failed to update chat room ${id}`, error);
       throw new BadRequestException('Failed to update chat room');
     }
   }
@@ -144,7 +157,7 @@ export class ChatService {
       await this.prisma.chatRoom.delete({ where: { id } });
       return { message: `ChatRoom ${id} deleted` };
     } catch (error) {
-      console.error(error);
+      this.logger.error(`Failed to delete chat room ${id}`, error);
       throw new BadRequestException('Failed to delete chat room');
     }
   }
@@ -173,7 +186,7 @@ export class ChatService {
         },
       });
     } catch (error) {
-      console.error(error);
+      this.logger.error('Failed to add participant', error);
       throw new BadRequestException('Failed to add participant');
     }
   }
@@ -186,7 +199,7 @@ export class ChatService {
         where: { id: participantId },
       });
     } catch (error) {
-      console.error(error);
+      this.logger.error(`Failed to remove participant ${participantId}`, error);
       throw new BadRequestException('Failed to remove participant');
     }
   }
@@ -245,7 +258,7 @@ export class ChatService {
 
       return { ...message, userRole };
     } catch (error) {
-      console.error(error);
+      this.logger.error('Failed to send message', error);
       throw new BadRequestException('Failed to send message');
     }
   }
@@ -320,7 +333,7 @@ export class ChatService {
 
       return 'user';
     } catch (error) {
-      console.error('Error determining user role:', error);
+      this.logger.error('Error determining user role:', error);
       return 'user';
     }
   }
@@ -386,7 +399,7 @@ export class ChatService {
         },
       };
     } catch (error) {
-      console.error(error);
+      this.logger.error('Failed to fetch messages', error);
       throw new BadRequestException('Failed to fetch messages');
     }
   }
@@ -427,7 +440,7 @@ export class ChatService {
       await this.prisma.chatMessage.delete({ where: { id: messageId } });
       return { id: messageId, roomId: room.id };
     } catch (error) {
-      console.error(error);
+      this.logger.error(`Failed to delete message ${messageId}`, error);
       throw new BadRequestException('Failed to delete message');
     }
   }

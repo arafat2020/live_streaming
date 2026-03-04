@@ -1,29 +1,46 @@
+/**
+ * @fileoverview Authentication Service
+ *
+ * Handles all authentication operations including registration, login
+ * (username + Google OAuth), token management (access/refresh), password
+ * change/reset, and WebSocket token validation.
+ *
+ * @module AuthService
+ */
+
 import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-  UnauthorizedException,
+    BadRequestException,
+    ConflictException,
+    Injectable,
+    InternalServerErrorException,
+    NotFoundException,
+    UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { AuthLogStatus, BanType, UserRole, UserStatus } from '@prisma/client';
+import { AuthLogStatus, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { OAuth2Client } from 'google-auth-library';
+
+import { checkAndHandleBan } from '../../common/helpers/ban-check.helper';
+import { generateStreamKey } from '../../common/helpers/stream-key.helper';
+import {
+    generateAccessToken,
+    generateRefreshToken,
+    generateTempToken,
+    TokenPayload,
+} from '../../common/helpers/token.helper';
+import { sanitizeUser } from '../../common/helpers/user-sanitizer.helper';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateOtpCode, hashOtpCode } from '../../utils/generateOtpCode';
 import { MailService } from '../mail/mail.service';
 import {
-  ChangePasswordDto,
-  RegisterDto,
-  RequestResetCodeDto,
-  ResetPasswordDto,
-  UsernameLoginDto,
-  VerifyResetCodeDto,
+    ChangePasswordDto,
+    RegisterDto,
+    RequestResetCodeDto,
+    ResetPasswordDto,
+    UsernameLoginDto,
+    VerifyResetCodeDto,
 } from './dto/create-auth.dto';
-//import { MailerService } from '@nestjs-modules/mailer';
-import { OAuth2Client } from 'google-auth-library';
-import { v4 as uuidv4 } from 'uuid';
-import { generateUniqueUsername } from '../../utils/generateUsername';
 
 @Injectable()
 export class AuthService {
@@ -37,10 +54,18 @@ export class AuthService {
     this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
   }
 
+  // ──────────────────────────────────────────────
+  //  Google Authentication
+  // ──────────────────────────────────────────────
+
   /**
-   * Google Login - Only for existing users
-   * If user exists (via email/password or previous Google signup), log them in
-   * If user doesn't exist, throw error directing them to signup
+   * Authenticates an existing user via Google OAuth ID token.
+   * If the user exists but has no linked `googleId`, it is linked automatically.
+   *
+   * @param idToken - Google OAuth2 ID token from the client.
+   * @returns Access token, refresh token, and sanitized user object.
+   * @throws {NotFoundException} If no account exists for the email.
+   * @throws {UnauthorizedException} If Google token verification fails.
    */
   async googleLogin(idToken: string) {
     try {
@@ -55,24 +80,19 @@ export class AuthService {
       }
 
       const { email, sub: googleId } = googlePayload;
-
       if (!email) {
         throw new BadRequestException('Email not provided by Google');
       }
 
-      // Check if user exists
-      let user = await this.prisma.user.findUnique({
-        where: { email },
-      });
+      let user = await this.prisma.user.findUnique({ where: { email } });
 
       if (!user) {
-        // User doesn't exist - direct them to signup
         throw new NotFoundException(
           'No account found with this email. Please sign up first.',
         );
       }
 
-      // If user exists but doesn't have googleId linked, link it
+      // Link Google ID if not yet linked
       if (!user.googleId) {
         user = await this.prisma.user.update({
           where: { id: user.id },
@@ -80,10 +100,8 @@ export class AuthService {
         });
       }
 
-      // Generate tokens
       return this.generateAuthTokens(user);
     } catch (error) {
-      console.error('Google login error:', error);
       if (
         error instanceof NotFoundException ||
         error instanceof BadRequestException
@@ -95,8 +113,12 @@ export class AuthService {
   }
 
   /**
-   * Google Signup - Only for new users
-   * Requires username and dateOfBirth
+   * Registers a new user via Google OAuth ID token.
+   * Requires a username and date of birth in addition to the Google token.
+   *
+   * @param dto - Object containing `idToken`, `username`, and `dateOfBirth`.
+   * @returns Access token, refresh token, and sanitized user object.
+   * @throws {ConflictException} If an account or username already exists.
    */
   async googleSignup(dto: {
     idToken: string;
@@ -115,33 +137,27 @@ export class AuthService {
       }
 
       const { email, family_name, picture, sub: googleId } = googlePayload;
-
       if (!email) {
         throw new BadRequestException('Email not provided by Google');
       }
 
-      // Check if user already exists
       const existingUser = await this.prisma.user.findUnique({
         where: { email },
       });
-
       if (existingUser) {
         throw new ConflictException(
           'An account with this email already exists. Please use login instead.',
         );
       }
 
-      // Normalize and check username availability
       const normalizedUsername = dto.username.toLowerCase();
       const existingUsername = await this.prisma.user.findUnique({
         where: { username: normalizedUsername },
       });
-
       if (existingUsername) {
         throw new ConflictException('Username is already taken.');
       }
 
-      // Create new user
       const user = await this.prisma.user.create({
         data: {
           email,
@@ -157,19 +173,18 @@ export class AuthService {
       });
 
       // Create channel for new user
-      const channelPayload = {
-        ownerId: user.id,
-        name: user.username,
-        handle: user.username!,
-        description: null,
-        streamKey: this.generateStreamKey(),
-      } as any;
-      await this.prisma.channel.create({ data: channelPayload });
+      await this.prisma.channel.create({
+        data: {
+          ownerId: user.id,
+          name: user.username,
+          handle: user.username!,
+          description: null,
+          streamKey: generateStreamKey(),
+        } as any,
+      });
 
-      // Generate tokens
       return this.generateAuthTokens(user);
     } catch (error) {
-      console.error('Google signup error:', error);
       if (
         error instanceof ConflictException ||
         error instanceof BadRequestException
@@ -180,65 +195,19 @@ export class AuthService {
     }
   }
 
+  // ──────────────────────────────────────────────
+  //  Email/Password Authentication
+  // ──────────────────────────────────────────────
+
   /**
-   * Helper method to generate auth tokens for a user
+   * Registers a new user with email and password credentials.
+   * Automatically creates a channel for the user.
+   *
+   * @param dto - Registration data (email, username, password, etc.).
+   * @returns Sanitized user object (without tokens — login is separate).
+   * @throws {ConflictException} If email or username already exists.
+   * @throws {BadRequestException} If password confirmation doesn't match.
    */
-  private async generateAuthTokens(user: any) {
-    const payloadBase = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
-
-    const accessToken = this.jwtService.sign(
-      { ...payloadBase, tf: true },
-      {
-        secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
-        expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
-      },
-    );
-
-    const refreshToken = this.jwtService.sign(
-      { ...payloadBase, tf: true },
-      {
-        secret:
-          process.env.JWT_REFRESH_SECRET ||
-          process.env.JWT_SECRET ||
-          'replace_with_a_strong_secret',
-        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
-      },
-    );
-
-    const hashedRefreshToken = await bcrypt.hash(
-      refreshToken,
-      parseInt(process.env.SALT_ROUND!),
-    );
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: hashedRefreshToken, lastLogin: new Date() },
-    });
-
-    const {
-      password,
-      twoFactorSecret,
-      passwordResetToken,
-      passwordResetExpires,
-      ...rest
-    } = user;
-    void password;
-    void twoFactorSecret;
-    void passwordResetToken;
-    void passwordResetExpires;
-
-    return {
-      user: rest,
-      accessToken,
-      refreshToken,
-    };
-  }
-  private generateStreamKey(): string {
-    return uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
-  }
   async register(dto: RegisterDto) {
     const existingEmail = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -247,9 +216,7 @@ export class AuthService {
       throw new ConflictException('User with this email already exists.');
     }
 
-    // Username is now required and validated at DTO level
     const normalizedUsername = dto.username.toLowerCase();
-
     const existingUsername = await this.prisma.user.findUnique({
       where: { username: normalizedUsername },
     });
@@ -257,20 +224,20 @@ export class AuthService {
       throw new ConflictException('Username is already taken.');
     }
 
-    const username = normalizedUsername;
-
     if (dto.confirmPassword && dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Password not match.');
     }
+
     const hashedPassword = await bcrypt.hash(
       dto.password,
       parseInt(process.env.SALT_ROUND!),
     );
+
     const payload = {
       email: dto.email,
-      username: username,
+      username: normalizedUsername,
       password: hashedPassword,
-      firstName: username, // Always set firstName to username
+      firstName: normalizedUsername,
       lastName: dto.lastName ?? null,
       phone: dto.phone ?? null,
       profileImage: dto.profileImage ?? null,
@@ -280,39 +247,35 @@ export class AuthService {
       passwordResetToken: null,
       passwordResetExpires: null,
     };
+
     try {
       const user = await this.prisma.user.create({ data: payload });
-      const channelPayload = {
-        ownerId: user.id,
-        name: user.username, // Use username (which is now same as firstName)
-        handle: user.username!, // Use unique username as handle
-        description: null,
-        streamKey: this.generateStreamKey(),
-      } as any; // Type assertion to bypass strict typing
 
-      await this.prisma.channel.create({ data: channelPayload });
-      // sanitize sensitive fields before returning
-      const {
-        password: _password,
-        refreshToken: _refreshToken,
-        twoFactorSecret: _twoFactorSecret,
-        passwordResetToken: _passwordResetToken,
-        passwordResetExpires: _passwordResetExpires,
-        ...safeUser
-      } = user;
-      void _password;
-      void _refreshToken;
-      void _twoFactorSecret;
-      void _passwordResetToken;
-      void _passwordResetExpires;
-      return safeUser;
-    } catch (err) {
-      void err;
-      //console.error("err------>",err);
+      await this.prisma.channel.create({
+        data: {
+          ownerId: user.id,
+          name: user.username,
+          handle: user.username!,
+          description: null,
+          streamKey: generateStreamKey(),
+        } as any,
+      });
+
+      return sanitizeUser(user);
+    } catch (_err) {
       throw new InternalServerErrorException('Failed to create user.');
     }
   }
 
+  /**
+   * Authenticates a user by username and password.
+   * Includes brute-force protection (IP-level and account-level lockout).
+   *
+   * @param dto - Login credentials (username + password).
+   * @param ip  - Client IP address for rate-limiting.
+   * @returns Access token, refresh token, and sanitized user. If 2FA is enabled, returns `tempToken` instead.
+   * @throws {UnauthorizedException} On invalid credentials, locked account, or banned user.
+   */
   async loginWithUsername(dto: UsernameLoginDto, ip: string) {
     const normalizedUsername = dto.username.toLowerCase();
     const user = await this.prisma.user.findUnique({
@@ -321,13 +284,303 @@ export class AuthService {
     return this.processUserLogin(user, dto.password, dto.username, ip);
   }
 
+  // ──────────────────────────────────────────────
+  //  Token Management
+  // ──────────────────────────────────────────────
+
+  /**
+   * Refreshes an expired access token using a valid refresh token.
+   * Implements refresh token rotation (old token is invalidated).
+   *
+   * @param token - The current refresh token.
+   * @returns New access and refresh tokens.
+   * @throws {UnauthorizedException} If the refresh token is invalid, expired, or mismatched.
+   */
+  async refreshTokens(token: string) {
+    try {
+      const payload = this.jwtService.verify(token, {
+        secret:
+          process.env.JWT_REFRESH_SECRET ||
+          process.env.JWT_SECRET ||
+          'replace_with_a_strong_secret',
+      });
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
+
+      if (!user || !user.refreshToken) {
+        throw new UnauthorizedException('Access Denied');
+      }
+
+      const refreshTokenMatches = await bcrypt.compare(
+        token,
+        user.refreshToken,
+      );
+      if (!refreshTokenMatches) {
+        throw new UnauthorizedException('Access Denied');
+      }
+
+      // Check ban status (auto-unbans expired temp bans)
+      await checkAndHandleBan(user, this.prisma);
+
+      // Generate new token pair
+      const tokenPayload: TokenPayload = {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        tf: true,
+      };
+
+      const accessToken = generateAccessToken(this.jwtService, tokenPayload);
+      const newRefreshToken = generateRefreshToken(
+        this.jwtService,
+        tokenPayload,
+      );
+
+      // Store hashed refresh token (rotation)
+      const hashedRefreshToken = await bcrypt.hash(
+        newRefreshToken,
+        parseInt(process.env.SALT_ROUND!),
+      );
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { refreshToken: hashedRefreshToken },
+      });
+
+      return { accessToken, refreshToken: newRefreshToken };
+    } catch (e) {
+      if (e instanceof UnauthorizedException) throw e;
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  /**
+   * Logs out a user by clearing their stored refresh token.
+   *
+   * @param userId - ID of the user to log out.
+   * @returns Success message.
+   */
+  async logout(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { refreshToken: null },
+    });
+    return { message: 'Logged out successfully' };
+  }
+
+  /**
+   * Validates a JWT token for WebSocket connections.
+   * Verifies the token signature, checks 2FA flag, user status, and ban state.
+   *
+   * @param token      - JWT token to validate.
+   * @param require2FA - Whether 2FA completion is required (default: true).
+   * @returns Sanitized user object, or `null` if validation fails.
+   */
+  async validateToken(token: string, require2FA = true) {
+    try {
+      const payload: any = this.jwtService.verify(token);
+
+      const userId = payload?.sub;
+      if (!userId) return null;
+
+      if (require2FA && payload.tf !== true) {
+        return null;
+      }
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          status: true,
+          isBanned: true,
+          banExpiresAt: true,
+          banReason: true,
+          password: true,
+          twoFactorSecret: true,
+          passwordResetToken: true,
+          passwordResetExpires: true,
+        },
+      });
+
+      if (!user) return null;
+      if (user.status !== UserStatus.ACTIVE) return null;
+
+      // Check ban status silently (returns null instead of throwing)
+      try {
+        await checkAndHandleBan(user, this.prisma);
+      } catch {
+        return null;
+      }
+
+      return sanitizeUser(user);
+    } catch {
+      return null;
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  //  Password Management
+  // ──────────────────────────────────────────────
+
+  /**
+   * Changes the password for an authenticated user.
+   *
+   * @param email - Email of the authenticated user.
+   * @param dto   - Old and new password.
+   * @returns Success message.
+   * @throws {NotFoundException} If user is not found.
+   * @throws {BadRequestException} If old password is incorrect.
+   */
+  async changePassword(email: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.password) {
+      throw new NotFoundException('User not found');
+    }
+
+    const isMatch = await bcrypt.compare(dto.oldPassword, user.password);
+    if (!isMatch) {
+      throw new BadRequestException('Old password is incorrect');
+    }
+
+    const hashed = await bcrypt.hash(
+      dto.newPassword,
+      parseInt(process.env.SALT_ROUND!),
+    );
+    await this.prisma.user.update({
+      where: { email },
+      data: { password: hashed },
+    });
+
+    return { message: 'Password changed successfully' };
+  }
+
+  /**
+   * Sends a password reset OTP code to the user's email.
+   *
+   * @param dto - Contains the user's email address.
+   * @returns Success message.
+   * @throws {NotFoundException} If user is not found.
+   */
+  async requestResetCode(dto: RequestResetCodeDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const code = generateOtpCode();
+    const hashedCode = await hashOtpCode(code);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { email: dto.email },
+      data: { passwordResetToken: hashedCode, passwordResetExpires: expiresAt },
+    });
+
+    await this.mailerService.sendMail({
+      to: dto.email,
+      subject: 'Reset Password Code',
+      html: `Your OTP code is ${code}. It will expire in 5 minutes.`,
+    });
+
+    return { message: 'Reset code sent' };
+  }
+
+  /**
+   * Verifies a password reset OTP code.
+   *
+   * @param dto - Contains email and the OTP code to verify.
+   * @returns Success message.
+   * @throws {BadRequestException} If code is invalid or expired.
+   */
+  async verifyResetCode(dto: VerifyResetCodeDto) {
+    const otpRecord = await this.prisma.user.findFirst({
+      where: {
+        email: dto.email,
+        verified: false,
+        passwordResetToken: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (
+      !otpRecord ||
+      !otpRecord.passwordResetExpires ||
+      otpRecord.passwordResetExpires < new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired code');
+    }
+
+    const isValid = await bcrypt.compare(
+      dto.code,
+      otpRecord.passwordResetToken!,
+    );
+    if (!isValid) {
+      throw new BadRequestException('Incorrect code');
+    }
+
+    await this.prisma.user.update({
+      where: { email: dto.email },
+      data: {
+        verified: true,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
+
+    return { message: 'OTP verified successfully' };
+  }
+
+  /**
+   * Resets a user's password after OTP verification.
+   *
+   * @param dto - Contains email, new password, and password confirmation.
+   * @returns Success message.
+   * @throws {BadRequestException} If passwords don't match or OTP not verified.
+   */
+  async resetPassword(dto: ResetPasswordDto) {
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException("Passwords don't match");
+    }
+
+    const verified = await this.prisma.user.findFirst({
+      where: { email: dto.email, verified: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!verified) {
+      throw new BadRequestException('OTP not verified');
+    }
+
+    const hashed = await bcrypt.hash(
+      dto.password,
+      parseInt(process.env.SALT_ROUND!),
+    );
+    await this.prisma.user.update({
+      where: { email: dto.email },
+      data: { password: hashed, verified: false },
+    });
+
+    return { message: 'Password reset successful' };
+  }
+
+  // ──────────────────────────────────────────────
+  //  Private Helpers
+  // ──────────────────────────────────────────────
+
+  /**
+   * Core login logic shared by all credential-based login methods.
+   * Handles IP rate limiting, account lockout, ban checks, and 2FA flow.
+   */
   private async processUserLogin(
     user: any,
     passwordToCheck: string,
     attemptedUsername: string,
     ip: string,
   ) {
-    // Check for IP-wide abuse (e.g. 20 failures from this IP in 15 mins)
+    // IP-wide abuse protection (20 failures in 15 minutes)
     const checkTime = new Date(Date.now() - 15 * 60 * 1000);
     const recentIpFailures = await this.prisma.authLog.count({
       where: {
@@ -343,13 +596,12 @@ export class AuthService {
       );
     }
 
-    // Generic failure handler
+    // Helper: record failed login and increment lockout counter
     const failLogin = async (
       userId: string | null,
       reason: string,
       locked: boolean = false,
     ) => {
-      // Log failed attempt
       await this.prisma.authLog.create({
         data: {
           userId,
@@ -379,8 +631,8 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials.');
     };
 
+    // User not found — don't leak existence
     if (!user) {
-      // Don't leak user existence
       await this.prisma.authLog.create({
         data: {
           username: attemptedUsername,
@@ -392,7 +644,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials.');
     }
 
-    // Check if account is locked
+    // Check account lockout
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       const hoursRemaining = Math.ceil(
         (user.lockedUntil.getTime() - Date.now()) / (1000 * 60 * 60),
@@ -415,39 +667,10 @@ export class AuthService {
       throw new UnauthorizedException('Your account is currently inactive.');
     }
 
-    // Check ban status (existing logic)
-    if (user.isBanned) {
-      // Check if temporary ban has expired
-      if (user.banExpiresAt && user.banExpiresAt < new Date()) {
-        // Auto-unban expired temporary bans
-        await this.prisma.user.update({
-          where: { id: user.id },
-          data: {
-            isBanned: false,
-            banExpiresAt: null,
-            banReason: null,
-          },
-        });
-      } else {
-        // User is still banned
-        const banReason = user.banReason || 'Rule violation';
-        if (user.banExpiresAt) {
-          throw new UnauthorizedException({
-            message: `Your account has been temporarily banned for: ${banReason}.`,
-            banType: BanType.TEMPORARY,
-            expiresAt: user.banExpiresAt,
-            reason: banReason,
-          });
-        } else {
-          throw new UnauthorizedException({
-            message: `Your account has been permanently banned for: ${banReason}.`,
-            banType: BanType.PERMANENT,
-            reason: banReason,
-          });
-        }
-      }
-    }
+    // Check ban status (auto-unbans expired temp bans)
+    await checkAndHandleBan(user, this.prisma);
 
+    // Validate password
     if (!user.password) {
       await failLogin(
         user.id,
@@ -465,7 +688,7 @@ export class AuthService {
       return;
     }
 
-    // Success - Reset counters and set lastLogin
+    // Success — reset lockout counters
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -475,7 +698,6 @@ export class AuthService {
       },
     });
 
-    // Log success
     await this.prisma.authLog.create({
       data: {
         userId: user.id,
@@ -485,51 +707,27 @@ export class AuthService {
       },
     });
 
-    // Prepare common payload fields
-    const payloadBase = {
+    const tokenPayload: TokenPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tf: true,
     };
 
-    // If the user has 2FA enabled, issue a short-lived temp token and require OTP
+    // 2FA flow: issue temp token requiring OTP verification
     if (user.is2FAEnabled) {
-      const tempToken = this.jwtService.sign(
-        { ...payloadBase, tf: false }, // tf=false indicates 2FA not yet completed
-        {
-          secret: process.env.JWT_SECRET,
-          expiresIn: process.env.TEMP_JWT_EXPIRES_IN ?? '5m', // very short
-        },
-      );
-
-      return {
-        twoFactorRequired: true,
-        tempToken,
-      };
+      const tempToken = generateTempToken(this.jwtService, {
+        ...tokenPayload,
+        tf: false,
+      });
+      return { twoFactorRequired: true, tempToken };
     }
 
-    // Otherwise issue full access token
-    const accessToken = this.jwtService.sign(
-      { ...payloadBase, tf: true }, // tf=true indicates 2FA satisfied (or not required)
-      {
-        secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
-        expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
-      },
-    );
+    // Standard flow: issue full token pair
+    const accessToken = generateAccessToken(this.jwtService, tokenPayload);
+    const refreshToken = generateRefreshToken(this.jwtService, tokenPayload);
 
-    // ✅ NEW: create refresh token
-    const refreshToken = this.jwtService.sign(
-      { ...payloadBase, tf: true },
-      {
-        secret:
-          process.env.JWT_REFRESH_SECRET ||
-          process.env.JWT_SECRET ||
-          'replace_with_a_strong_secret',
-        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
-      },
-    );
-
-    // ✅ Store refresh token in database (hashed for security)
+    // Store hashed refresh token
     const hashedRefreshToken = await bcrypt.hash(
       refreshToken,
       parseInt(process.env.SALT_ROUND!),
@@ -539,330 +737,41 @@ export class AuthService {
       data: { refreshToken: hashedRefreshToken },
     });
 
-    // Sanitize user object before returning
-    const {
-      password: _password,
-      twoFactorSecret: _twoFactorSecret,
-      passwordResetToken: _passwordResetToken,
-      passwordResetExpires: _passwordResetExpires,
-      refreshToken: _refreshToken,
-      ...safeUser
-    } = user;
-    void _password;
-    void _twoFactorSecret;
-    void _passwordResetToken;
-    void _passwordResetExpires;
-    void _refreshToken;
-
     return {
       accessToken,
       refreshToken,
-      user: safeUser,
+      user: sanitizeUser(user),
     };
   }
 
-  async refreshTokens(token: string) {
-    try {
-      // 1. Verify refresh token
-      const payload = this.jwtService.verify(token, {
-        secret:
-          process.env.JWT_REFRESH_SECRET ||
-          process.env.JWT_SECRET ||
-          'replace_with_a_strong_secret',
-      });
+  /**
+   * Generates access + refresh tokens for a user and stores the
+   * hashed refresh token in the database.
+   */
+  private async generateAuthTokens(user: any) {
+    const tokenPayload: TokenPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tf: true,
+    };
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
-      });
+    const accessToken = generateAccessToken(this.jwtService, tokenPayload);
+    const refreshToken = generateRefreshToken(this.jwtService, tokenPayload);
 
-      if (!user || !user.refreshToken) {
-        throw new UnauthorizedException('Access Denied');
-      }
-
-      // 2. Compare hashed tokens
-      const refreshTokenMatches = await bcrypt.compare(
-        token,
-        user.refreshToken,
-      );
-      if (!refreshTokenMatches) {
-        throw new UnauthorizedException('Access Denied');
-      }
-
-      // 2.5. Check if user is banned
-      if (user.isBanned) {
-        // Check if temporary ban has expired
-        if (user.banExpiresAt && user.banExpiresAt < new Date()) {
-          // Auto-unban expired temporary bans
-          await this.prisma.user.update({
-            where: { id: user.id },
-            data: {
-              isBanned: false,
-              banExpiresAt: null,
-              banReason: null,
-            },
-          });
-        } else {
-          // User is still banned
-          if (user.banExpiresAt) {
-            throw new UnauthorizedException({
-              message: `Your account has been temporarily banned${user.banReason ? ` for: ${user.banReason}` : ''}.`,
-              banType: BanType.TEMPORARY,
-              expiresAt: user.banExpiresAt,
-              reason: user.banReason,
-            });
-          } else {
-            throw new UnauthorizedException({
-              message: `Your account has been permanently banned${user.banReason ? ` for: ${user.banReason}` : ''}. Please contact support for more information.`,
-              banType: BanType.PERMANENT,
-              reason: user.banReason,
-            });
-          }
-        }
-      }
-
-      // 3. Generate new tokens
-      const payloadBase = {
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-      };
-
-      const accessToken = this.jwtService.sign(
-        { ...payloadBase, tf: true },
-        {
-          secret: process.env.JWT_SECRET || 'replace_with_a_strong_secret',
-          expiresIn: process.env.JWT_EXPIRES_IN ?? '30d',
-        },
-      );
-
-      const newRefreshToken = this.jwtService.sign(
-        { ...payloadBase, tf: true },
-        {
-          secret:
-            process.env.JWT_REFRESH_SECRET ||
-            process.env.JWT_SECRET ||
-            'replace_with_a_strong_secret',
-          expiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
-        },
-      );
-
-      // 4. Update refresh token in DB
-      const hashedRefreshToken = await bcrypt.hash(
-        newRefreshToken,
-        parseInt(process.env.SALT_ROUND!),
-      );
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken: hashedRefreshToken },
-      });
-
-      return {
-        accessToken,
-        refreshToken: newRefreshToken,
-      };
-    } catch (e) {
-      console.log(e);
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-  }
-
-  async logout(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { refreshToken: null },
-    });
-    return { message: 'Logged out successfully' };
-  }
-  // add inside AuthService class (place anywhere among other methods)
-  async validateToken(token: string, require2FA = true) {
-    try {
-      // 1. Verify and decode token
-      const payload: any = this.jwtService.verify(token);
-
-      const userId = payload?.sub;
-      if (!userId) return null;
-
-      // 2. Check 2FA flag if required for WS connections
-      if (require2FA && payload.tf !== true) {
-        return null;
-      }
-
-      // 3. Fetch user (minimum data needed for security check)
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          status: true,
-          isBanned: true,
-          banExpiresAt: true,
-          banReason: true,
-          password: true,
-          twoFactorSecret: true,
-          passwordResetToken: true,
-          passwordResetExpires: true,
-        },
-      });
-
-      if (!user) return null;
-
-      // 4. Ensure user is active
-      if (user.status !== UserStatus.ACTIVE) return null;
-
-      // 5. Check if user is banned
-      if (user.isBanned) {
-        // Check if temporary ban has expired
-        if (user.banExpiresAt && user.banExpiresAt < new Date()) {
-          // Auto-unban expired temporary bans
-          await this.prisma.user.update({
-            where: { id: user.id },
-            data: {
-              isBanned: false,
-              banExpiresAt: null,
-              banReason: null,
-            },
-          });
-        } else {
-          // User is still banned - reject access
-          return null;
-        }
-      }
-
-      const {
-        password,
-        twoFactorSecret,
-        passwordResetToken,
-        passwordResetExpires,
-        isBanned,
-        banExpiresAt,
-        banReason,
-        ...safeUser
-      } = user;
-
-      void password;
-      void twoFactorSecret;
-      void passwordResetToken;
-      void passwordResetExpires;
-      void isBanned;
-      void banExpiresAt;
-      void banReason;
-
-      return safeUser;
-    } catch (err) {
-      console.error('err------>', err);
-      return null;
-    }
-  }
-
-  // change password
-  async changePassword(email: string, dto: ChangePasswordDto) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.password) {
-      throw new NotFoundException('User not found');
-    }
-
-    const isMatch = await bcrypt.compare(dto.oldPassword, user.password);
-    if (!isMatch) {
-      throw new BadRequestException('Old password is incorrect');
-    }
-    const hashed = await bcrypt.hash(
-      dto.newPassword,
+    const hashedRefreshToken = await bcrypt.hash(
+      refreshToken,
       parseInt(process.env.SALT_ROUND!),
     );
     await this.prisma.user.update({
-      where: { email },
-      data: { password: hashed },
+      where: { id: user.id },
+      data: { refreshToken: hashedRefreshToken, lastLogin: new Date() },
     });
 
-    return { message: 'Password changed successfully' };
-  }
-
-  // forget and reset password
-  async requestResetCode(dto: RequestResetCodeDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (!user) throw new NotFoundException('User not found');
-
-    const code = generateOtpCode();
-    console.log('reset password code----->', code);
-    const hashedCode = await hashOtpCode(code);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    await this.prisma.user.update({
-      where: { email: dto.email },
-      data: { passwordResetToken: hashedCode, passwordResetExpires: expiresAt },
-    });
-
-    await this.mailerService.sendMail({
-      to: dto.email,
-      subject: 'Reset Password Code',
-      html: `Your OTP code is ${code}. It will expire in 5 minutes.`,
-    });
-    return { message: 'Reset code sent' };
-  }
-
-  async verifyResetCode(dto: VerifyResetCodeDto) {
-    const otpRecord = await this.prisma.user.findFirst({
-      where: {
-        email: dto.email,
-        verified: false,
-        passwordResetToken: { not: null },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (
-      !otpRecord ||
-      !otpRecord.passwordResetExpires ||
-      otpRecord.passwordResetExpires < new Date()
-    ) {
-      throw new BadRequestException('Invalid or expired code');
-    }
-
-    // Non-null assertion fixes TS error
-    const isValid = await bcrypt.compare(
-      dto.code,
-      otpRecord.passwordResetToken!,
-    );
-    if (!isValid) {
-      throw new BadRequestException('Incorrect code');
-    }
-
-    await this.prisma.user.update({
-      where: { email: dto.email },
-      data: {
-        verified: true,
-        passwordResetToken: null,
-        passwordResetExpires: null,
-      },
-    });
-
-    return { message: 'OTP verified successfully' };
-  }
-
-  async resetPassword(dto: ResetPasswordDto) {
-    if (dto.password !== dto.confirmPassword) {
-      throw new BadRequestException("Passwords don't match");
-    }
-
-    const verified = await this.prisma.user.findFirst({
-      where: { email: dto.email, verified: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!verified) {
-      throw new BadRequestException('OTP not verified');
-    }
-
-    const hashed = await bcrypt.hash(
-      dto.password,
-      parseInt(process.env.SALT_ROUND!),
-    );
-    await this.prisma.user.update({
-      where: { email: dto.email },
-      data: { password: hashed, verified: false },
-    });
-    return { message: 'Password reset successful' };
+    return {
+      user: sanitizeUser(user),
+      accessToken,
+      refreshToken,
+    };
   }
 }
