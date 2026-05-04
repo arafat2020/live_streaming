@@ -14,7 +14,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CloudflareService } from '../cloudflare/cloudflare.service';
 import { RequestWithUser } from '../user/dto/request-with-user.interface';
@@ -23,9 +23,10 @@ import { CreateStreamDto } from './dto/create-stream.dto';
 @ApiTags('Streams')
 @Controller('streams')
 export class StreamsController {
-  private prisma = new PrismaClient();
-
-  constructor(private readonly cfService: CloudflareService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cfService: CloudflareService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Post('create')
