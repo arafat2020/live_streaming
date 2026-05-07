@@ -26,3 +26,9 @@ variable "webhook_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "r2_public_domain" {
+  description = "Cloudflare R2 public bucket hostname (without https://) — e.g. pub-xxxx.r2.dev"
+  type        = string
+  # e.g. "pub-e4c5ac538f734060aafd26b4abc05fc5.r2.dev"
+}

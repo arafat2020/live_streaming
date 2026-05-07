@@ -179,37 +179,77 @@ resource "aws_cloudfront_cache_policy" "hls_playlist" {
   }
 }
 
+# ─────────────────────────────────────────
+# CloudFront Origin Request Policy for R2
+# R2 needs the Host header forwarded so it
+# knows which bucket to serve from
+# ─────────────────────────────────────────
+
+resource "aws_cloudfront_origin_request_policy" "r2_forward_host" {
+  name    = "rappio-r2-forward-host"
+  comment = "Forward Host header to Cloudflare R2 custom origin"
+
+  cookies_config {
+    cookie_behavior = "none"
+  }
+  headers_config {
+    header_behavior = "whitelist"
+    headers {
+      items = ["Origin", "Access-Control-Request-Headers", "Access-Control-Request-Method"]
+    }
+  }
+  query_strings_config {
+    query_string_behavior = "none"
+  }
+}
+
 resource "aws_cloudfront_distribution" "live_hls" {
   enabled         = true
   is_ipv6_enabled = true
   comment         = "Rappio live HLS delivery"
   price_class     = "PriceClass_All"
 
+  # ── Origin 1: Cloudflare R2 (active — NestJS uploads here) ──
+  origin {
+    domain_name = var.r2_public_domain   # e.g. pub-xxxx.r2.dev
+    origin_id   = "R2-rappio-videos"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # ── Origin 2: AWS S3 (reserved for future AWS MediaLive use) ──
   origin {
     domain_name              = aws_s3_bucket.live_hls.bucket_regional_domain_name
     origin_id                = "S3-rappio-live-hls"
     origin_access_control_id = aws_cloudfront_origin_access_control.live_hls.id
   }
 
-  # Default behaviour — .ts segments (long cache)
+  # Default behaviour — .ts segments served from R2 (long cache)
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-rappio-live-hls"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
-    cache_policy_id        = aws_cloudfront_cache_policy.hls_segments.id
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD"]
+    target_origin_id         = "R2-rappio-videos"
+    viewer_protocol_policy   = "redirect-to-https"
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.hls_segments.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.r2_forward_host.id
   }
 
-  # .m3u8 playlists — short TTL so live viewers get fresh segments
+  # .m3u8 playlists — short TTL so live viewers get fresh segments (from R2)
   ordered_cache_behavior {
-    path_pattern           = "*.m3u8"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-rappio-live-hls"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = false
-    cache_policy_id        = aws_cloudfront_cache_policy.hls_playlist.id
+    path_pattern             = "*.m3u8"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD"]
+    target_origin_id         = "R2-rappio-videos"
+    viewer_protocol_policy   = "redirect-to-https"
+    compress                 = false
+    cache_policy_id          = aws_cloudfront_cache_policy.hls_playlist.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.r2_forward_host.id
   }
 
   restrictions {
