@@ -16,6 +16,7 @@ import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { R2UploadService } from './r2-upload.service';
 import { ThumbnailService } from './thumbnail.service';
+import { MediaConvertService } from './media-convert.service';
 
 @Injectable()
 export class VideoService {
@@ -87,6 +88,7 @@ export class VideoService {
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly thumbnailService: ThumbnailService,
+    private readonly mediaConvertService: MediaConvertService,
   ) {}
 
   /**
@@ -817,6 +819,186 @@ export class VideoService {
     } catch (error) {
       this.logger.error(
         `❌ Failed to update content ${contentId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Mark a stream live by the application channel ID.
+   *
+   * Note: this currently uses the app channel UUID for lookup.
+   * If your MediaLive channel ID is stored separately, update this to use
+   * the proper mapping field.
+   */
+  async markStreamLiveByChannelId(channelId: string): Promise<void> {
+    try {
+      const channel = await this.prisma.channel.findUnique({
+        where: { id: channelId },
+      });
+
+      if (!channel) {
+        this.logger.warn(
+          `No matching app channel found for MediaLive channel ID: ${channelId}`,
+        );
+        return;
+      }
+
+      await this.prisma.channel.update({
+        where: { id: channel.id },
+        data: { isLive: true },
+      });
+
+      const content = await this.prisma.content.findFirst({
+        where: {
+          channelId: channel.id,
+          contentType: ContentType.LIVE_STREAM,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!content) {
+        this.logger.warn(
+          `No live content found for channel ${channel.id} when marking live`,
+        );
+        return;
+      }
+
+      await this.contentService.update(content.id, {
+        status: ContentStatus.AVAILABLE,
+      });
+      this.liveGateway.streamLive(content.playbackUrl ?? '', content);
+
+      this.logger.log(`Marked content ${content.id} as LIVE`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to mark stream live by channelId ${channelId}: ${error.message}`,
+      );
+    }
+  }
+
+  async handleUnexpectedChannelStop(channelId: string): Promise<void> {
+    try {
+      const channel = await this.prisma.channel.findUnique({
+        where: { id: channelId },
+      });
+
+      if (!channel) {
+        this.logger.warn(
+          `No matching app channel found for unexpected stop: ${channelId}`,
+        );
+        return;
+      }
+
+      if (!channel.isLive) {
+        this.logger.log(
+          `Channel ${channelId} is not currently marked live; no action taken`,
+        );
+        return;
+      }
+
+      await this.prisma.channel.update({
+        where: { id: channel.id },
+        data: { isLive: false },
+      });
+
+      await this.prisma.content.updateMany({
+        where: {
+          channelId: channel.id,
+          contentType: ContentType.LIVE_STREAM,
+          status: ContentStatus.AVAILABLE,
+        },
+        data: { status: ContentStatus.ENDED },
+      });
+
+      this.logger.log(`Handled unexpected stop for channel ${channelId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to handle unexpected channel stop ${channelId}: ${error.message}`,
+      );
+    }
+  }
+
+  async updateLiveThumbnailById(
+    contentId: string,
+    thumbnailUrl: string,
+  ): Promise<void> {
+    try {
+      await this.contentService.update(contentId, {
+        thumbnailUrl,
+      });
+      this.logger.log(`Thumbnail updated for content ${contentId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to update live thumbnail for content ${contentId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Called via EventBridge webhook when MediaConvert job completes successfully.
+   */
+  async handleMediaConvertComplete(
+    contentId: string,
+    jobId: string,
+  ): Promise<void> {
+    try {
+      const content = await this.prisma.content.findUnique({
+        where: { id: contentId },
+      });
+
+      if (!content) {
+        this.logger.warn(`Content ${contentId} not found for MediaConvert job`);
+        return;
+      }
+
+      // Build playback URL from MediaConvert output
+      const s3Bucket = process.env.S3_BUCKET!;
+      const playbackUrl = `${R2_PUBLIC_URL}/videos/${contentId}/master.m3u8`;
+
+      // Update content with playback URL and mark as AVAILABLE
+      await this.contentService.update(contentId, {
+        status: ContentStatus.AVAILABLE,
+        playbackUrl,
+      });
+
+      this.logger.log(
+        `✅ MediaConvert job ${jobId} complete. Content ${contentId} is now AVAILABLE`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to handle MediaConvert completion for ${contentId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Called via EventBridge webhook when MediaConvert job fails.
+   */
+  async handleMediaConvertError(
+    contentId: string,
+    jobId: string,
+  ): Promise<void> {
+    try {
+      const content = await this.prisma.content.findUnique({
+        where: { id: contentId },
+      });
+
+      if (!content) {
+        this.logger.warn(`Content ${contentId} not found for MediaConvert error`);
+        return;
+      }
+
+      // Mark content as failed
+      await this.contentService.update(contentId, {
+        status: ContentStatus.FAILED,
+      });
+
+      this.logger.error(
+        `❌ MediaConvert job ${jobId} failed for content ${contentId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to handle MediaConvert error for ${contentId}: ${error.message}`,
       );
     }
   }
