@@ -1,15 +1,15 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { VideoService } from './video.service';
-import { VideoController } from './video.controller';
-import { InternalController } from './internal.controller';
-import { R2UploadService } from './r2-upload.service';
 import { ContentModule } from '../content/content.module';
-import { MediaServerService } from './media-server.service';
-import { MediaLiveService } from './media-live.service';
-import { MediaConvertService } from './media-convert.service';
 import { LiveCommentModule } from '../live-comment/live-comment.module';
-import { VideoChunkService } from './video-chunk.service';
+import { InternalController } from './internal.controller';
+import { MediaConvertService } from './media-convert.service';
+import { MediaLiveService } from './media-live.service';
+import { MediaServerService } from './media-server.service';
+import { R2UploadService } from './r2-upload.service';
 import { ThumbnailService } from './thumbnail.service';
+import { VideoChunkService } from './video-chunk.service';
+import { VideoController } from './video.controller';
+import { VideoService } from './video.service';
 
 @Module({
   imports: [forwardRef(() => ContentModule), LiveCommentModule],

@@ -1,10 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
 import {
-  MediaConvertClient,
   CreateJobCommand,
-  GetJobCommand,
   DescribeEndpointsCommand,
+  GetJobCommand,
+  MediaConvertClient,
 } from '@aws-sdk/client-mediaconvert';
+import { Injectable, Logger } from '@nestjs/common';
 
 export interface MediaConvertJobResult {
   jobId: string;
@@ -206,9 +206,7 @@ export class MediaConvertService {
    */
   async getJobStatus(jobId: string): Promise<any> {
     try {
-      const result = await this.client.send(
-        new GetJobCommand({ Id: jobId }),
-      );
+      const result = await this.client.send(new GetJobCommand({ Id: jobId }));
       return result.Job;
     } catch (err) {
       this.logger.error(`Failed to get job ${jobId}: ${(err as any).message}`);

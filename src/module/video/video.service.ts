@@ -1,8 +1,8 @@
 import {
-    BadRequestException,
-    Injectable,
-    Logger,
-    NotFoundException,
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { Category, ContentStatus, ContentType } from '@prisma/client';
 import { spawn } from 'child_process';
@@ -14,9 +14,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ContentService } from '../content/content.service';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { CreateVideoDto } from './dto/create-video.dto';
+import { MediaConvertService } from './media-convert.service';
 import { R2UploadService } from './r2-upload.service';
 import { ThumbnailService } from './thumbnail.service';
-import { MediaConvertService } from './media-convert.service';
 
 @Injectable()
 export class VideoService {
@@ -984,7 +984,9 @@ export class VideoService {
       });
 
       if (!content) {
-        this.logger.warn(`Content ${contentId} not found for MediaConvert error`);
+        this.logger.warn(
+          `Content ${contentId} not found for MediaConvert error`,
+        );
         return;
       }
 
