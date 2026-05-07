@@ -1,0 +1,8 @@
+# Copy this to terraform.tfvars and fill in your values
+# Never commit terraform.tfvars to git — add it to .gitignore
+
+aws_region        = "us-east-1"
+aws_account_id    = "123456789012"
+s3_bucket_name    = "rappio-live-hls"
+nestjs_public_url = "https://api.rappio.tv"
+webhook_secret    = "generate-a-strong-random-secret-here"
