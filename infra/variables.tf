@@ -32,3 +32,10 @@ variable "r2_public_domain" {
   type        = string
   # e.g. "pub-e4c5ac538f734060aafd26b4abc05fc5.r2.dev"
 }
+
+# in variables.tf
+variable "rtmp_allowed_cidr" {
+  description = "CIDR block allowed to push RTMP to MediaLive (your NMS server IP)"
+  type        = string
+  default     = "0.0.0.0/0"  # Lock this down in production to your server's IP
+}

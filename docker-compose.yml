@@ -12,14 +12,18 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U rappio_db']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U murmur_user -d rappio_db -h localhost || exit 1',
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
 
   app:
     build: .
-    platform: linux/amd64
+    # platform: linux/amd64
     image: softvence/rappio-server:latest
     container_name: rappio_app
     restart: always

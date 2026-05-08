@@ -33,3 +33,9 @@ output "cloudfront_distribution_id" {
   value       = aws_cloudfront_distribution.live_hls.id
 }
 
+# in outputs.tf
+output "medialive_security_group_id" {
+  description = "MediaLive Input Security Group ID — set as MEDIALIVE_SECURITY_GROUP_ID in NestJS"
+  value       = aws_medialive_input_security_group.rtmp.id
+}
+

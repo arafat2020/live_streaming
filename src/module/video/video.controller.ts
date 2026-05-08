@@ -1,27 +1,30 @@
 import {
-  Controller,
-  Post,
-  UploadedFile,
-  UseInterceptors,
   BadRequestException,
   Body,
-  UseGuards,
+  Controller,
+  Get,
   Logger,
+  Param,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import * as fs from 'fs';
 import { memoryStorage } from 'multer';
+import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { VideoService } from './video.service';
-import * as fs from 'fs';
-import * as path from 'path';
 
-import { CreateVideoDto } from './dto/create-video.dto';
 import { ApiConsumes, ApiOperation } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
-import { Roles } from '../auth/guards/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { TermsAcceptedGuard } from 'src/common/guards/terms-accepted.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/guards/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { CreateVideoDto } from './dto/create-video.dto';
+import { MediaLiveService } from './media-live.service';
 import { VideoChunkService } from './video-chunk.service';
 
 @Controller('video')
@@ -30,6 +33,7 @@ export class VideoController {
   constructor(
     private readonly videoService: VideoService,
     private readonly chunkService: VideoChunkService,
+    private readonly mediaLiveService: MediaLiveService,
   ) {}
   // =====================================================
   // EXISTING ENDPOINT (Keep for backward compatibility)
@@ -63,12 +67,7 @@ export class VideoController {
     processingPromise
       .then(async (result) => {
         this.logger.log(
-          `✅ Processing complete for ${lessonId}. Updating content status...`,
-        );
-        await this.videoService.updateContentAfterProcessing(
-          contentId,
-          result.playbackUrl,
-          result.thumbnailUrl,
+          `✅ MediaConvert job submitted for ${lessonId}. status will be updated via webhook.`,
         );
       })
       .catch((err) => {
@@ -244,16 +243,7 @@ export class VideoController {
     processingPromise
       .then(async (result) => {
         this.logger.log(
-          `✅ Processing complete for ${lessonId}. Updating content status... ${JSON.stringify(result)}`,
-        );
-        // Update content to AVAILABLE with playback URL and thumbnail
-        await this.videoService.updateContentAfterProcessing(
-          contentId,
-          result.playbackUrl,
-          result.thumbnailUrl,
-        );
-        this.logger.log(
-          `✅ Content ${contentId} marked AVAILABLE. Playback: ${result.playbackUrl}`,
+          `✅ MediaConvert job submitted for ${lessonId}. status will be updated via webhook.`,
         );
       })
       .catch((err) => {
@@ -286,5 +276,122 @@ export class VideoController {
     this.logger.log(`❌ Upload cancelled: ${uploadId}`);
 
     return { success: true, message: 'Upload cancelled' };
+  }
+
+  // =====================================================
+  // DIAGNOSTIC ENDPOINTS (Admin Only)
+  // =====================================================
+
+  /**
+   * 🔍 List all MediaLive inputs and channels
+   * Helps identify the service limit problem (max 5 push inputs)
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Get('medialive/diagnostics')
+  @ApiOperation({ summary: '🔍 [ADMIN] Get MediaLive resource diagnostics' })
+  async getMediaLiveDiagnostics() {
+    try {
+      this.logger.log('📋 Getting MediaLive diagnostics...');
+
+      const channels = await this.mediaLiveService.listAllChannels();
+      const orphanedCount = channels.channels.filter(
+        (ch: any) => ch.state !== 'RUNNING' && ch.state !== 'CREATING',
+      ).length;
+
+      return {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        summary: {
+          totalChannels: channels.count,
+          orphanedOrStuckChannels: orphanedCount,
+          warningThreshold: 5,
+        },
+        channels: channels.channels,
+      };
+    } catch (error) {
+      this.logger.error(`Diagnostics failed: ${(error as any).message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 🧹 Clean up orphaned resources for a specific content
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Post('medialive/cleanup/:contentId')
+  @ApiOperation({ summary: '🧹 [ADMIN] Clean up orphaned MediaLive resources' })
+  async cleanupOrphanedResources(@Param('contentId') contentId: string) {
+    try {
+      this.logger.log(`🧹 Cleaning up resources for content: ${contentId}`);
+
+      const result =
+        await this.mediaLiveService.cleanupOrphanedResourcesForContent(
+          contentId,
+        );
+
+      return {
+        status: 'ok',
+        message: 'Cleanup completed',
+        deletedCount: result.deletedCount,
+        contentId,
+      };
+    } catch (error) {
+      this.logger.error(`Cleanup failed: ${(error as any).message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 🗑️ Force delete a specific input (DANGEROUS!)
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Post('medialive/force-delete-input/:inputId')
+  @ApiOperation({
+    summary: '🗑️ [ADMIN] Force delete orphaned input (DANGEROUS!)',
+  })
+  async forceDeleteInput(@Param('inputId') inputId: string) {
+    try {
+      this.logger.warn(`⚠️ FORCE DELETING input: ${inputId}`);
+
+      await this.mediaLiveService.forceDeleteInput(inputId);
+
+      return {
+        status: 'ok',
+        message: 'Input force deleted',
+        inputId,
+      };
+    } catch (error) {
+      this.logger.error(`Force delete failed: ${(error as any).message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 🗑️ Force delete a specific channel (DANGEROUS!)
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Post('medialive/force-delete-channel/:channelId')
+  @ApiOperation({
+    summary: '🗑️ [ADMIN] Force delete orphaned channel (DANGEROUS!)',
+  })
+  async forceDeleteChannel(@Param('channelId') channelId: string) {
+    try {
+      this.logger.warn(`⚠️ FORCE DELETING channel: ${channelId}`);
+
+      await this.mediaLiveService.forceDeleteChannel(channelId);
+
+      return {
+        status: 'ok',
+        message: 'Channel force deleted',
+        channelId,
+      };
+    } catch (error) {
+      this.logger.error(`Force delete failed: ${(error as any).message}`);
+      throw error;
+    }
   }
 }

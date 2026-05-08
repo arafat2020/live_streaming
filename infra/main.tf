@@ -263,6 +263,16 @@ resource "aws_cloudfront_distribution" "live_hls" {
   }
 }
 
+resource "aws_medialive_input_security_group" "rtmp" {
+  whitelist_rules {
+    cidr = var.rtmp_allowed_cidr
+  }
+
+  tags = {
+    service = "rappio"
+  }
+}
+
 # ─────────────────────────────────────────
 # IAM — MediaLive service role
 # ─────────────────────────────────────────
@@ -584,3 +594,5 @@ resource "aws_cloudwatch_event_target" "nestjs_mediaconvert" {
     })
   }
 }
+
+

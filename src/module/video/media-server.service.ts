@@ -1,88 +1,49 @@
 import {
-    Injectable,
-    Logger,
-    OnModuleDestroy,
-    OnModuleInit,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ChildProcess, spawn } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import { VIDEO_RENDITIONS } from '../../common/video.constants';
-import { VideoService } from '../video/video.service';
-import { ThumbnailService } from './thumbnail.service';
-
 import NodeMediaServer from 'node-media-server';
+import { VideoService } from '../video/video.service';
+import { MediaLiveService } from './media-live.service';
 
 interface StreamSession {
   streamKey: string;
-  ffmpegProcess: ChildProcess;
-  watcher: { stop: () => void };
-  liveDir: string;
+  channelId: string;
+  inputId: string;
   startTime: Date;
-  contentId: string; // ✅ Track contentId for stats
+  contentId: string;
+  ffmpegProcess?: ChildProcess;
+  rtmpUrl?: string;
+  isRunning: boolean;
 }
+
 @Injectable()
 export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MediaServerService.name);
   private nms: any;
 
-  // Store all active stream sessions
+  // Track active sessions to manage MediaLive channels
   private activeSessions = new Map<string, StreamSession>();
 
   constructor(
     private readonly videoService: VideoService,
-    private readonly thumbnailService: ThumbnailService,
+    private readonly mediaLiveService: MediaLiveService,
   ) {}
 
   async onModuleInit() {
-    if (process.env.ENABLE_MEDIA_SERVER === 'true') {
-      this.initializeMediaServer();
-      this.startStatsBroadcast();
-      await this.videoService.resetStaleStreams();
-    } else {
-      this.logger.log(
-        'ℹ️ Media Server disabled (ENABLE_MEDIA_SERVER is not true)',
-      );
-    }
+    this.initializeMediaServer();
   }
 
-  async onModuleDestroy() {
-    this.stopStatsBroadcast();
-    await this.cleanupAllSessions();
-  }
-
-  private statsInterval: NodeJS.Timeout;
-
-  private startStatsBroadcast() {
-    this.statsInterval = setInterval(() => {
-      this.broadcastAllStats();
-    }, 5000); // Every 5 seconds
-  }
-
-  private stopStatsBroadcast() {
-    if (this.statsInterval) {
-      clearInterval(this.statsInterval);
-    }
-  }
-
-  private async broadcastAllStats() {
-    for (const [streamKey, session] of this.activeSessions) {
-      const uptime = Math.floor(
-        (Date.now() - session.startTime.getTime()) / 1000,
-      );
-
-      // Tell Gateway to broadcast stats to rooms
-      // We'll add this method to VideoService or call Gateway directly if possible
-      this.videoService.broadcastLiveStats(session.contentId, {
-        uptime,
-        streamKey,
-        status: 'LIVE',
-      });
-    }
+  onModuleDestroy() {
+    this.cleanupAllSessions();
   }
 
   /**
-   * Step 1: Initialize Node Media Server with RTMP configuration
+   * Initialize Node Media Server with RTMP configuration
+   * Transcoding is now handled by AWS MediaLive.
    */
   private initializeMediaServer() {
     const config = {
@@ -93,10 +54,9 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
         ping: 30,
         ping_timeout: 60,
       },
-      http: {
-        port: Number(process.env.MEDIA_HTTP_PORT) || 8001,
-        allow_origin: '*',
-        mediaroot: path.resolve(process.cwd(), 'media'),
+      relay: {
+        ffmpeg: '',
+        tasks: [],
       },
     };
 
@@ -106,410 +66,285 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     // Register event handlers
     this.registerEventHandlers();
 
-    this.logger.log('🎥 Media Server Ready');
+    this.logger.log('🎥 Media Server Ready (RTMP Ingest Only)');
     this.logger.log(
-      `📍 RTMP: rtmp://${process.env.RTMP_HOST}:${config.rtmp.port}/live`,
+      `📍 RTMP Ingest: rtmp://${process.env.RTMP_HOST || 'localhost'}:${config.rtmp.port}/live`,
     );
-    this.logger.log(`📍 HTTP: http://localhost:${config.http.port}`);
   }
 
   /**
-   * Step 2: Register RTMP event handlers
+   * Register NMS event handlers
    */
   private registerEventHandlers() {
-    // Stream started
-    this.nms.on('postPublish', (id: any) => this.handleStreamStart(id));
+    this.nms.on('postPublish', (session: any) => {
+      const streamPath = session?.streamPath;
+      if (typeof streamPath === 'string' && streamPath.startsWith('/live/')) {
+        const streamKey = streamPath.replace('/live/', '');
+        this.handleStreamStart(streamKey);
+      }
+    });
 
-    // Stream stopped
-    this.nms.on('donePublish', (id: any) => this.handleStreamStop(id));
-
-    // Connection events for debugging
-    this.nms.on('preConnect', (id: any, args: any) => {
-      this.logger.debug(
-        `Client connecting: ${id} with args: ${JSON.stringify(args)}`,
-      );
+    this.nms.on('donePublish', (session: any) => {
+      const streamPath = session?.streamPath;
+      if (typeof streamPath === 'string' && streamPath.startsWith('/live/')) {
+        const streamKey = streamPath.replace('/live/', '');
+        this.handleStreamStop(streamKey);
+      }
     });
   }
 
   /**
-   * Step 3: Handle stream start event
+   * Handle incoming RTMP stream
+   * Spawns FFmpeg process with auto-restart and error recovery
    */
-  private async handleStreamStart(id: any) {
-    const streamKey = id?.streamName;
-
-    if (!streamKey) {
-      this.logger.warn('❌ No stream key provided');
-      return;
-    }
-
-    // Prevent duplicate sessions
-    if (this.activeSessions.has(streamKey)) {
-      this.logger.warn(`⚠️ Stream ${streamKey} already active`);
-      return;
-    }
-
+  private async handleStreamStart(streamKey: string) {
     try {
-      // Step 3.1: Initialize stream and get a safe Content ID
+      this.logger.log(`🎬 Incoming stream: ${streamKey}`);
+
       const { contentId, channel } =
-        await this.videoService.initializeLiveStream(streamKey);
+        await this.videoService.handleLiveStart(streamKey);
 
       this.logger.log(
         `🔴 Stream starting for ${channel.name} (Content: ${contentId})`,
       );
 
-      // Step 3.2: Create directory for this stream using contentId (Secure)
-      const liveDir = this.createStreamDirectory(contentId);
+      const { channelId, inputId, rtmpUrl } =
+        await this.mediaLiveService.startChannel({
+          streamKey,
+          contentId,
+        });
 
-      // Step 3.3: Start FFmpeg transcoding
-      const ffmpegProcess = this.startFFmpegTranscoding(streamKey, liveDir);
-
-      // Step 3.4: Start R2 upload watcher and notify frontend
-      const { watcher } = await this.videoService.handleLiveStream(
+      await this.videoService.setMediaLiveChannelId(
         contentId,
-        liveDir,
+        channelId,
+        inputId,
       );
 
-      // Step 3.5: Store session information
-      this.activeSessions.set(streamKey, {
+      // Start FFmpeg relay with error recovery
+      const localRtmpUrl = `rtmp://localhost:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
+      this.logger.log(`🚀 Starting FFmpeg relay: ${localRtmpUrl} → ${rtmpUrl}`);
+
+      const session: StreamSession = {
         streamKey,
-        contentId, // Store contentId for safe URL lookups
-        ffmpegProcess,
-        watcher,
-        liveDir,
+        contentId,
+        channelId,
+        inputId,
         startTime: new Date(),
-      });
+        rtmpUrl,
+        isRunning: true,
+      };
 
-      this.logger.log(`✅ Stream is now live (Content ID: ${contentId})`);
+      this.activeSessions.set(streamKey, session);
 
-      // Step 3.6: Generate thumbnail asynchronously from the first local segment
-      const r2Prefix = `live/${contentId}`;
-      const firstSegmentPath = path.join(liveDir, '480p', '000.ts');
-
-      this.generateThumbnailDelayed(streamKey, firstSegmentPath, r2Prefix);
+      // Start FFmpeg with auto-restart on failure
+      this.startFFmpegRelay(streamKey, localRtmpUrl, rtmpUrl);
     } catch (error) {
       this.logger.error(
         `❌ Failed to start stream ${streamKey}: ${(error as any)?.message || error}`,
       );
-      await this.cleanupSession(streamKey);
     }
   }
 
   /**
-   * Helper to generate thumbnail after first segment is ready
+   * Start FFmpeg relay process with automatic restart on failure
    */
-  private async generateThumbnailDelayed(
+  private startFFmpegRelay(
     streamKey: string,
-    segmentPath: string,
-    r2Prefix: string,
+    localRtmpUrl: string,
+    rtmpUrl: string,
   ) {
-    try {
-      this.logger.log(
-        `⏳ Waiting for first segment to generate thumbnail: ${streamKey}`,
+    const session = this.activeSessions.get(streamKey);
+    if (!session || !session.isRunning) {
+      this.logger.debug(
+        `Stream ${streamKey} is no longer active, skipping FFmpeg start`,
       );
-
-      // Poll for the first segment file (up to 30 seconds)
-      let attempts = 0;
-      const maxAttempts = 150; // 30 seconds (150 * 200ms)
-
-      while (attempts < maxAttempts) {
-        if (fs.existsSync(segmentPath) && fs.statSync(segmentPath).size > 0) {
-          const thumbnailUrl =
-            await this.thumbnailService.generateThumbnailFromSegment(
-              segmentPath,
-              r2Prefix,
-              streamKey,
-            );
-          await this.videoService.updateLiveThumbnail(streamKey, thumbnailUrl);
-
-          // Cleanup preserved segment after thumbnail is done
-          if (fs.existsSync(segmentPath)) {
-            fs.unlinkSync(segmentPath);
-            this.logger.log(`🗑️ Deleted preserved segment: ${segmentPath}`);
-          }
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        attempts++;
-      }
-      this.logger.warn(
-        `⚠️ Timeout waiting for segment ${segmentPath} for thumbnail after ${maxAttempts * 0.2}s`,
-      );
-    } catch (err) {
-      this.logger.error(
-        `❌ Thumbnail generation failed for ${streamKey}: ${(err as any)?.message || err}`,
-      );
-    }
-  }
-
-  /**
-   * Step 4: Create directory for stream segments
-   */
-  private createStreamDirectory(contentId: string): string {
-    const liveDir = path.resolve(process.cwd(), 'media', 'live', contentId);
-
-    if (!fs.existsSync(liveDir)) {
-      fs.mkdirSync(liveDir, { recursive: true });
-      this.logger.debug(`📁 Created directory: ${liveDir}`);
-    }
-
-    return liveDir;
-  }
-
-  /**
-   * Step 5: Start FFmpeg transcoding process
-   * ✅ OPTIMIZED FOR LOW LATENCY
-   */
-  private startFFmpegTranscoding(
-    streamKey: string,
-    liveDir: string,
-  ): ChildProcess {
-    // Use 127.0.0.1 for internal connection within the same container
-    const rtmpHost = '127.0.0.1';
-    const rtmpUrl = `rtmp://${rtmpHost}:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
-
-    this.logger.log(`🎬 FFmpeg connecting to: ${rtmpUrl}`);
-
-    const masterPlaylistName = 'master.m3u8';
-
-    const renditions = VIDEO_RENDITIONS;
-
-    for (const r of renditions) {
-      const dir = path.join(liveDir, r.name);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const filterParts = renditions
-      .map((r, idx) => {
-        const scale = `scale=w=${r.width}:h=${r.height}:force_original_aspect_ratio=decrease,pad=${r.width}:${r.height}:(ow-iw)/2:(oh-ih)/2`;
-        return `[0:v]${scale}[v${idx}]`;
-      })
-      .join(';');
-
-    const varStreamMap = renditions
-      .map((r, idx) => `v:${idx},a:${idx},name:${r.name}`)
-      .join(' ');
-
-    const ffmpegArgs: string[] = [
-      '-i',
-      rtmpUrl,
-      '-filter_complex',
-      filterParts,
-    ];
-
-    renditions.forEach((_r, idx) => {
-      ffmpegArgs.push('-map', `[v${idx}]`);
-      ffmpegArgs.push('-map', '0:a:0?');
-    });
-
-    renditions.forEach((r, idx) => {
-      ffmpegArgs.push(`-c:v:${idx}`, 'libx264');
-      ffmpegArgs.push(`-preset`, 'veryfast');
-      ffmpegArgs.push(`-profile:v:${idx}`, 'main');
-      ffmpegArgs.push(`-pix_fmt`, 'yuv420p');
-      ffmpegArgs.push(`-b:v:${idx}`, r.vBitrate);
-      ffmpegArgs.push(`-maxrate:v:${idx}`, r.maxrate);
-      ffmpegArgs.push(`-bufsize:v:${idx}`, r.bufsize);
-      ffmpegArgs.push(`-g:${idx}`, '48');
-      ffmpegArgs.push(`-keyint_min:${idx}`, '48');
-      ffmpegArgs.push(`-sc_threshold:${idx}`, '0');
-
-      ffmpegArgs.push(`-c:a:${idx}`, 'aac');
-      ffmpegArgs.push(`-b:a:${idx}`, r.aBitrate);
-      ffmpegArgs.push(`-ac:${idx}`, '2');
-      ffmpegArgs.push(`-ar:${idx}`, '44100');
-    });
-
-    ffmpegArgs.push(
-      '-f',
-      'hls',
-      '-hls_time',
-      '2',
-      '-hls_list_size',
-      '10',
-      '-hls_flags',
-      'delete_segments+independent_segments+program_date_time',
-      '-start_number',
-      '0',
-      '-master_pl_name',
-      masterPlaylistName,
-      '-var_stream_map',
-      varStreamMap,
-      '-hls_segment_filename',
-      `${path.join('%v', '%03d.ts').replace(/\\/g, '/')}`,
-      `${path.join('%v', 'index.m3u8').replace(/\\/g, '/')}`,
-    );
-
-    const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
-      cwd: liveDir,
-    });
-
-    // Log FFmpeg output for debugging
-    ffmpeg.stderr.on('data', (data) => {
-      this.logger.debug(`[FFmpeg ${streamKey}] ${data.toString().trim()}`);
-    });
-
-    ffmpeg.on('error', (error) => {
-      const msg = (error as any)?.message || String(error);
-      this.logger.error(`❌ FFmpeg error for ${streamKey}: ${msg}`);
-      if (msg.includes('ENOENT')) {
-        this.logger.error(
-          'CRITICAL: FFmpeg is not installed or not in the system PATH. Live streaming will not work.',
-        );
-      }
-    });
-
-    ffmpeg.on('close', (code) => {
-      if (code !== 0 && code !== null) {
-        this.logger.warn(`⚠️ FFmpeg exited with code ${code} for ${streamKey}`);
-
-        // Trigger the cleanup if the session is still marked as active
-        if (this.activeSessions.has(streamKey)) {
-          this.logger.error(
-            `🚨 Fatal: FFmpeg crashed for ${streamKey}. Stopping session.`,
-          );
-          this.handleStreamStop({ streamName: streamKey });
-        }
-      } else {
-        this.logger.log(`✅ FFmpeg process for ${streamKey} closed normally`);
-      }
-    });
-
-    return ffmpeg;
-  }
-
-  /**
-   * Step 6: Handle stream stop event
-   */
-  private async handleStreamStop(id: any) {
-    const streamKey = id?.streamName;
-
-    if (!streamKey) {
-      this.logger.warn('❌ No stream key in stop event');
       return;
     }
 
-    this.logger.log(`🛑 Stream stopping: ${streamKey}`);
-
     try {
-      // Notify video service about stream end
-      await this.videoService.handleLiveStop(streamKey);
+      // Kill existing process if any
+      if (session.ffmpegProcess) {
+        session.ffmpegProcess.kill();
+      }
 
-      // Clean up session
-      await this.cleanupSession(streamKey);
+      this.logger.log(`🎥 Spawning FFmpeg for stream ${streamKey}`);
 
-      this.logger.log(
-        `✅ Stream ${streamKey} stopped (Remaining active: ${this.activeSessions.size})`,
-      );
+      const ffmpegProcess = spawn('ffmpeg', [
+        '-rtmp_live',
+        'live', // RTMP live stream input
+        '-i',
+        localRtmpUrl,
+        '-c',
+        'copy', // Copy codec (no re-encoding)
+        '-f',
+        'flv', // Output format
+        '-fflags',
+        'nobuffer', // Minimize buffering
+        '-flags',
+        'low_delay', // Low latency
+        rtmpUrl,
+      ]);
+
+      session.ffmpegProcess = ffmpegProcess;
+
+      // Log FFmpeg output for debugging
+      ffmpegProcess.stderr?.on('data', (data) => {
+        const output = data.toString().trim();
+        if (output) {
+          this.logger.debug(
+            `FFmpeg (${streamKey}): ${output.substring(0, 100)}`,
+          );
+        }
+      });
+
+      // Handle process exit/errors
+      ffmpegProcess.on('error', (err) => {
+        this.logger.error(`❌ FFmpeg error for ${streamKey}: ${err.message}`);
+        this.scheduleFFmpegRestart(streamKey, localRtmpUrl, rtmpUrl);
+      });
+
+      ffmpegProcess.on('close', (code) => {
+        if (session.isRunning) {
+          this.logger.warn(
+            `⚠️ FFmpeg for ${streamKey} exited with code ${code}. Restarting...`,
+          );
+          this.scheduleFFmpegRestart(streamKey, localRtmpUrl, rtmpUrl);
+        } else {
+          this.logger.log(`FFmpeg for ${streamKey} stopped (stream ended)`);
+        }
+      });
+
+      this.logger.log(`✅ FFmpeg relay started for stream ${streamKey}`);
     } catch (error) {
       this.logger.error(
-        `❌ Error stopping stream ${streamKey}: ${(error as any)?.message || error}`,
+        `❌ Failed to spawn FFmpeg for ${streamKey}: ${(error as any).message}`,
       );
+      this.scheduleFFmpegRestart(streamKey, localRtmpUrl, rtmpUrl);
     }
   }
 
   /**
-   * Step 7: Clean up a single stream session
+   * Schedule FFmpeg restart with exponential backoff
    */
-  private async cleanupSession(streamKey: string) {
+  private scheduleFFmpegRestart(
+    streamKey: string,
+    localRtmpUrl: string,
+    rtmpUrl: string,
+    attempt: number = 1,
+  ) {
     const session = this.activeSessions.get(streamKey);
+    if (!session || !session.isRunning) return;
 
-    if (!session) {
-      this.logger.debug(`No session found for ${streamKey}`);
+    const maxRetries = 5;
+    if (attempt > maxRetries) {
+      this.logger.error(
+        `❌ FFmpeg for ${streamKey} failed after ${maxRetries} restart attempts. Giving up.`,
+      );
       return;
     }
 
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 16000);
+
+    this.logger.warn(
+      `⏳ Scheduling FFmpeg restart for ${streamKey} in ${delay}ms (attempt ${attempt}/${maxRetries})`,
+    );
+
+    setTimeout(() => {
+      if (session.isRunning) {
+        this.startFFmpegRelay(streamKey, localRtmpUrl, rtmpUrl);
+      }
+    }, delay);
+  }
+
+  /**
+   * Handle stream stop event
+   */
+  private async handleStreamStop(streamKey: string) {
+    const session = this.activeSessions.get(streamKey);
+    if (!session) return;
+
+    // Mark as stopped to prevent restart attempts
+    session.isRunning = false;
+
     try {
-      // Stop FFmpeg process first to stop writing to the manifest
-      if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
-        session.ffmpegProcess.kill('SIGTERM');
-        this.logger.debug(`⚰️ Killed FFmpeg for ${streamKey}`);
-        // Small delay to allow FFmpeg to flush
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      await this.videoService.handleLiveStop(streamKey);
+
+      if (session.channelId && session.inputId) {
+        try {
+          await this.mediaLiveService.stopChannel({
+            channelId: session.channelId,
+            inputId: session.inputId,
+          });
+        } catch (err) {
+          // Log but don't throw - we still want to clean up local state
+          this.logger.error(
+            `⚠️ MediaLive cleanup error for stream ${streamKey}: ${(err as any)?.message}`,
+          );
+          // Don't re-throw, as we want to continue cleanup
+        }
       }
 
-      // Finalize the manifest locally so the watcher picks it up
-      const maybeFinalizePlaylist = async (playlistPath: string) => {
-        if (!fs.existsSync(playlistPath)) return;
-        try {
-          const content = fs.readFileSync(playlistPath, 'utf-8');
-          if (!content.includes('#EXT-X-ENDLIST')) {
-            fs.appendFileSync(playlistPath, '\n#EXT-X-ENDLIST\n');
-            this.logger.log(
-              `🏁 Finalized manifest (${path.basename(playlistPath)}) for ${streamKey}`,
-            );
-            // Give the watcher one more cycle to upload the finalized manifest
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-          }
-        } catch (err) {
-          this.logger.error(
-            `Failed to finalize manifest: ${(err as any)?.message || err}`,
-          );
-        }
-      };
+      // Stop FFmpeg relay process
+      this.stopFFmpegRelay(streamKey);
 
-      await maybeFinalizePlaylist(path.join(session.liveDir, 'master.m3u8'));
-
-      // Stop R2 upload watcher
-      if (session.watcher) {
-        session.watcher.stop();
-        this.logger.debug(`⏹️ Stopped watcher for ${streamKey}`);
-      }
-
-      // Delete local files after a delay (give R2 time to upload)
-      setTimeout(() => {
-        try {
-          if (fs.existsSync(session.liveDir)) {
-            fs.rmSync(session.liveDir, { recursive: true, force: true });
-            this.logger.debug(`🗑️ Deleted directory: ${session.liveDir}`);
-          }
-        } catch (err) {
-          this.logger.error(
-            `Failed to delete directory ${session.liveDir}: ${(err as any)?.message || err}`,
-          );
-        }
-      }, 15000); // ✅ Increased to 15 seconds delay for R2 upload completion
-
-      // Remove from active sessions
       this.activeSessions.delete(streamKey);
     } catch (error) {
       this.logger.error(
-        `Error cleaning up session ${streamKey}: ${(error as any)?.message || error}`,
+        `❌ Error stopping stream ${streamKey}: ${error.message}`,
       );
     }
   }
 
   /**
-   * Step 8: Clean up all active sessions (on server shutdown)
+   * Stop FFmpeg relay process for a stream
    */
-  private async cleanupAllSessions() {
-    this.logger.log('🧹 Cleaning up all active streams...');
+  private stopFFmpegRelay(streamKey: string) {
+    try {
+      const session = this.activeSessions.get(streamKey);
+      if (session?.ffmpegProcess) {
+        this.logger.log(`🛑 Stopping FFmpeg relay for stream ${streamKey}`);
+        session.ffmpegProcess.kill('SIGTERM');
 
-    const cleanupPromises: Promise<void>[] = [];
-    for (const [streamKey] of this.activeSessions) {
-      await this.cleanupSession(streamKey);
+        // Force kill after 5 seconds if process doesn't exit
+        setTimeout(() => {
+          if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
+            this.logger.warn(`⚠️ Force killing FFmpeg for ${streamKey}`);
+            session.ffmpegProcess.kill('SIGKILL');
+          }
+        }, 5000);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `⚠️ Failed to stop FFmpeg for ${streamKey}: ${(error as any)?.message}`,
+      );
     }
-    await Promise.all(cleanupPromises);
+  }
+
+  /**
+   * Remove relay configuration for a stream (cleanup on stop)
+   */
+  private removeRelayConfig(streamKey: string) {
+    // Already handled by stopFFmpegRelay
+    // This method exists for API compatibility
+  }
+
+  private async cleanupAllSessions() {
+    this.logger.log('🧹 Starting cleanup of all sessions and FFmpeg processes');
+
+    // Mark all sessions as stopped to prevent restart attempts
+    for (const [, session] of this.activeSessions) {
+      session.isRunning = false;
+    }
+
+    // Stop all active streams
+    for (const [streamKey] of this.activeSessions) {
+      await this.handleStreamStop(streamKey);
+    }
 
     if (this.nms) {
       this.nms.stop();
-    }
-  }
-
-  /**
-   * Reject a stream connection
-   */
-  private rejectStream(id: any) {
-    try {
-      // In Node Media Server, we can get session by it's internal id
-      const session = this.nms.getSession(typeof id === 'string' ? id : id?.id);
-      if (session) {
-        session.reject();
-        this.logger.log(`🚫 Connection rejected: ${id}`);
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to reject stream: ${(error as any)?.message || error}`,
-      );
+      this.logger.log('✅ NMS stopped');
     }
   }
 
@@ -519,43 +354,20 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   getStreamUrl(streamKey: string): string {
     const session = this.activeSessions.get(streamKey);
     if (!session) return '';
-
-    const publicUrl = process.env.PUBLIC_URL || process.env.HTTP_BASE_URL;
-    return `${publicUrl}/media/live/${session.contentId}/master.m3u8`;
+    return `${process.env.CLOUDFRONT_URL}/live/${session.contentId}/master.m3u8`;
   }
 
   /**
-   * Public API: Check if stream is active
-   */
-  isStreamActive(streamKey: string): boolean {
-    return this.activeSessions.has(streamKey);
-  }
-
-  /**
-   * Public API: Get all active streams
-   */
-  getActiveStreams(): string[] {
-    return Array.from(this.activeSessions.keys());
-  }
-
-  /**
-   * Public API: Get stream statistics
+   * Public API: Get real-time stats
    */
   getStreamStats(streamKey: string) {
     const session = this.activeSessions.get(streamKey);
-
-    if (!session) {
-      return null;
-    }
-
-    const uptime = Date.now() - session.startTime.getTime();
+    if (!session) return { isActive: false };
 
     return {
-      streamKey,
-      contentId: session.contentId,
-      startTime: session.startTime,
-      uptime: Math.floor(uptime / 1000), // seconds
       isActive: true,
+      uptime: Math.floor((Date.now() - session.startTime.getTime()) / 1000),
+      contentId: session.contentId,
     };
   }
 }
