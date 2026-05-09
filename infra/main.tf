@@ -240,9 +240,21 @@ resource "aws_cloudfront_distribution" "live_hls" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.r2_forward_host.id
   }
 
-  # .m3u8 playlists — short TTL so live viewers get fresh segments (from R2)
+  # ── Rule 1: Live Streams (from AWS S3) ──
   ordered_cache_behavior {
-    path_pattern             = "*.m3u8"
+    path_pattern             = "/live/*"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD"]
+    target_origin_id         = "S3-rappio-live-hls"
+    viewer_protocol_policy   = "redirect-to-https"
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.hls_playlist.id
+    # No origin_request_policy needed for S3 OAC
+  }
+
+  # ── Rule 2: VOD Playlists (from Cloudflare R2) ──
+  ordered_cache_behavior {
+    path_pattern             = "/videos/*.m3u8"
     allowed_methods          = ["GET", "HEAD", "OPTIONS"]
     cached_methods           = ["GET", "HEAD"]
     target_origin_id         = "R2-rappio-videos"
@@ -465,24 +477,12 @@ resource "aws_cloudwatch_event_target" "nestjs_running" {
   rule     = aws_cloudwatch_event_rule.medialive_running.name
   arn      = aws_cloudwatch_event_api_destination.nestjs.arn
   role_arn = aws_iam_role.eventbridge_invoke.arn
-
-  http_target {
-    header_parameters = {
-      "X-Webhook-Secret" = var.webhook_secret
-    }
-  }
 }
 
 resource "aws_cloudwatch_event_target" "nestjs_stopped" {
   rule     = aws_cloudwatch_event_rule.medialive_stopped.name
   arn      = aws_cloudwatch_event_api_destination.nestjs.arn
   role_arn = aws_iam_role.eventbridge_invoke.arn
-
-  http_target {
-    header_parameters = {
-      "X-Webhook-Secret" = var.webhook_secret
-    }
-  }
 }
 
 # API Destination — points EventBridge at your NestJS server
@@ -545,7 +545,18 @@ resource "aws_iam_role_policy" "eventbridge_invoke" {
       {
         Effect   = "Allow"
         Action   = "events:InvokeApiDestination"
-        Resource = aws_cloudwatch_event_api_destination.nestjs.arn
+        Resource = [
+          aws_cloudwatch_event_api_destination.nestjs.arn,
+          aws_cloudwatch_event_api_destination.nestjs_mediaconvert.arn
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = aws_cloudwatch_event_connection.nestjs.secret_arn
       }
     ]
   })
@@ -574,25 +585,6 @@ resource "aws_cloudwatch_event_target" "nestjs_mediaconvert" {
   rule     = aws_cloudwatch_event_rule.mediaconvert_complete.name
   arn      = aws_cloudwatch_event_api_destination.nestjs_mediaconvert.arn
   role_arn = aws_iam_role.eventbridge_invoke.arn
-
-  http_target {
-    header_parameters = {
-      "X-Webhook-Secret" = var.webhook_secret
-    }
-  }
-
-  input_transformer {
-    input_paths = {
-      jobId         = "$.detail.jobId"
-      status        = "$.detail.status"
-      contentId     = "$.detail.userMetadata.contentId"
-    }
-    input_template = jsonencode({
-      jobId     = "<jobId>"
-      status    = "<status>"
-      contentId = "<contentId>"
-    })
-  }
 }
 
 

@@ -23,7 +23,7 @@ services:
 
   app:
     build: .
-    # platform: linux/amd64
+    platform: linux/amd64
     image: softvence/rappio-server:latest
     container_name: rappio_app
     restart: always
@@ -48,6 +48,7 @@ services:
       - ./media:/app/media
 
   media:
+    platform: linux/amd64
     image: softvence/rappio-server:latest
     container_name: rappio_media_worker
     restart: always

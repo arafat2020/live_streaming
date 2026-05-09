@@ -25,13 +25,17 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MediaServerService.name);
   private nms: any;
 
-  // Track active sessions to manage MediaLive channels
+  // Track active sessions to manage MediaLive channels and FFmpeg processes
   private activeSessions = new Map<string, StreamSession>();
 
   constructor(
     private readonly videoService: VideoService,
     private readonly mediaLiveService: MediaLiveService,
   ) {}
+
+  // ==========================================
+  // 1. MODULE LIFECYCLE
+  // ==========================================
 
   async onModuleInit() {
     this.initializeMediaServer();
@@ -41,9 +45,13 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     this.cleanupAllSessions();
   }
 
+  // ==========================================
+  // 2. MEDIA SERVER OPERATIONS (RTMP)
+  // ==========================================
+
   /**
-   * Initialize Node Media Server with RTMP configuration
-   * Transcoding is now handled by AWS MediaLive.
+   * Initialize Node Media Server with RTMP configuration.
+   * Transcoding is offloaded to AWS MediaLive.
    */
   private initializeMediaServer() {
     const config = {
@@ -63,29 +71,44 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     this.nms = new NodeMediaServer(config);
     this.nms.run();
 
-    // Register event handlers
+    // Register event handlers for stream start/stop
     this.registerEventHandlers();
 
     this.logger.log('🎥 Media Server Ready (RTMP Ingest Only)');
     this.logger.log(
-      `📍 RTMP Ingest: rtmp://${process.env.RTMP_HOST || 'localhost'}:${config.rtmp.port}/live`,
+      `📍 RTMP Ingest URL: rtmp://${process.env.RTMP_HOST || 'localhost'}:${config.rtmp.port}/live`,
     );
   }
 
   /**
-   * Register NMS event handlers
+   * Register NMS event handlers to detect stream state changes.
    */
   private registerEventHandlers() {
-    this.nms.on('postPublish', (session: any) => {
-      const streamPath = session?.streamPath;
+    this.nms.on('postPublish', (...args: any[]) => {
+      this.logger.log(`[DEBUG] NMS postPublish fired. Args count: ${args.length}`);
+      args.forEach((arg, i) => {
+        if (arg && typeof arg === 'object') {
+          this.logger.log(`[DEBUG] Arg ${i} keys: ${Object.keys(arg).join(', ')}`);
+          this.logger.log(`[DEBUG] Arg ${i} .streamPath: ${arg.streamPath}`);
+          this.logger.log(`[DEBUG] Arg ${i} .publishStreamPath: ${arg.publishStreamPath}`);
+        } else {
+          this.logger.log(`[DEBUG] Arg ${i}: ${arg}`);
+        }
+      });
+
+      // Try to extract streamPath from different possible locations
+      let streamPath = args[1]; // Expected standard
+      if (!streamPath && args[0] && typeof args[0] === 'object') {
+        streamPath = args[0].streamPath || args[0].publishStreamPath;
+      }
+
       if (typeof streamPath === 'string' && streamPath.startsWith('/live/')) {
         const streamKey = streamPath.replace('/live/', '');
         this.handleStreamStart(streamKey);
       }
     });
 
-    this.nms.on('donePublish', (session: any) => {
-      const streamPath = session?.streamPath;
+    this.nms.on('donePublish', (id: string, streamPath: string, args: any) => {
       if (typeof streamPath === 'string' && streamPath.startsWith('/live/')) {
         const streamKey = streamPath.replace('/live/', '');
         this.handleStreamStop(streamKey);
@@ -93,37 +116,35 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  // ==========================================
+  // 3. SESSION MANAGEMENT
+  // ==========================================
+
   /**
-   * Handle incoming RTMP stream
-   * Spawns FFmpeg process with auto-restart and error recovery
+   * Orchestrates the start of a live stream:
+   * 1. Initialize session in DB
+   * 2. Provision AWS MediaLive resources
+   * 3. Start local FFmpeg relay to AWS
    */
   private async handleStreamStart(streamKey: string) {
     try {
-      this.logger.log(`🎬 Incoming stream: ${streamKey}`);
+      this.logger.log(`🎬 Incoming stream detected: ${streamKey}`);
 
-      const { contentId, channel } =
-        await this.videoService.handleLiveStart(streamKey);
+      // Step 1: Create DB records
+      const { contentId, channel } = await this.videoService.handleLiveStart(streamKey);
+      this.logger.log(`🔴 Stream starting for ${channel.name} (Content ID: ${contentId})`);
 
-      this.logger.log(
-        `🔴 Stream starting for ${channel.name} (Content: ${contentId})`,
-      );
-
-      const { channelId, inputId, rtmpUrl } =
-        await this.mediaLiveService.startChannel({
-          streamKey,
-          contentId,
-        });
-
-      await this.videoService.setMediaLiveChannelId(
+      // Step 2: Start AWS MediaLive
+      const { channelId, inputId, rtmpUrl } = await this.mediaLiveService.startChannel({
+        streamKey,
         contentId,
-        channelId,
-        inputId,
-      );
+        onChannelCreated: async (cid, iid) => {
+          // Store IDs immediately to handle EventBridge race conditions
+          await this.videoService.setMediaLiveChannelId(contentId, cid, iid);
+        },
+      });
 
-      // Start FFmpeg relay with error recovery
-      const localRtmpUrl = `rtmp://localhost:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
-      this.logger.log(`🚀 Starting FFmpeg relay: ${localRtmpUrl} → ${rtmpUrl}`);
-
+      // Step 3: Create local session state
       const session: StreamSession = {
         streamKey,
         contentId,
@@ -136,8 +157,11 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
       this.activeSessions.set(streamKey, session);
 
-      // Start FFmpeg with auto-restart on failure
+      // Step 4: Start FFmpeg relay to push from VPS to AWS
+      const localRtmpUrl = `rtmp://localhost:${process.env.RTMP_PORT || 1935}/live/${streamKey}`;
+      this.logger.log(`🚀 Relaying stream: ${localRtmpUrl} → ${rtmpUrl}`);
       this.startFFmpegRelay(streamKey, localRtmpUrl, rtmpUrl);
+
     } catch (error) {
       this.logger.error(
         `❌ Failed to start stream ${streamKey}: ${(error as any)?.message || error}`,
@@ -146,7 +170,66 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Start FFmpeg relay process with automatic restart on failure
+   * Orchestrates the stop of a live stream and cleans up resources.
+   */
+  private async handleStreamStop(streamKey: string) {
+    const session = this.activeSessions.get(streamKey);
+    if (!session) return;
+
+    // Prevent auto-restart of FFmpeg
+    session.isRunning = false;
+
+    try {
+      this.logger.log(`🛑 Stopping stream session: ${streamKey}`);
+      
+      // Update DB status to ENDED
+      await this.videoService.handleLiveStop(streamKey);
+
+      // Release AWS resources
+      if (session.channelId && session.inputId) {
+        try {
+          await this.mediaLiveService.stopChannel({
+            channelId: session.channelId,
+            inputId: session.inputId,
+          });
+        } catch (err) {
+          this.logger.error(`⚠️ AWS cleanup failed: ${(err as any)?.message}`);
+        }
+      }
+
+      // Kill local FFmpeg process
+      this.stopFFmpegRelay(streamKey);
+      this.activeSessions.delete(streamKey);
+      
+      this.logger.log(`✅ Session ${streamKey} cleaned up successfully`);
+    } catch (error) {
+      this.logger.error(`❌ Error stopping stream ${streamKey}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Graceful cleanup of all sessions on shutdown.
+   */
+  private async cleanupAllSessions() {
+    this.logger.log('🧹 Shutting down Media Server and cleaning up all active sessions...');
+
+    for (const [streamKey, session] of this.activeSessions) {
+      session.isRunning = false; // Prevent restarts
+      await this.handleStreamStop(streamKey);
+    }
+
+    if (this.nms) {
+      this.nms.stop();
+      this.logger.log('✅ NMS stopped');
+    }
+  }
+
+  // ==========================================
+  // 4. FFmpeg RELAY ENGINE
+  // ==========================================
+
+  /**
+   * Spawns an FFmpeg child process to relay the local RTMP stream to AWS MediaLive.
    */
   private startFFmpegRelay(
     streamKey: string,
@@ -154,77 +237,71 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     rtmpUrl: string,
   ) {
     const session = this.activeSessions.get(streamKey);
-    if (!session || !session.isRunning) {
-      this.logger.debug(
-        `Stream ${streamKey} is no longer active, skipping FFmpeg start`,
-      );
-      return;
-    }
+    if (!session || !session.isRunning) return;
 
     try {
-      // Kill existing process if any
+      // Ensure no dangling process exists
       if (session.ffmpegProcess) {
         session.ffmpegProcess.kill();
       }
 
-      this.logger.log(`🎥 Spawning FFmpeg for stream ${streamKey}`);
-
       const ffmpegProcess = spawn('ffmpeg', [
-        '-rtmp_live',
-        'live', // RTMP live stream input
-        '-i',
-        localRtmpUrl,
-        '-c',
-        'copy', // Copy codec (no re-encoding)
-        '-f',
-        'flv', // Output format
-        '-fflags',
-        'nobuffer', // Minimize buffering
-        '-flags',
-        'low_delay', // Low latency
+        '-rtmp_live', 'live',
+        '-i', localRtmpUrl,
+        '-c', 'copy',      // Use 'copy' to minimize CPU usage (no re-encoding)
+        '-f', 'flv',
+        '-fflags', 'nobuffer',
+        '-flags', 'low_delay',
         rtmpUrl,
       ]);
 
       session.ffmpegProcess = ffmpegProcess;
 
-      // Log FFmpeg output for debugging
+      // Log errors/stats from FFmpeg
       ffmpegProcess.stderr?.on('data', (data) => {
         const output = data.toString().trim();
         if (output) {
-          this.logger.debug(
-            `FFmpeg (${streamKey}): ${output.substring(0, 100)}`,
-          );
+          this.logger.debug(`FFmpeg (${streamKey}): ${output.substring(0, 120)}`);
         }
       });
 
-      // Handle process exit/errors
       ffmpegProcess.on('error', (err) => {
-        this.logger.error(`❌ FFmpeg error for ${streamKey}: ${err.message}`);
+        this.logger.error(`❌ FFmpeg Error [${streamKey}]: ${err.message}`);
         this.scheduleFFmpegRestart(streamKey, localRtmpUrl, rtmpUrl);
       });
 
       ffmpegProcess.on('close', (code) => {
         if (session.isRunning) {
-          this.logger.warn(
-            `⚠️ FFmpeg for ${streamKey} exited with code ${code}. Restarting...`,
-          );
+          this.logger.warn(`⚠️ FFmpeg [${streamKey}] closed with code ${code}. Restarting...`);
           this.scheduleFFmpegRestart(streamKey, localRtmpUrl, rtmpUrl);
-        } else {
-          this.logger.log(`FFmpeg for ${streamKey} stopped (stream ended)`);
         }
       });
 
-      this.logger.log(`✅ FFmpeg relay started for stream ${streamKey}`);
     } catch (error) {
-      this.logger.error(
-        `❌ Failed to spawn FFmpeg for ${streamKey}: ${(error as any).message}`,
-      );
+      this.logger.error(`❌ Spawn error [${streamKey}]: ${(error as any).message}`);
       this.scheduleFFmpegRestart(streamKey, localRtmpUrl, rtmpUrl);
     }
   }
 
   /**
-   * Schedule FFmpeg restart with exponential backoff
+   * Stops a specific FFmpeg relay process.
+   */
+  private stopFFmpegRelay(streamKey: string) {
+    const session = this.activeSessions.get(streamKey);
+    if (session?.ffmpegProcess) {
+      session.ffmpegProcess.kill('SIGTERM');
+      
+      // Force kill if it hangs
+      setTimeout(() => {
+        if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
+          session.ffmpegProcess.kill('SIGKILL');
+        }
+      }, 5000);
+    }
+  }
+
+  /**
+   * Implements exponential backoff for FFmpeg process recovery.
    */
   private scheduleFFmpegRestart(
     streamKey: string,
@@ -237,18 +314,12 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
 
     const maxRetries = 5;
     if (attempt > maxRetries) {
-      this.logger.error(
-        `❌ FFmpeg for ${streamKey} failed after ${maxRetries} restart attempts. Giving up.`,
-      );
+      this.logger.error(`❌ Max FFmpeg restarts reached for ${streamKey}.`);
       return;
     }
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
     const delay = Math.min(1000 * Math.pow(2, attempt - 1), 16000);
-
-    this.logger.warn(
-      `⏳ Scheduling FFmpeg restart for ${streamKey} in ${delay}ms (attempt ${attempt}/${maxRetries})`,
-    );
+    this.logger.warn(`⏳ Restarting FFmpeg for ${streamKey} in ${delay}ms...`);
 
     setTimeout(() => {
       if (session.isRunning) {
@@ -257,99 +328,12 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     }, delay);
   }
 
-  /**
-   * Handle stream stop event
-   */
-  private async handleStreamStop(streamKey: string) {
-    const session = this.activeSessions.get(streamKey);
-    if (!session) return;
-
-    // Mark as stopped to prevent restart attempts
-    session.isRunning = false;
-
-    try {
-      await this.videoService.handleLiveStop(streamKey);
-
-      if (session.channelId && session.inputId) {
-        try {
-          await this.mediaLiveService.stopChannel({
-            channelId: session.channelId,
-            inputId: session.inputId,
-          });
-        } catch (err) {
-          // Log but don't throw - we still want to clean up local state
-          this.logger.error(
-            `⚠️ MediaLive cleanup error for stream ${streamKey}: ${(err as any)?.message}`,
-          );
-          // Don't re-throw, as we want to continue cleanup
-        }
-      }
-
-      // Stop FFmpeg relay process
-      this.stopFFmpegRelay(streamKey);
-
-      this.activeSessions.delete(streamKey);
-    } catch (error) {
-      this.logger.error(
-        `❌ Error stopping stream ${streamKey}: ${error.message}`,
-      );
-    }
-  }
+  // ==========================================
+  // 5. PUBLIC API & UTILITIES
+  // ==========================================
 
   /**
-   * Stop FFmpeg relay process for a stream
-   */
-  private stopFFmpegRelay(streamKey: string) {
-    try {
-      const session = this.activeSessions.get(streamKey);
-      if (session?.ffmpegProcess) {
-        this.logger.log(`🛑 Stopping FFmpeg relay for stream ${streamKey}`);
-        session.ffmpegProcess.kill('SIGTERM');
-
-        // Force kill after 5 seconds if process doesn't exit
-        setTimeout(() => {
-          if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
-            this.logger.warn(`⚠️ Force killing FFmpeg for ${streamKey}`);
-            session.ffmpegProcess.kill('SIGKILL');
-          }
-        }, 5000);
-      }
-    } catch (error) {
-      this.logger.warn(
-        `⚠️ Failed to stop FFmpeg for ${streamKey}: ${(error as any)?.message}`,
-      );
-    }
-  }
-
-  /**
-   * Remove relay configuration for a stream (cleanup on stop)
-   */
-  private removeRelayConfig(streamKey: string) {
-    // Already handled by stopFFmpegRelay
-    // This method exists for API compatibility
-  }
-
-  private async cleanupAllSessions() {
-    this.logger.log('🧹 Starting cleanup of all sessions and FFmpeg processes');
-
-    // Mark all sessions as stopped to prevent restart attempts
-    for (const [, session] of this.activeSessions) {
-      session.isRunning = false;
-    }
-
-    // Stop all active streams
-    for (const [streamKey] of this.activeSessions) {
-      await this.handleStreamStop(streamKey);
-    }
-
-    if (this.nms) {
-      this.nms.stop();
-      this.logger.log('✅ NMS stopped');
-    }
-  }
-
-  /**
-   * Public API: Get safe stream playback URL
+   * Returns the CloudFront playback URL for an active stream.
    */
   getStreamUrl(streamKey: string): string {
     const session = this.activeSessions.get(streamKey);
@@ -358,7 +342,7 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Public API: Get real-time stats
+   * Returns real-time statistics for an active stream.
    */
   getStreamStats(streamKey: string) {
     const session = this.activeSessions.get(streamKey);

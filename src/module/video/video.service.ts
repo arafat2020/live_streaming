@@ -12,7 +12,6 @@ import { CreateVideoDto } from './dto/create-video.dto';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { ContentService } from '../content/content.service';
 import { MediaConvertService } from './media-convert.service';
-import { MediaLiveService } from './media-live.service';
 
 @Injectable()
 export class VideoService {
@@ -23,17 +22,26 @@ export class VideoService {
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly mediaConvertService: MediaConvertService,
-    private readonly mediaLiveService: MediaLiveService,
   ) {}
 
+  // ==========================================
+  // 1. LIVE STREAM LIFE CYCLE
+  // ==========================================
+
   /**
-   * Initialize a new live stream session
-   * Called by MediaServerService when RTMP push starts.
+   * Initialize a new live stream session.
+   * Called by MediaServerService when a new RTMP push is detected.
    */
   async handleLiveStart(streamKey: string) {
     const channel = await this.prisma.channel.findUnique({
       where: { streamKey },
-      select: { id: true, name: true, category: true, pendingDescription: true, pendingTitle: true },
+      select: { 
+        id: true, 
+        name: true, 
+        category: true, 
+        pendingDescription: true, 
+        pendingTitle: true 
+      },
     });
 
     if (!channel) {
@@ -42,6 +50,7 @@ export class VideoService {
 
     const streamCategory = channel.category || Category.JUST_CHATTING;
 
+    // Create a new content record in PROCESSING state
     const content = await this.contentService.create({
       title: channel.pendingTitle || `${channel.name} - Live Stream`,
       description: channel.pendingDescription || undefined,
@@ -55,96 +64,8 @@ export class VideoService {
   }
 
   /**
-   * Process VOD (Video on Demand) upload via AWS MediaConvert
-   */
-  async processLargeVideo(
-    lessonId: string,
-    dto: CreateVideoDto,
-    fileBuffer?: Buffer,
-    inputPath?: string,
-  ): Promise<{
-    contentId: string;
-    processingPromise: Promise<{ playbackUrl: string; thumbnailUrl: string }>;
-  }> {
-    if (!fileBuffer && !inputPath) {
-      throw new BadRequestException('Either fileBuffer or inputPath must be provided');
-    }
-
-    const r2Prefix = `videos/${lessonId}`;
-    const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
-
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    const finalInputPath = inputPath || path.join(outputDir, 'input_video.tmp');
-
-    if (fileBuffer) {
-      fs.writeFileSync(finalInputPath, fileBuffer);
-    }
-
-    // 1. Find channel
-    const channel = await this.prisma.channel.findUnique({
-      where: { streamKey: dto.streamKey },
-      select: { id: true, name: true },
-    });
-
-    if (!channel) {
-      throw new NotFoundException('Channel not found');
-    }
-
-    // 2. Create record in DB
-    const content = await this.contentService.create({
-      title: dto.title || `${channel.name} - Video`,
-      description: dto.description,
-      category: dto.category as Category,
-      channelId: channel.id,
-      r2Prefix,
-      contentType: ContentType.VOD,
-      status: ContentStatus.PROCESSING,
-    });
-
-    // 3. MediaConvert submission
-    const processingPromise = (async () => {
-      try {
-        this.logger.log(`🎬 Submitting MediaConvert job for: ${lessonId}`);
-
-        // Upload input file to S3
-        const s3Key = `uploads/${lessonId}/${path.basename(finalInputPath)}`;
-        const inputS3Path = await this.mediaConvertService.uploadFileToS3(
-          finalInputPath,
-          s3Key,
-        );
-
-        // Submit job
-        const result = await this.mediaConvertService.submitTranscodingJob({
-          contentId: content.id,
-          inputS3Path,
-        });
-
-        this.logger.log(`✅ MediaConvert job submitted: ${result.jobId}`);
-
-        const playbackUrl = `${process.env.CLOUDFRONT_URL}/videos/${content.id}/master.m3u8`;
-
-        return { playbackUrl, thumbnailUrl: '' };
-      } catch (err) {
-        this.logger.error(`❌ MediaConvert submission error: ${err.message}`);
-        throw err;
-      }
-    })();
-
-    return { contentId: content.id, processingPromise };
-  }
-
-  /**
-   * Broadcast live stats to viewers and creator
-   */
-  broadcastLiveStats(contentId: string, stats: any) {
-    this.liveGateway.broadcastLiveStats(contentId, stats);
-  }
-
-  /**
-   * Handle live stream stop
+   * Handle graceful live stream termination.
+   * Called when RTMP connection is closed.
    */
   async handleLiveStop(streamKey: string): Promise<void> {
     try {
@@ -187,7 +108,7 @@ export class VideoService {
   }
 
   /**
-   * Emergency reset for stale streams
+   * Emergency reset for stale streams (e.g. on server restart).
    */
   async resetStaleStreams(): Promise<void> {
     try {
@@ -203,13 +124,18 @@ export class VideoService {
         },
         data: { status: ContentStatus.ENDED },
       });
+      this.logger.log('✅ Stale streams reset successfully');
     } catch (error) {
       this.logger.error(`❌ Error during stale stream reset: ${error.message}`);
     }
   }
 
+  // ==========================================
+  // 2. AWS MEDIALIVE OPERATIONS
+  // ==========================================
+
   /**
-   * Stores the AWS MediaLive channelId on the Content record
+   * Stores the AWS MediaLive channelId on the Content record.
    */
   async setMediaLiveChannelId(
     contentId: string,
@@ -226,10 +152,10 @@ export class VideoService {
   }
 
   /**
-   * Called by InternalController when EventBridge fires RUNNING event.
+   * Marks a stream as LIVE (AVAILABLE) when AWS EventBridge signals RUNNING.
    */
   async markStreamLiveByChannelId(channelId: string): Promise<void> {
-    const content = await this.prisma.content.findFirst({
+    let content = await this.prisma.content.findFirst({
       where: {
         mediaLiveChannelId: channelId,
         contentType: ContentType.LIVE_STREAM,
@@ -237,8 +163,23 @@ export class VideoService {
       },
     });
 
+    // RETRY logic: Handles race conditions where webhook arrives faster than DB update
     if (!content) {
-      this.logger.warn(`markStreamLiveByChannelId: no PROCESSING content found for channelId ${channelId}`);
+      this.logger.log(`markStreamLiveByChannelId: content not found for ${channelId}, retrying in 2s...`);
+      await new Promise((r) => setTimeout(r, 2000));
+      content = await this.prisma.content.findFirst({
+        where: {
+          mediaLiveChannelId: channelId,
+          contentType: ContentType.LIVE_STREAM,
+          status: ContentStatus.PROCESSING,
+        },
+      });
+    }
+
+    if (!content) {
+      this.logger.warn(
+        `markStreamLiveByChannelId: no PROCESSING content found for channelId ${channelId}`,
+      );
       return;
     }
 
@@ -262,6 +203,9 @@ export class VideoService {
     this.liveGateway.streamLive(playbackUrl, content);
   }
 
+  /**
+   * Handle AWS MediaLive channel unexpected stops.
+   */
   async handleUnexpectedChannelStop(channelId: string): Promise<void> {
     const content = await this.prisma.content.findFirst({
       where: {
@@ -287,16 +231,89 @@ export class VideoService {
     this.liveGateway.streamEnded(content.id);
   }
 
-  async updateLiveThumbnailById(
-    contentId: string,
-    thumbnailUrl: string,
-  ): Promise<void> {
-    await this.prisma.content.update({
-      where: { id: contentId },
-      data: { thumbnailUrl },
+  // ==========================================
+  // 3. VOD (VIDEO ON DEMAND) OPERATIONS
+  // ==========================================
+
+  /**
+   * Process a large video upload via AWS MediaConvert.
+   */
+  async processLargeVideo(
+    lessonId: string,
+    dto: CreateVideoDto,
+    fileBuffer?: Buffer,
+    inputPath?: string,
+  ): Promise<{
+    contentId: string;
+    processingPromise: Promise<{ playbackUrl: string; thumbnailUrl: string }>;
+  }> {
+    if (!fileBuffer && !inputPath) {
+      throw new BadRequestException('Either fileBuffer or inputPath must be provided');
+    }
+
+    const r2Prefix = `videos/${lessonId}`;
+    const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
+
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    const finalInputPath = inputPath || path.join(outputDir, 'input_video.tmp');
+
+    if (fileBuffer) {
+      fs.writeFileSync(finalInputPath, fileBuffer);
+    }
+
+    const channel = await this.prisma.channel.findUnique({
+      where: { streamKey: dto.streamKey },
+      select: { id: true, name: true },
     });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    const content = await this.contentService.create({
+      title: dto.title || `${channel.name} - Video`,
+      description: dto.description,
+      category: dto.category as Category,
+      channelId: channel.id,
+      r2Prefix,
+      contentType: ContentType.VOD,
+      status: ContentStatus.PROCESSING,
+    });
+
+    const processingPromise = (async () => {
+      try {
+        this.logger.log(`🎬 Submitting MediaConvert job for: ${lessonId}`);
+
+        const s3Key = `uploads/${lessonId}/${path.basename(finalInputPath)}`;
+        const inputS3Path = await this.mediaConvertService.uploadFileToS3(
+          finalInputPath,
+          s3Key,
+        );
+
+        const result = await this.mediaConvertService.submitTranscodingJob({
+          contentId: content.id,
+          inputS3Path,
+        });
+
+        this.logger.log(`✅ MediaConvert job submitted: ${result.jobId}`);
+        const playbackUrl = `${process.env.CLOUDFRONT_URL}/videos/${content.id}/master.m3u8`;
+
+        return { playbackUrl, thumbnailUrl: '' };
+      } catch (err) {
+        this.logger.error(`❌ MediaConvert submission error: ${err.message}`);
+        throw err;
+      }
+    })();
+
+    return { contentId: content.id, processingPromise };
   }
 
+  /**
+   * Called when AWS MediaConvert job is successfully completed.
+   */
   async handleMediaConvertComplete(contentId: string, jobId: string): Promise<void> {
     try {
       const playbackUrl = `${process.env.CLOUDFRONT_URL}/videos/${contentId}/master.m3u8`;
@@ -314,6 +331,9 @@ export class VideoService {
     }
   }
 
+  /**
+   * Called when AWS MediaConvert job fails.
+   */
   async handleMediaConvertError(contentId: string, jobId: string): Promise<void> {
     try {
       await this.prisma.content.update({
@@ -328,6 +348,20 @@ export class VideoService {
     }
   }
 
+  // ==========================================
+  // 4. ANALYTICS & STATS
+  // ==========================================
+
+  /**
+   * Broadcast live statistics to all viewers.
+   */
+  broadcastLiveStats(contentId: string, stats: any) {
+    this.liveGateway.broadcastLiveStats(contentId, stats);
+  }
+
+  /**
+   * Retrieve current stream statistics by stream key.
+   */
   async getStreamStats(streamKey: string) {
     try {
       const channel = await this.prisma.channel.findUnique({
@@ -355,6 +389,9 @@ export class VideoService {
     }
   }
 
+  /**
+   * Update content metadata after processing is complete.
+   */
   async updateContentAfterProcessing(
     contentId: string,
     playbackUrl: string,
@@ -369,5 +406,18 @@ export class VideoService {
     } catch (error) {
       this.logger.error(`Failed to update content after processing: ${error.message}`);
     }
+  }
+
+  /**
+   * Update thumbnail for a live stream.
+   */
+  async updateLiveThumbnailById(
+    contentId: string,
+    thumbnailUrl: string,
+  ): Promise<void> {
+    await this.prisma.content.update({
+      where: { id: contentId },
+      data: { thumbnailUrl },
+    });
   }
 }
