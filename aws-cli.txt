@@ -1,0 +1,81 @@
+# 1. Check which region your MediaLive channels are in
+aws medialive list-channels --region us-east-1
+
+# 2. Check EventBridge rules exist in us-east-1
+aws events list-rules \
+  --region us-east-1 \
+  --query "Rules[*].{Name:Name,State:State}"
+
+# 3. Check API destinations and their URLs/state
+aws events list-api-destinations \
+  --region us-east-1
+
+# 4. Check API destination URLs and state (cleaner output)
+aws events list-api-destinations \
+  --region us-east-1 \
+  --query "ApiDestinations[*].{Name:Name,State:ApiDestinationState,URL:InvocationEndpoint}"
+
+# 5. Check the connection status
+aws events describe-connection \
+  --name rappio-nestjs-connection \
+  --region us-east-1
+
+# 6. Update API destination URL (MediaLive webhook)
+aws events update-api-destination \
+  --name rappio-nestjs \
+  --invocation-endpoint "https://api.rappio.tv/internal/stream/medialive-event" \
+  --region us-east-1
+
+# 7. Update API destination URL (MediaConvert webhook)
+aws events update-api-destination \
+  --name rappio-nestjs-mediaconvert \
+  --invocation-endpoint "https://api.rappio.tv/internal/vod/mediaconvert-complete" \
+  --region us-east-1
+
+# 8. Fix/recreate the connection with correct auth
+aws events update-connection \
+  --name rappio-nestjs-connection \
+  --authorization-type API_KEY \
+  --auth-parameters "ApiKeyAuthParameters={ApiKeyName=X-Webhook-Secret,ApiKeyValue=some-long-random-string-change-this}" \
+  --region us-east-1
+
+# 9. Delete connection (if update didn't fix INACTIVE state)
+aws events delete-connection \
+  --name rappio-nestjs-connection \
+  --region us-east-1
+
+# 10. Recreate connection
+aws events create-connection \
+  --name rappio-nestjs-connection \
+  --authorization-type API_KEY \
+  --auth-parameters "ApiKeyAuthParameters={ApiKeyName=X-Webhook-Secret,ApiKeyValue=some-long-random-string-change-this}" \
+  --region us-east-1
+
+# 11. Update both destinations to use new connection ARN
+aws events update-api-destination \
+  --name rappio-nestjs \
+  --connection-arn "PASTE_NEW_ARN_HERE" \
+  --region us-east-1
+
+aws events update-api-destination \
+  --name rappio-nestjs-mediaconvert \
+  --connection-arn "PASTE_NEW_ARN_HERE" \
+  --region us-east-1
+
+# 12. Delete orphaned IDLE MediaLive channel
+aws medialive delete-channel \
+  --channel-id 1497387 \
+  --region us-east-1
+
+# 13. Manual webhook test (simulate RUNNING event)
+curl -X POST https://api.rappio.tv/internal/stream/medialive-event \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-secret: some-long-random-string-change-this" \
+  -d '{
+    "source": "aws.medialive",
+    "detail-type": "MediaLive Channel State Change",
+    "detail": {
+      "state": "RUNNING",
+      "channel_arn": "arn:aws:medialive:us-east-1:718735301628:channel:3615202"
+    }
+  }'
