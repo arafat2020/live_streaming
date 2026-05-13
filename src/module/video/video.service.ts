@@ -12,6 +12,7 @@ import { CreateVideoDto } from './dto/create-video.dto';
 import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { ContentService } from '../content/content.service';
 import { MediaConvertService } from './media-convert.service';
+import { ThumbnailService } from './thumbnail.service';
 
 @Injectable()
 export class VideoService {
@@ -22,6 +23,7 @@ export class VideoService {
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly mediaConvertService: MediaConvertService,
+    private readonly thumbnailService: ThumbnailService,
   ) {}
 
   // ==========================================
@@ -161,6 +163,7 @@ export class VideoService {
         contentType: ContentType.LIVE_STREAM,
         status: ContentStatus.PROCESSING,
       },
+      include: { channel: { select: { streamKey: true } } },
     });
 
     // RETRY logic: Handles race conditions where webhook arrives faster than DB update
@@ -173,6 +176,7 @@ export class VideoService {
           contentType: ContentType.LIVE_STREAM,
           status: ContentStatus.PROCESSING,
         },
+        include: { channel: { select: { streamKey: true } } },
       });
     }
 
@@ -201,6 +205,58 @@ export class VideoService {
     }
 
     this.liveGateway.streamLive(playbackUrl, content);
+
+    // Generate thumbnail asynchronously in the background
+    // Don't await this — let it run independently
+    // Use the HLS playback URL (CloudFront) since this is a MediaLive architecture;
+    // there is no local RTMP stream to capture from.
+    this.generateLiveThumbnailAsync(content.id, playbackUrl);
+  }
+
+  /**
+   * Generate thumbnail asynchronously for a live stream.
+   * Captures a frame from the HLS playback URL (CloudFront) because this is a
+   * MediaLive architecture — there is no local RTMP stream available inside the
+   * container. The HLS master playlist is ready as soon as the channel reaches
+   * RUNNING state, so we wait a short period for segments to accumulate and
+   * then grab a frame via FFmpeg.
+   */
+  private async generateLiveThumbnailAsync(
+    contentId: string,
+    hlsUrl: string,
+  ): Promise<void> {
+    // Fire-and-forget: catch errors and log them, but don't throw
+    try {
+      const r2Prefix = `live/${contentId}`;
+
+      this.logger.log(
+        `🎬 Starting async thumbnail generation for stream: ${contentId}`,
+      );
+      this.logger.debug(`🔗 HLS source URL: ${hlsUrl}`);
+
+      const thumbnailUrl = await this.thumbnailService.generateThumbnailFromHLS(
+        contentId,
+        hlsUrl,
+        r2Prefix,
+      );
+
+      // Update the content record with the thumbnail URL
+      await this.prisma.content.update({
+        where: { id: contentId },
+        data: { thumbnailUrl },
+      });
+
+      this.logger.log(
+        `✅ Thumbnail generated and updated for stream: ${contentId}`,
+      );
+    } catch (error) {
+      // Don't throw — this is a background task
+      this.logger.error(
+        `❌ Failed to generate thumbnail for stream ${contentId}: ${
+          (error as any)?.message || error
+        }`,
+      );
+    }
   }
 
   /**

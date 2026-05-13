@@ -194,12 +194,15 @@ export class R2UploadService {
 
         for (const playlistFilePath of m3u8Files) {
           try {
-            // Throttle playlist uploads to every 2 seconds unless it's the master
+            // Upload master playlist immediately on first detection (no throttle)
+            // For subsequent uploads, apply 2 second throttle to reduce API calls
             const now = Date.now();
             const lastUpload = lastPlaylistUpload.get(playlistFilePath) || 0;
             const isMaster = path.basename(playlistFilePath) === 'master.m3u8';
+            const hasNeverBeenUploaded = lastUpload === 0;
 
-            if (now - lastUpload < 2000) {
+            // Skip throttle for first upload, apply 2s throttle for subsequent uploads
+            if (!hasNeverBeenUploaded && now - lastUpload < 2000) {
               continue;
             }
 
@@ -242,11 +245,11 @@ export class R2UploadService {
 
   /**
    * Wait for file to be fully written to disk
-   * ✅ OPTIMIZED: Faster checks, shorter timeout
+   * ✅ OPTIMIZED: Faster checks, shorter timeout (500ms instead of 1s)
    */
   private async waitForFileReady(
     filePath: string,
-    timeout = 1000,
+    timeout = 500,
   ): Promise<void> {
     const start = Date.now();
     let lastSize = -1;

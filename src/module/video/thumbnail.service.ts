@@ -12,11 +12,139 @@ export class ThumbnailService {
   constructor(private readonly r2UploadService: R2UploadService) {}
 
   /**
+   * Generate a thumbnail from a live HLS stream (CloudFront).
+   * This is the correct method for AWS MediaLive streams where no local RTMP
+   * source is available. FFmpeg reads the HLS manifest and grabs a single frame.
+   *
+   * @param streamKey  - Used only as a unique local temp-dir name
+   * @param hlsUrl     - The CloudFront HLS master playlist URL (https://...)
+   * @param r2Prefix   - The R2 prefix where to upload the thumbnail
+   * @returns Promise<string> - The public URL of the uploaded thumbnail
+   */
+  async generateThumbnailFromHLS(
+    streamKey: string,
+    hlsUrl: string,
+    r2Prefix: string,
+  ): Promise<string> {
+    const tempDir = path.resolve(
+      process.cwd(),
+      'uploads',
+      'thumbnails',
+      streamKey,
+    );
+    const thumbnailPath = path.join(tempDir, 'thumbnail.jpg');
+
+    try {
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      this.logger.log(`📸 Generating thumbnail from HLS for: ${streamKey}`);
+      this.logger.debug(`🔗 HLS URL: ${hlsUrl}`);
+
+      // HLS segments take a few seconds to appear after the channel reaches
+      // RUNNING state. Retry up to 5 times with a 10-second gap.
+      const MAX_RETRIES = 5;
+      const RETRY_DELAY_MS = 10_000;
+      let lastError: Error | null = null;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        this.logger.log(
+          `🔄 Thumbnail capture attempt ${attempt}/${MAX_RETRIES}`,
+        );
+        await new Promise((r) => setTimeout(r, attempt === 1 ? 5000 : RETRY_DELAY_MS));
+
+        try {
+          await this.captureFromHLS(hlsUrl, thumbnailPath);
+          lastError = null;
+          break; // success
+        } catch (err) {
+          lastError = err as Error;
+          this.logger.warn(
+            `⚠️ Attempt ${attempt} failed: ${lastError.message}`,
+          );
+        }
+      }
+
+      if (lastError) {
+        throw lastError;
+      }
+
+      const thumbnailUrl = await this.uploadThumbnail(thumbnailPath, r2Prefix);
+      await this.cleanupThumbnailFiles(tempDir);
+
+      this.logger.log(`✅ HLS thumbnail generated and uploaded: ${thumbnailUrl}`);
+      return thumbnailUrl;
+    } catch (error) {
+      this.logger.error(`❌ Failed to generate HLS thumbnail: ${error.message}`);
+      await this.cleanupThumbnailFiles(tempDir);
+      throw error;
+    }
+  }
+
+  /**
+   * Capture a single frame from an HLS stream using FFmpeg.
+   */
+  private async captureFromHLS(
+    hlsUrl: string,
+    outputPath: string,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // -user_agent is needed for some CloudFront distributions
+      const ffmpeg = spawn('ffmpeg', [
+        '-user_agent', 'Mozilla/5.0',
+        '-i', hlsUrl,
+        '-ss', '00:00:02',
+        '-vframes', '1',
+        '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
+        '-q:v', '2',
+        '-y',
+        outputPath,
+      ]);
+
+      let errorOutput = '';
+      let isTimeout = false;
+
+      ffmpeg.stderr.on('data', (data) => {
+        const msg = data.toString();
+        errorOutput += msg;
+      });
+
+      ffmpeg.on('error', (err) => {
+        this.logger.error(`FFmpeg spawn error: ${err.message}`);
+        reject(err);
+      });
+
+      ffmpeg.on('close', (code) => {
+        if (isTimeout) return;
+        if (code === 0 && fs.existsSync(outputPath)) {
+          this.logger.log(`✅ HLS thumbnail frame captured successfully`);
+          resolve();
+        } else {
+          this.logger.error(`❌ FFmpeg exited with code ${code}`);
+          this.logger.debug(`FFmpeg stderr: ${errorOutput.slice(-500)}`);
+          reject(new Error(`FFmpeg HLS capture failed with exit code ${code}`));
+        }
+      });
+
+      // Give up after 45 seconds per attempt
+      setTimeout(() => {
+        if (!ffmpeg.killed) {
+          isTimeout = true;
+          ffmpeg.kill('SIGKILL');
+          reject(new Error('HLS thumbnail capture timeout'));
+        }
+      }, 45_000);
+    });
+  }
+
+  /**
    * Generate a thumbnail from RTMP stream
    * @param streamKey - The stream key to identify the stream
    * @param rtmpUrl - The RTMP URL to capture from
    * @param r2Prefix - The R2 prefix where to upload the thumbnail
    * @returns Promise<string> - The public URL of the uploaded thumbnail
+   * @deprecated Use generateThumbnailFromHLS for MediaLive-based streams.
    */
   async generateThumbnailFromRTMP(
     streamKey: string,
@@ -230,17 +358,19 @@ export class ThumbnailService {
       ]);
 
       let errorOutput = '';
+      let isTimeout = false;
 
       ffmpeg.stderr.on('data', (data) => {
         errorOutput += data.toString();
       });
 
-      this.logger.error(`Error output: ${errorOutput.slice(-500)}`);
-
       ffmpeg.on('close', (code) => {
+        if (isTimeout) return; // Already rejected via timeout
+        
         if (code === 0 && fs.existsSync(outputPath)) {
           resolve();
         } else {
+          this.logger.error(`FFmpeg error output: ${errorOutput.slice(-500)}`);
           reject(
             new Error(
               `Failed to capture thumbnail from file: exit code ${code}`,
@@ -249,10 +379,14 @@ export class ThumbnailService {
         }
       });
 
-      ffmpeg.on('error', reject);
+      ffmpeg.on('error', (err) => {
+        this.logger.error(`FFmpeg spawn error: ${err.message}`);
+        reject(err);
+      });
 
       setTimeout(() => {
         if (!ffmpeg.killed) {
+          isTimeout = true;
           ffmpeg.kill('SIGKILL');
           reject(new Error('Thumbnail capture timeout'));
         }

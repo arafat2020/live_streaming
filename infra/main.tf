@@ -240,7 +240,21 @@ resource "aws_cloudfront_distribution" "live_hls" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.r2_forward_host.id
   }
 
-  # ── Rule 1: Live Streams (from AWS S3) ──
+  # ── Rule 1a: Live Stream Thumbnails (from Cloudflare R2) ──
+  # IMPORTANT: must come BEFORE the /live/* rule so it matches first.
+  # Thumbnails are uploaded by NestJS to R2, not to the MediaLive S3 bucket.
+  ordered_cache_behavior {
+    path_pattern             = "/live/*/thumbnail.jpg"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    cached_methods           = ["GET", "HEAD"]
+    target_origin_id         = "R2-rappio-videos"
+    viewer_protocol_policy   = "redirect-to-https"
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.hls_segments.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.r2_forward_host.id
+  }
+
+  # ── Rule 1b: Live Streams HLS (from AWS S3) ──
   ordered_cache_behavior {
     path_pattern             = "/live/*"
     allowed_methods          = ["GET", "HEAD", "OPTIONS"]
