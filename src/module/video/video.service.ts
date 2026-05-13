@@ -8,11 +8,10 @@ import { Category, ContentStatus, ContentType } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreateVideoDto } from './dto/create-video.dto';
-import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
 import { ContentService } from '../content/content.service';
+import { LiveCommentGateway } from '../live-comment/liveComment.gateway';
+import { CreateVideoDto } from './dto/create-video.dto';
 import { MediaConvertService } from './media-convert.service';
-import { ThumbnailService } from './thumbnail.service';
 
 @Injectable()
 export class VideoService {
@@ -23,7 +22,6 @@ export class VideoService {
     private readonly liveGateway: LiveCommentGateway,
     private readonly prisma: PrismaService,
     private readonly mediaConvertService: MediaConvertService,
-    private readonly thumbnailService: ThumbnailService,
   ) {}
 
   // ==========================================
@@ -37,12 +35,12 @@ export class VideoService {
   async handleLiveStart(streamKey: string) {
     const channel = await this.prisma.channel.findUnique({
       where: { streamKey },
-      select: { 
-        id: true, 
-        name: true, 
-        category: true, 
-        pendingDescription: true, 
-        pendingTitle: true 
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        pendingDescription: true,
+        pendingTitle: true,
       },
     });
 
@@ -163,12 +161,13 @@ export class VideoService {
         contentType: ContentType.LIVE_STREAM,
         status: ContentStatus.PROCESSING,
       },
-      include: { channel: { select: { streamKey: true } } },
     });
 
     // RETRY logic: Handles race conditions where webhook arrives faster than DB update
     if (!content) {
-      this.logger.log(`markStreamLiveByChannelId: content not found for ${channelId}, retrying in 2s...`);
+      this.logger.log(
+        `markStreamLiveByChannelId: content not found for ${channelId}, retrying in 2s...`,
+      );
       await new Promise((r) => setTimeout(r, 2000));
       content = await this.prisma.content.findFirst({
         where: {
@@ -176,7 +175,6 @@ export class VideoService {
           contentType: ContentType.LIVE_STREAM,
           status: ContentStatus.PROCESSING,
         },
-        include: { channel: { select: { streamKey: true } } },
       });
     }
 
@@ -205,58 +203,6 @@ export class VideoService {
     }
 
     this.liveGateway.streamLive(playbackUrl, content);
-
-    // Generate thumbnail asynchronously in the background
-    // Don't await this — let it run independently
-    // Use the HLS playback URL (CloudFront) since this is a MediaLive architecture;
-    // there is no local RTMP stream to capture from.
-    this.generateLiveThumbnailAsync(content.id, playbackUrl);
-  }
-
-  /**
-   * Generate thumbnail asynchronously for a live stream.
-   * Captures a frame from the HLS playback URL (CloudFront) because this is a
-   * MediaLive architecture — there is no local RTMP stream available inside the
-   * container. The HLS master playlist is ready as soon as the channel reaches
-   * RUNNING state, so we wait a short period for segments to accumulate and
-   * then grab a frame via FFmpeg.
-   */
-  private async generateLiveThumbnailAsync(
-    contentId: string,
-    hlsUrl: string,
-  ): Promise<void> {
-    // Fire-and-forget: catch errors and log them, but don't throw
-    try {
-      const r2Prefix = `live/${contentId}`;
-
-      this.logger.log(
-        `🎬 Starting async thumbnail generation for stream: ${contentId}`,
-      );
-      this.logger.debug(`🔗 HLS source URL: ${hlsUrl}`);
-
-      const thumbnailUrl = await this.thumbnailService.generateThumbnailFromHLS(
-        contentId,
-        hlsUrl,
-        r2Prefix,
-      );
-
-      // Update the content record with the thumbnail URL
-      await this.prisma.content.update({
-        where: { id: contentId },
-        data: { thumbnailUrl },
-      });
-
-      this.logger.log(
-        `✅ Thumbnail generated and updated for stream: ${contentId}`,
-      );
-    } catch (error) {
-      // Don't throw — this is a background task
-      this.logger.error(
-        `❌ Failed to generate thumbnail for stream ${contentId}: ${
-          (error as any)?.message || error
-        }`,
-      );
-    }
   }
 
   /**
@@ -304,11 +250,18 @@ export class VideoService {
     processingPromise: Promise<{ playbackUrl: string; thumbnailUrl: string }>;
   }> {
     if (!fileBuffer && !inputPath) {
-      throw new BadRequestException('Either fileBuffer or inputPath must be provided');
+      throw new BadRequestException(
+        'Either fileBuffer or inputPath must be provided',
+      );
     }
 
     const r2Prefix = `videos/${lessonId}`;
-    const outputDir = path.resolve(process.cwd(), 'uploads', 'videos', lessonId);
+    const outputDir = path.resolve(
+      process.cwd(),
+      'uploads',
+      'videos',
+      lessonId,
+    );
 
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -370,7 +323,10 @@ export class VideoService {
   /**
    * Called when AWS MediaConvert job is successfully completed.
    */
-  async handleMediaConvertComplete(contentId: string, jobId: string): Promise<void> {
+  async handleMediaConvertComplete(
+    contentId: string,
+    jobId: string,
+  ): Promise<void> {
     try {
       const playbackUrl = `${process.env.CLOUDFRONT_URL}/videos/${contentId}/master.m3u8`;
       await this.prisma.content.update({
@@ -383,14 +339,19 @@ export class VideoService {
       });
       this.logger.log(`✅ VOD Content ${contentId} is now AVAILABLE`);
     } catch (error) {
-      this.logger.error(`Failed to handle MediaConvert completion: ${error.message}`);
+      this.logger.error(
+        `Failed to handle MediaConvert completion: ${error.message}`,
+      );
     }
   }
 
   /**
    * Called when AWS MediaConvert job fails.
    */
-  async handleMediaConvertError(contentId: string, jobId: string): Promise<void> {
+  async handleMediaConvertError(
+    contentId: string,
+    jobId: string,
+  ): Promise<void> {
     try {
       await this.prisma.content.update({
         where: { id: contentId },
@@ -400,7 +361,9 @@ export class VideoService {
         },
       });
     } catch (error) {
-      this.logger.error(`Failed to handle MediaConvert error: ${error.message}`);
+      this.logger.error(
+        `Failed to handle MediaConvert error: ${error.message}`,
+      );
     }
   }
 
@@ -460,7 +423,9 @@ export class VideoService {
         ...(thumbnailUrl && { thumbnailUrl }),
       });
     } catch (error) {
-      this.logger.error(`Failed to update content after processing: ${error.message}`);
+      this.logger.error(
+        `Failed to update content after processing: ${error.message}`,
+      );
     }
   }
 

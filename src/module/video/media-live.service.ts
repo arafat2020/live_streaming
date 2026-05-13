@@ -6,13 +6,15 @@ import {
   DeleteChannelCommand,
   DeleteInputCommand,
   DescribeChannelCommand,
+  DescribeInputCommand,
+  ListChannelsCommand,
+  ListInputsCommand,
   MediaLiveClient,
   StartChannelCommand,
   StopChannelCommand,
 } from '@aws-sdk/client-medialive';
 import { Injectable, Logger } from '@nestjs/common';
 import { VIDEO_RENDITIONS } from '../../common/video.constants';
-import { ListChannelsCommand } from '@aws-sdk/client-medialive';
 
 export interface StartChannelResult {
   channelId: string;
@@ -256,9 +258,81 @@ export class MediaLiveService {
     }
   }
 
+  async listAllInputs() {
+    try {
+      const response = await this.client.send(new ListInputsCommand({}));
+      const inputs = response.Inputs || [];
+      return { inputs, count: inputs.length };
+    } catch (err) {
+      this.logger.error(`Failed to list inputs: ${err.message}`);
+      return { inputs: [], count: 0 };
+    }
+  }
+
+  /**
+   * Delete all orphaned RTMP Push inputs that are DETACHED (not attached to
+   * any running channel). These accumulate when the server crashes or restarts
+   * without cleanly stopping MediaLive channels, causing the "5 push inputs"
+   * service limit error.
+   *
+   * Safe to call on startup: it only targets inputs whose names start with
+   * "rappio-input-" and are in DETACHED state.
+   */
+  async cleanupOrphanedInputs(): Promise<{ deletedCount: number; inputIds: string[] }> {
+    const deletedIds: string[] = [];
+
+    try {
+      const { inputs } = await this.listAllInputs();
+
+      const orphaned = inputs.filter(
+        (i) =>
+          i.Name?.startsWith('rappio-input-') &&
+          // AWS SDK types may not include DETACHED in the enum — compare as string
+          (i.State as string) === 'DETACHED',
+      );
+
+      if (orphaned.length === 0) {
+        this.logger.log('✅ No orphaned MediaLive inputs found.');
+        return { deletedCount: 0, inputIds: [] };
+      }
+
+      this.logger.warn(
+        `🧹 Found ${orphaned.length} orphaned MediaLive input(s) — cleaning up...`,
+      );
+
+      for (const input of orphaned) {
+        try {
+          this.logger.log(`🗑️ Deleting orphaned input: ${input.Id} (${input.Name})`);
+          await this.client.send(new DeleteInputCommand({ InputId: input.Id! }));
+          deletedIds.push(input.Id!);
+          // Small delay between deletes to avoid throttling
+          await new Promise((r) => setTimeout(r, 1000));
+        } catch (err) {
+          this.logger.error(
+            `Failed to delete orphaned input ${input.Id}: ${err.message}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `✅ Cleaned up ${deletedIds.length}/${orphaned.length} orphaned inputs.`,
+      );
+      return { deletedCount: deletedIds.length, inputIds: deletedIds };
+    } catch (err) {
+      this.logger.error(`Failed to cleanup orphaned inputs: ${err.message}`);
+      return { deletedCount: 0, inputIds: [] };
+    }
+  }
+
+  /**
+   * Describe a single input by ID.
+   */
+  async describeInput(inputId: string) {
+    return this.client.send(new DescribeInputCommand({ InputId: inputId }));
+  }
+
   async cleanupOrphanedResourcesForContent(contentId: string) {
     this.logger.log(`Cleaning up orphaned resources for content ${contentId}`);
-    // Dummy implementation for compilation
     return { deletedCount: 0 };
   }
 

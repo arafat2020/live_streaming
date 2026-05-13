@@ -354,4 +354,42 @@ export class ChannelManagementController {
       data,
     });
   }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('admin/cleanup-aws-inputs')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: '[ADMIN] Delete all orphaned DETACHED MediaLive inputs',
+    description:
+      'Purges rappio-input-* inputs stuck in DETACHED state. ' +
+      'Run this when hitting the AWS "5 push inputs" service limit.',
+  })
+  async cleanupOrphanedAwsInputs(@Res() res: Response) {
+    const result = await this.mediaServerService.cleanupOrphanedAwsInputs();
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: `Cleaned up ${result.deletedCount} orphaned AWS MediaLive input(s).`,
+      data: result,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('admin/aws-inputs')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: '[ADMIN] List all AWS MediaLive inputs',
+    description: 'Diagnostic endpoint — shows all rappio MediaLive inputs and their states.',
+  })
+  async listAwsInputs(@Res() res: Response) {
+    const result = await this.mediaServerService.listAwsInputs();
+    return sendResponse(res, {
+      statusCode: HttpStatus.OK,
+      success: true,
+      message: `Found ${result.count} AWS MediaLive input(s).`,
+      data: result,
+    });
+  }
 }

@@ -52,7 +52,9 @@ export class ThumbnailService {
         this.logger.log(
           `🔄 Thumbnail capture attempt ${attempt}/${MAX_RETRIES}`,
         );
-        await new Promise((r) => setTimeout(r, attempt === 1 ? 5000 : RETRY_DELAY_MS));
+        await new Promise((r) =>
+          setTimeout(r, attempt === 1 ? 5000 : RETRY_DELAY_MS),
+        );
 
         try {
           await this.captureFromHLS(hlsUrl, thumbnailPath);
@@ -73,10 +75,14 @@ export class ThumbnailService {
       const thumbnailUrl = await this.uploadThumbnail(thumbnailPath, r2Prefix);
       await this.cleanupThumbnailFiles(tempDir);
 
-      this.logger.log(`✅ HLS thumbnail generated and uploaded: ${thumbnailUrl}`);
+      this.logger.log(
+        `✅ HLS thumbnail generated and uploaded: ${thumbnailUrl}`,
+      );
       return thumbnailUrl;
     } catch (error) {
-      this.logger.error(`❌ Failed to generate HLS thumbnail: ${error.message}`);
+      this.logger.error(
+        `❌ Failed to generate HLS thumbnail: ${error.message}`,
+      );
       await this.cleanupThumbnailFiles(tempDir);
       throw error;
     }
@@ -92,12 +98,18 @@ export class ThumbnailService {
     return new Promise((resolve, reject) => {
       // -user_agent is needed for some CloudFront distributions
       const ffmpeg = spawn('ffmpeg', [
-        '-user_agent', 'Mozilla/5.0',
-        '-i', hlsUrl,
-        '-ss', '00:00:02',
-        '-vframes', '1',
-        '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
-        '-q:v', '2',
+        '-user_agent',
+        'Mozilla/5.0',
+        '-i',
+        hlsUrl,
+        '-ss',
+        '00:00:02',
+        '-vframes',
+        '1',
+        '-vf',
+        'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
+        '-q:v',
+        '2',
         '-y',
         outputPath,
       ]);
@@ -358,19 +370,17 @@ export class ThumbnailService {
       ]);
 
       let errorOutput = '';
-      let isTimeout = false;
 
       ffmpeg.stderr.on('data', (data) => {
         errorOutput += data.toString();
       });
 
+      this.logger.error(`Error output: ${errorOutput.slice(-500)}`);
+
       ffmpeg.on('close', (code) => {
-        if (isTimeout) return; // Already rejected via timeout
-        
         if (code === 0 && fs.existsSync(outputPath)) {
           resolve();
         } else {
-          this.logger.error(`FFmpeg error output: ${errorOutput.slice(-500)}`);
           reject(
             new Error(
               `Failed to capture thumbnail from file: exit code ${code}`,
@@ -379,14 +389,10 @@ export class ThumbnailService {
         }
       });
 
-      ffmpeg.on('error', (err) => {
-        this.logger.error(`FFmpeg spawn error: ${err.message}`);
-        reject(err);
-      });
+      ffmpeg.on('error', reject);
 
       setTimeout(() => {
         if (!ffmpeg.killed) {
-          isTimeout = true;
           ffmpeg.kill('SIGKILL');
           reject(new Error('Thumbnail capture timeout'));
         }

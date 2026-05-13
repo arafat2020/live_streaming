@@ -40,7 +40,15 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
     if (process.env.ENABLE_MEDIA_SERVER === 'true') {
       this.initializeMediaServer();
       this.startStatsBroadcast();
+
+      // Reset stale DB records first
       await this.videoService.resetStaleStreams();
+
+      // Then purge any DETACHED MediaLive inputs left over from unclean shutdowns.
+      // This runs in the background so it doesn't delay NMS startup.
+      this.mediaLiveService.cleanupOrphanedInputs().catch((err) =>
+        this.logger.error(`Startup input cleanup failed: ${err.message}`),
+      );
     } else {
       this.logger.log(
         'ℹ️ Media Server disabled (ENABLE_MEDIA_SERVER is not true)',
@@ -454,5 +462,20 @@ export class MediaServerService implements OnModuleInit, OnModuleDestroy {
       contentId: session.contentId,
       channelId: session.channelId,
     };
+  }
+
+  /**
+   * Manually trigger orphaned AWS MediaLive input cleanup.
+   * Useful when approaching the 5-input service limit.
+   */
+  async cleanupOrphanedAwsInputs() {
+    return this.mediaLiveService.cleanupOrphanedInputs();
+  }
+
+  /**
+   * List all AWS MediaLive inputs for diagnostics.
+   */
+  async listAwsInputs() {
+    return this.mediaLiveService.listAllInputs();
   }
 }
