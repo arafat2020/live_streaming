@@ -7,11 +7,6 @@
   "license": "UNLICENSED",
   "scripts": {
     "prebuild": "npx prisma generate",
-    "build": "node init && nest build",
-    "start": "node init && npx prisma migrate deploy && npx prisma generate && node dist/main.js",
-    "dev": "node init && nest start --watch",
-    "start:debug": "node init && nest start --debug --watch",
-    "start:prod": "node init && node dist/main",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --ignore-path .prettierignore --check \"**/*.+(js|ts|json)\"",
